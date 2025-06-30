@@ -1,0 +1,13 @@
+source "https://rubygems.org"
+
+gem "puma", "~> 6.6"
+gem "sequel", "~> 5.92"
+gem "phlex-sinatra", "~> 0.5.0"
+gem "discordrb", "~> 3.5"
+gem "rack-unreloader", "~> 2.1"
+gem "literal", "~> 1.8"
+gem "tanuki_emoji", "~> 0.13.0"
+gem "http", "~> 5.3"
+gem "open_street_map", "~> 1.2"
+gem "sqlite3", "~> 2.7"
+gem "sinatra", "~> 4.1"

@@ -1,0 +1,5 @@
+#ignore installed packages
+/node_modules
+
+#ignore environment variables
+config.yml

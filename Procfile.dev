@@ -1,0 +1,4 @@
+web: bundle exec puma -p 5544
+css: npx @tailwindcss/cli -i ./public/css/application.css -o ./public/css/application.min.css --watch -m
+js: npx webpack --config webpack.config.js --mode $NODE_ENV
+bot: bundle exec ruby bot.rb

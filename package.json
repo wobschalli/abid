@@ -1,0 +1,17 @@
+{
+  "name": "abid",
+  "version": "1.0.0",
+  "description": "Abide CF Discord bot",
+  "repository": "https://github.com/wobschalli/abid.git",
+  "author": "Ian Wobschall",
+  "private": true,
+  "dependencies": {
+    "@tailwindcss/cli": "^4.1.11",
+    "flowbite": "^3.1.2",
+    "tailwindcss": "^4.1.11",
+    "terser": "^5.43.1",
+    "terser-webpack-plugin": "^5.3.14",
+    "webpack": "^5.99.9",
+    "webpack-cli": "^6.0.1"
+  }
+}

@@ -1,0 +1,102 @@
+@import "tailwindcss";
+@import "flowbite/src/themes/default";
+@plugin "flowbite/plugin";
+@source "../../node_modules/flowbite";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer components {
+  .btn-primary {
+    border-radius: calc(infinity * 1px);
+    background-color: #c00050;
+    padding-inline: --spacing(4);
+    padding-block: --spacing(2);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-white);
+    box-shadow: var(--shadow-md);
+    &:hover {
+      @media (hover: hover) {
+        background-color: #d6065f;
+      }
+    }
+  }
+
+  .btn-secondary {
+    border-radius: calc(infinity * 1px);
+    background-color: var(--color-zinc-500);
+    padding-inline: --spacing(4);
+    padding-block: --spacing(2);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-white);
+    box-shadow: var(--shadow-md);
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--color-zinc-700);
+      }
+    }
+  }
+
+  .btn-info {
+    border-radius: calc(infinity * 1px);
+    background-color: var(--color-sky-500);
+    padding-inline: --spacing(4);
+    padding-block: --spacing(2);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-white);
+    box-shadow: var(--shadow-md);
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--color-sky-700);
+      }
+    }
+  }
+
+  .btn-success {
+    border-radius: calc(infinity * 1px);
+    background-color: var(--color-emerald-500);
+    padding-inline: --spacing(4);
+    padding-block: --spacing(2);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-white);
+    box-shadow: var(--shadow-md);
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--color-emerald-700);
+      }
+    }
+  }
+
+  .btn-warning {
+    border-radius: calc(infinity * 1px);
+    background-color: var(--color-amber-500);
+    padding-inline: --spacing(4);
+    padding-block: --spacing(2);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-white);
+    box-shadow: var(--shadow-md);
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--color-amber-700);
+      }
+    }
+  }
+
+  .btn-danger {
+    border-radius: calc(infinity * 1px);
+    background-color: var(--color-rose-500);
+    padding-inline: --spacing(4);
+    padding-block: --spacing(2);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-white);
+    box-shadow: var(--shadow-md);
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--color-rose-700);
+      }
+    }
+  }
+
+  .disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+}
