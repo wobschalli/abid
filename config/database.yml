@@ -1,0 +1,19 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: 5
+  username: postgres
+  password: password
+  host: localhost
+
+development:
+  <<: *default
+  database: abid_development
+
+test:
+  <<: *default
+  database: abid_test
+
+production:
+  <<: *default
+  database: abid_production

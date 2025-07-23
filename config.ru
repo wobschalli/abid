@@ -1,26 +1,15 @@
 require 'rack/unreloader'
 require 'sinatra/base'
-require 'phlex-sinatra'
-require 'phlex'
 require 'discordrb'
 require 'literal'
 require 'tanuki_emoji'
-require 'sequel'
 require 'yaml'
+require 'sinatra/activerecord'
 
 dev = ENV['RACK_ENV'] == 'development'
 puts "Running in #{ENV['RACK_ENV']} mode"
 
-Unreloader = Rack::Unreloader.new(subclasses: %w'Sequel::Model Sinatra::Base Components', reolad: dev) { App.new }
-
-class String
-  def dasherize
-    self.gsub!('_', '-')
-    self.match(/[AZ]/)&.each do |cap|
-      self.gsub!(cap, "-#{cap.downcase}")
-    end
-  end
-end
+Unreloader = Rack::Unreloader.new(subclasses: %w'ActiveRecord::Migration ActiveModel::Validations ActiveModel::Model ActiveModel::Callbacks Sinatra::Base', reolad: dev) { App.new }
 
 wd = File.dirname(__FILE__)
 #watch the app file

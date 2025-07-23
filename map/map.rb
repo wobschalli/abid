@@ -18,8 +18,12 @@ class Map
   end
 
   def addr_to_coord(addr)
-    response = client.search(q: addr, format: 'json', viewbox: q_box, bounded: 1, limit: 1)[0]
-    { lat: response['lat'], lon: response['lon'] }
+    begin
+      response = client.search(q: addr, format: 'json', viewbox: q_box, bounded: 1, limit: 1)[0]
+      { lat: response['lat'], lon: response['lon'] }
+    rescue NoMethodError
+      { lat: nil, lon: nil }
+    end
   end
 
   def coord_to_addr(coord)

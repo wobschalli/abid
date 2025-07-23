@@ -1,7 +1,10 @@
-require_relative 'map'
+require 'sinatra/activerecord'
+require 'phlex-sinatra'
+require 'phlex'
 
 class App < Sinatra::Base
   helpers Phlex::Sinatra
+  register Sinatra::ActiveRecordExtension
 
   def initialize
     @db = Sequel.sqlite File.join(Dir.pwd, 'db', 'abid.sqlite')

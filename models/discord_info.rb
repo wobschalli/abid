@@ -1,0 +1,2 @@
+class DiscordInfo < ApplicationRecord
+end

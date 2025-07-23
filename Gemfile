@@ -1,13 +1,19 @@
 source "https://rubygems.org"
 
 gem "puma", "~> 6.6"
-gem "sequel", "~> 5.92"
 gem "phlex-sinatra", "~> 0.5.0"
-gem "discordrb", "~> 3.5"
+gem 'discordrb', '~> 3.5', git: 'https://github.com/shardlab/discordrb', branch: 'main'
 gem "rack-unreloader", "~> 2.1"
 gem "literal", "~> 1.8"
 gem "tanuki_emoji", "~> 0.13.0"
 gem "http", "~> 5.3"
 gem "open_street_map", "~> 1.2"
-gem "sqlite3", "~> 2.7"
 gem "sinatra", "~> 4.1"
+gem "activerecord", "~> 8.0"
+gem "activemodel", "~> 8.0"
+gem "sinatra-activerecord", "~> 2.0"
+gem "rake", "~> 13.3"
+gem "pg", "~> 1.5"
+gem "rufus-scheduler", "~> 3.9"
+
+gem "chronic", "~> 0.10.2"

@@ -1,12 +1,14 @@
 require 'rack/unreloader'
 require 'yaml'
-
-Unreloader = Rack::Unreloader.new(subclasses: %w'Sequel::Model', reolad: true)
+# require 'active_record'
+require 'active_record'
+require 'active_model'
+require 'chronic'
+require 'rufus-scheduler'
 
 Dir.glob(File.join(Dir.pwd, "models", "*.rb")).each do |model|
-  Unreloader.require model
+  require_relative model
 end
-# Unreloader.require 'bot.rb'
 
 class String
   def dasherize
@@ -14,6 +16,12 @@ class String
     self.match(/[AZ]/).each do |cap|
       self.gsub(cap, "-#{cap.downcase}")
     end
+  end
+end
+
+class DateTime
+  def parseable
+    self.strftime '%Y-%m-%d %H:%M:%S'
   end
 end
 
@@ -25,4 +33,5 @@ temp.each_key do |main_key|
   end
 end
 
+ActiveRecord::Base.establish_connection(YAML.load_file('./config/database.yml', aliases: true)['development'])
 binding.irb

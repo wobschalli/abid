@@ -6,11 +6,9 @@
 #ignore assets
 /node_modules/
 
-#ignore database
-/db/*.sqlite
-
 #ignore git stuff
 /.gitignore
+/.git
 
 #ignore secrets
 /.env*

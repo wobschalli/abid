@@ -3,3 +3,6 @@
 
 #ignore environment variables
 config.yml
+
+#ignore temporary files
+/tmp
