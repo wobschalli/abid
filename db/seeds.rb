@@ -36,3 +36,8 @@ DiscordInfo.find_or_create_by token: config.dig('discord', 'token'), app_id: con
 
 Location.find_or_create_by name: 'lark', lon: -86.9467261, lat: 40.4729654, aliases: ['lark apartments', 'lark apts', 'lark west lafayette']
 Location.find_or_create_by name: 'greater lafayette chinese alliance church', lon: -86.9720287, lat: 40.4521281, aliases: ['glcac', 'chinese alliance church', 'church']
+
+#data privacy or something
+config['users'].each do |user|
+  User.find_or_create_by user
+end

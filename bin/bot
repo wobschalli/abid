@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+
+cd "$(pwd)/bot"
+ruby run.rb

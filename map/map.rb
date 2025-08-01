@@ -1,6 +1,8 @@
 require 'open_street_map'
 require 'http'
 
+require_relative File.join('..', 'models', 'location.rb')
+
 class Map
   attr_accessor :client, :box
   BOXES = {
@@ -12,11 +14,14 @@ class Map
 
   private_constant :OSRM_TRIP_URL, :OSRM_ROUTE_URL
 
+  # @param box [Symbol] binding box for OSM lookups, either indiana or tippecanoe
   def initialize(box=BOXES[:tippecanoe])
     @client = OpenStreetMap::Client.new
     @box = box
   end
 
+  # @param addr [String] address or name of location
+  # @return lat and lon [Hash]
   def addr_to_coord(addr)
     begin
       response = client.search(q: addr, format: 'json', viewbox: q_box, bounded: 1, limit: 1)[0]
@@ -26,12 +31,15 @@ class Map
     end
   end
 
+  # @param coord [Hash] hash with lon and lat
+  # @return name [String]
   def coord_to_addr(coord)
     response = client.reverse(format: 'json', lon: coord[:lon], lat: coord[:lat])
     response['display_name']
   end
 
-  #takes array of lat/lon hash
+  # @param places [Array<Hash>] hash with lon and lat
+  # @return ordered array of locations for a pickup path [Array<String>]
   def create_trip(places)
     opts = { source: 'first', destination: 'last', roundtrip: 'false' }
     q_string = "#{OSRM_TRIP_URL}/"
@@ -42,7 +50,7 @@ class Map
     response['waypoints'].sort_by{ |place| place['waypoint_index'] }.map{ |place| place['location'] }
   end
 
-  # takes an array of arrays
+  # @param stops [Array<Array>]
   def create_route(stops)
     opts = { alternatives: 'true', steps: 'true' }
     q_string = "#{OSRM_ROUTE_URL}/"
@@ -58,6 +66,29 @@ class Map
     path = create_route trip
     path.map do |stop|
       coord_to_addr({ lon: stop[0], lat: stop[1] })
+    end
+  end
+
+  # @param location data, either a hash with lon, lat or a string [Hash, String]
+  # @return [Location, nil]
+  def create_new_location(data)
+    case data.class.to_s
+    when "String"
+      return nil if data.empty?
+      coords = addr_to_coord(data).delete_if { |_, v| v.nil? }
+      unless coords.empty?
+        return Location.create(coords.merge({ name: data }))
+      end
+      nil
+    when "Hash"
+      return nil unless data[:lon] && data[:lat]
+      name = coord_to_addr(data)
+      unless name.nil? || name.empty?
+        return Location.create(data.merge({ name: name }))
+      end
+      nil
+    else
+      nil
     end
   end
 

@@ -1,3 +1,0 @@
-#!/bin/bash
-
-sequel -m "$(pwd)"/db/migrations "sqlite://$(pwd)"/db/abid.sqlite -E -t

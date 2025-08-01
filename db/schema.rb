@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 1100) do
+ActiveRecord::Schema[8.0].define(version: 1500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -32,12 +32,13 @@ ActiveRecord::Schema[8.0].define(version: 1100) do
 
   create_table "emojis", force: :cascade do |t|
     t.string "name"
-    t.bigint "discord_id", null: false
-    t.bigint "server_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "event_id"
+    t.bigint "discord_id"
+    t.bigint "server_id"
+    t.index ["event_id"], name: "index_emojis_on_event_id"
     t.index ["server_id"], name: "index_emojis_on_server_id"
-    t.unique_constraint ["discord_id"]
   end
 
   create_table "events", force: :cascade do |t|
@@ -53,6 +54,10 @@ ActiveRecord::Schema[8.0].define(version: 1100) do
     t.boolean "disabled", default: false
     t.bigint "location_id"
     t.string "repeats_every"
+    t.string "message"
+    t.boolean "scheduled", default: false
+    t.string "send_schedule_id"
+    t.string "collect_schedule_id"
     t.index ["channel_id"], name: "index_events_on_channel_id"
     t.index ["location_id"], name: "index_events_on_location_id"
     t.unique_constraint ["rides_message_id"]
