@@ -267,7 +267,7 @@ class Messenger < Bot
       [ TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints, :success ]
     end
 
-    bot_schedule(evt) if evt.schedulable?
+    # bot_schedule(evt) if evt.schedulable?
 
     event.update_message content: event.message.content do |_, view|
       view.row do |row|
