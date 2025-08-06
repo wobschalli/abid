@@ -1,4 +1,4 @@
 #!/usr/bin/env sh
 
 cd "$(pwd)/bot"
-ruby run.rb
+bundle exec ruby run.rb

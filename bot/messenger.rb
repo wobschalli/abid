@@ -444,3 +444,5 @@ class Messenger < Bot
     User.find_by(discord_id: event.member.id).destroy
   end
 end
+
+# i[' ]?a?m (.+)
