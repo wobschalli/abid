@@ -32,7 +32,7 @@ class Bot
       #now the cache is populated, so you can use it
       @bot.server(server.discord_id).channels.each do |channel|
         Channel.find_or_create_by(discord_id: channel.id) do |c|
-          c.name = c.name
+          c.name = channel.name
           c.server = server
         end
       end
