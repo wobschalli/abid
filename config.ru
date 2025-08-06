@@ -5,6 +5,8 @@ require 'literal'
 require 'tanuki_emoji'
 require 'yaml'
 require 'sinatra/activerecord'
+require 'active_support'
+require 'http'
 
 dev = ENV['RACK_ENV'] == 'development'
 puts "Running in #{ENV['RACK_ENV']} mode"

@@ -11,6 +11,7 @@ class Messenger < Bot
     set_button_handlers
     set_modal_handlers
     set_commands
+    set_event_handlers
     at_exit do
       @bot.stop
     end
@@ -59,6 +60,8 @@ class Messenger < Bot
     bot.register_application_command(:event, 'event commands') do |event_cmd|
       event_cmd.subcommand(:create, 'create a new event')
     end
+
+    bot.register_application_command(:login, 'send a login code', server_id: Server.find_by(name: 'Abide').discord_id)
   end
 
   def set_commands
@@ -69,6 +72,13 @@ class Messenger < Bot
     bot.application_command(:event).subcommand(:create) do |event|
       return event.respond('You are not allowed to do that!') unless User.find_by(discord_id: event.user.id).leader
       event_create_message event
+    end
+
+    bot.application_command(:login) do |event|
+      user = User.find_by(discord_id: event.user.id)
+      return event.respond('You are not able to do that!', ephemeral: true) unless user.leader
+      handle_login_code(user)
+      event.respond content: 'Your login code has been sent', ephemeral: true
     end
 
     bot.application_command(:debug) do |event|
@@ -101,11 +111,6 @@ class Messenger < Bot
   end
 
   def set_button_handlers
-    # bot.button custom_id: /create_event_button_(\d+)/ do |event|
-    #   id = event.custom_id.match(/create_event_button_(\d+)/)[1].to_i
-    #   event_create_pt_two event, id
-    # end
-
     bot.button custom_id: /event_create_modal_1_(\d+)/ do |event|
       return event.respond('You don\'t have permission to do this!') unless User.find_by(discord_id: event.user.id).leader
       id = event.custom_id.match(/event_create_modal_1_(\d+)/)[1].to_i
@@ -136,6 +141,16 @@ class Messenger < Bot
       event.defer_update
       id = event.custom_id.match(/event_delete_(\d+)/)[1].to_i
       event_delete event, id
+    end
+  end
+
+  def set_event_handlers
+    @bot.member_join do |event|
+      handle_member_join event
+    end
+
+    @bot.member_leave do |event|
+      handle_member_leave event
     end
   end
 
@@ -401,5 +416,31 @@ class Messenger < Bot
       event.get_component("event_create_modal_3_#{'%05d' % id}"),
       event.get_component("event_disable_#{'%05d' % id}")
     ]
+  end
+
+  # @param user [User]
+  def handle_login_code(user)
+    code = passgen
+    user.update(password: code, password_confirmation: code)
+    @bot.user(user.discord_id).dm("Here is your login code: #{code}")
+  end
+
+  # @param event [Discordrb::Events::ServerMemberAddEvent]
+  def handle_member_join(event)
+    return unless Server.find_by(name: 'Abide').discord_id == event.server.id #we only care if it's the abide server
+    User.find_or_create_by(discord_id: event.member.id) do |user|
+      pass = passgen
+      user.username = event.member.username
+      user.name = event.member.display_name
+      user.leader = event.member.permission?(:administrator) || event.member.role?('Leaders') || event.member.role?('Coordinator')
+      user.password = pass
+      user.password_confirmation = pass
+    end
+  end
+
+  # @param event [Discordrb::Events::ServerMemberDeleteEvent]
+  def handle_member_leave(event)
+    return unless Server.find_by(name: 'Abide').discord_id == event.server.id
+    User.find_by(discord_id: event.member.id).destroy
   end
 end

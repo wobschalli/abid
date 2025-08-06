@@ -9,11 +9,11 @@ class Components::Form < Phlex::HTML
 
   def view_template(&)
     form action: @action, method: @method do
-      div class: 'grid-cols-12 gap-4 p-4' do
+      div class: 'grid grid-cols-12 gap-4' do
         yield
       end
 
-      div class: 'p-4' do
+      div do
         button(class: 'btn-primary') { @button_text }
       end
     end
@@ -35,6 +35,17 @@ class Components::Form < Phlex::HTML
     end
   end
 
+  def password_input(icon_d:nil, name:, placeholder:nil)
+    div class: 'flex' do
+      if icon_d
+        div class: 'inline-flex items-center px-3 text-sm text-gray-900 bg-gray-200 border rounded-e-0 border-gray-300 border-e-0 rounded-s-md dark:bg-gray-600 dark:text-gray-400 dark:border-gray-600' do
+          render Icon.new(icon_d)
+        end
+      end
+      input name: name, type: 'password', id: "input-group-#{name.dasherize}", class: 'rounded-none rounded-e-lg bg-gray-50 border text-gray-900 focus:ring-blue-500 focus:border-blue-500 block flex-1 min-w-0 w-full text-sm border-gray-300 p-2.5  dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500', placeholder: placeholder
+    end
+  end
+
   private
   class Icon < Phlex::SVG
     def initialize(ds)
@@ -42,9 +53,9 @@ class Components::Form < Phlex::HTML
     end
 
     def view_template
-      svg class: 'w-4 h-4 text-gray-500 dark:text-gray-400', aria_hidden: 'true', xmlns: 'http://www.w3.org/2000/svg', fill: 'currentColor', viewBox: '0 0 20 16' do
+      svg class: 'w-6 h-6 text-gray-500 dark:text-gray-400', aria_hidden: 'true', xmlns: 'http://www.w3.org/2000/svg', fill: 'currentColor', viewBox: '0 0 24 24' do
         (@ds.is_a?(Array) ? @ds : [ @ds ]).each do |d|
-          path d: d
+          path d: d, fill_rule: 'evenodd', clip_rule: 'evenodd', stroke_linejoin: 'round'
         end
       end
     end

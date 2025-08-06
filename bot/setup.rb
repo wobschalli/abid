@@ -13,6 +13,11 @@ class Bot
       setup_users(server)
     end
 
+  # @return pronouncable password [String]
+  def passgen
+    Passgen::generate(pronouncable: true, uppercase: false)
+  end
+
     private
     # @param server [Server]
     # @return array of channels [Array<Discordrb::Channel>]
@@ -60,9 +65,12 @@ class Bot
     def setup_users(server)
       @bot.server(server.discord_id).non_bot_members.each do |user|
         User.find_or_create_by(discord_id: user.id) do |u| #block runs on create only
+          pass = passgen
           u.username = user.username
           u.name = user.display_name
           u.leader = user.permission?(:administrator) || user.role?('Leaders') || user.role?('Coordinator')
+          u.password = pass
+          u.password_confirmation = pass
         end
       end
     end

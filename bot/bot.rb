@@ -28,4 +28,9 @@ class Bot
   def bot_schedule(event)
     @scheduler.schedule(event)
   end
+
+  # @return pronouncable password [String]
+  def passgen
+    Passgen::generate(pronouncable: true, uppercase: false)
+  end
 end

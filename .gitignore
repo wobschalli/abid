@@ -3,6 +3,7 @@
 
 #ignore environment variables
 config.yml
+.session_secret
 
 #ignore temporary files
 /tmp

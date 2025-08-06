@@ -4,9 +4,12 @@ require 'tanuki_emoji'
 require 'yaml'
 require 'active_record'
 require 'active_model'
+require 'active_support'
 require 'chronic'
 require 'rufus-scheduler'
 require 'tzinfo'
+require 'passgen'
+require 'http'
 
 ActiveRecord::Base.establish_connection(YAML.load_file(File.join(Dir.pwd, '..', 'config', 'database.yml'), aliases: true)[ENV.fetch('BOT_ENV', 'development')])
 

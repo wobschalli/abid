@@ -2,33 +2,44 @@ require 'sinatra/activerecord'
 require 'phlex-sinatra'
 require 'phlex'
 
+SESSION_SECRET = File.read('.session_secret')
+
 class App < Sinatra::Base
   helpers Phlex::Sinatra
   register Sinatra::ActiveRecordExtension
 
-  def initialize
-    @db = Sequel.sqlite File.join(Dir.pwd, 'db', 'abid.sqlite')
-    # create_users_and_roles
+  enable :sessions
+  set :session_secret, SESSION_SECRET
+
+  before do
+    ensure_logged_in
   end
 
   get '/' do
-    phlex Root.new
+    phlex Home.new
+  end
+
+  get '/login' do
+    phlex Login.new
+  end
+
+  post '/login' do
+    user = User.find_by(username: params[:username])
+    if user.authenticate(params[:password])
+      session[:user_id] = user.id
+      redirect to('/')
+    else
+      phlex Login.new
+    end
+  end
+
+  get '/logout' do
+    session[:user_id] = nil
+    redirect to('/login')
   end
 
   private
-  def create_users_and_roles
-    users = BOT.get_all_users CONFIG['servers.test']
-    users.each do |user|
-      User.find_or_create(discord_id: user.id) do |u|
-        u.username = user.username
-        u.name = user.name
-        u.roles = user.roles.map do |role|
-          Role.find_or_create(discord_id: role.id) do |r|
-            r.name = role.name
-            r.admin = role.administrator
-          end
-        end
-      end
-    end
+  def ensure_logged_in
+    redirect to('/login') unless session[:user_id] || request.path_info == '/login'
   end
 end
