@@ -66,9 +66,11 @@ class Bot
       @bot.server(server.discord_id).non_bot_members.each do |user|
         User.find_or_create_by(discord_id: user.id) do |u| #block runs on create only
           pass = passgen
+          leader = Role.find_by(name: 'Leaders').discord_id
+          coordinator = Role.find_by(name: 'Coordinator').discord_id
           u.username = user.username
           u.name = user.display_name
-          u.leader = user.permission?(:administrator) || user.role?('Leaders') || user.role?('Coordinator')
+          u.leader = user.permission?(:administrator) || user.role?(leader) || user.role?(coordinator)
           u.password = pass
           u.password_confirmation = pass
         end

@@ -70,7 +70,7 @@ class Messenger < Bot
     end
 
     bot.application_command(:event).subcommand(:create) do |event|
-      return event.respond('You are not allowed to do that!') unless User.find_by(discord_id: event.user.id).leader
+      return event.respond(content: 'You are not allowed to do that!') unless User.find_by(discord_id: event.user.id).leader
       event_create_message event
     end
 
@@ -88,7 +88,7 @@ class Messenger < Bot
         event.send_message(content: 'Your debug session is finished', ephemeral: true)
       else
         dm_ian("an unauthorized user (#{event.user.username} | #{event.user.id}) attempted to use debug")
-        event.respond 'You do not have the proper authentication to perform this action!'
+        event.respond content: 'You do not have the proper authentication to perform this action!'
       end
     end
   end
