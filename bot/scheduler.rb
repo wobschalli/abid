@@ -58,7 +58,7 @@ class Bot
     def schedule_rides_collect(event)
       case event.repeats_every
       when 'week'
-        collect = "#{event.collect_rides_at.minute} #{event.collect_rides_at.hour} * * #{event.collect_rides_at.wday}"
+        collect = "#{event.collect_rides_at.min} #{event.collect_rides_at.hour} * * #{event.collect_rides_at.wday}"
 
         @scheduler.schedule_cron collect do
           collect_scheduled_message event
@@ -73,7 +73,7 @@ class Bot
     def schedule_rides_message(event)
       case event.repeats_every
       when 'week'
-        message = "#{event.message_rides_at.minute} #{event.message_rides_at.hour} * * #{event.message_rides_at.wday}"
+        message = "#{event.message_rides_at.min} #{event.message_rides_at.hour} * * #{event.message_rides_at.wday}"
 
         @scheduler.schedule_cron message do
           send_scheduled_message event
