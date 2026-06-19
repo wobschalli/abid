@@ -71,8 +71,11 @@ class Bot
 
     def distance(loc1, loc2)
       Math.sqrt(
-        (loc1.lat - loc2.lat) ** 2 + (loc1.lon - loc2.lon) ** 2
-      ) * Math.cos((loc1.lat + loc2.lat) / 2 * Math::PI / 180) * 111.32
+        ((loc1.lat - loc2.lat) * 111.32) ** 2 +
+        ((loc1.lon - loc2.lon) * Math.cos(
+          (loc1.lat + loc2.lat) / 2 * Math::PI / 180
+        ) * 111.32) ** 2
+      )
     end
 
     def save_assignments(event, assignments)
