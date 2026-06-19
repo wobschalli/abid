@@ -7,4 +7,15 @@ class User < ApplicationRecord
   has_and_belongs_to_many :roles
 
   has_secure_password
+
+  scope :drivers, -> { joins(:roles).where(roles: { name: "Drivers" }) }
+  scope :riders, -> { joins(:roles).where(roles: {name: "Riders" }) }
+
+  def driver?
+    roles.exists(name: "Drivers")
+  end
+
+  def rider?
+    roles.exists(name: "Riders")
+  end
 end

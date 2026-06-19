@@ -19,6 +19,14 @@ class Messenger < Bot
 
   # @param message [String]
   # @return message sent [Discordrb::Message]
+  def dm_mods(message) #mostly for testing purposes, but also just for the trolls
+    [:dm_ian, :dm_alan, :dm_bfm].map do |send_msg|
+      send(send_msg, message)
+    end
+  end
+
+  # @param message [String]
+  # @return message sent [Discordrb::Message]
   def dm_ian(message) #mostly for testing purposes, but also just for the trolls
     @bot.user(User.find_by(name: 'ian').discord_id).dm(message)
   end
@@ -27,6 +35,12 @@ class Messenger < Bot
   # @return message sent [Discordrb::Message]
   def dm_alan(message) #mostly for testing purposes, but also just for the trolls
     @bot.user(User.find_by(name: 'alan').discord_id).dm(message)
+  end
+
+  # @param message [String]
+  # @return message sent [Discordrb::Message]
+  def dm_bfm(message) #mostly for testing purposes, but also just for the trolls
+    @bot.user(User.find_by(name: 'bfm').discord_id).dm(message)
   end
 
   # @param server id [Integer]

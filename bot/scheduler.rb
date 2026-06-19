@@ -26,17 +26,40 @@ class Bot
     private
     def collect_scheduled_message(event)
       event = Event.find(event.id)
-      if event && event.enabled? && event.rides_message_id
-        reaction_users = @bot.channel(event.channel.discord_id).load_message(event.rides_message_id).all_reaction_users
+      if event&.enabled? && event.rides_message_id
+        reaction_users = @bot.channel(event.channel.discord_id)
+                             .load_message(event.rides_message_id)
+                             .all_reaction_users
+        riders = []
+
         message = "reaction details for event: #{event}\n"
         message += reaction_users.map do |emoji, users|
-          event.users = users.map do |reaction_user|
-            reaction_user.bot_account? ? nil : User.find_by(discord_id: reaction_user.id)
-          end.delete_if{ _1.nil? }
+          emoji_riders = users.map {
+            |u| User.find_by(discord_id: u.id) unless u.bot_account
+          }.compact.uniq
 
           "#{emoji}: #{users.join(", ")}"
+
+          # Assuming for now that all emojis are for the same event
+          riders.concat(emoji_riders.users)
         end.join("\n")
-        @messenger.dm_ian message
+
+        event.users = riders.uniq
+
+        drivers = User.drivers
+
+        if riders.any? && drivers.any?
+          @matcher = Bot::Matcher.new(@bot)
+          assignments = @matcher.match_riders_to_drivers(event, riders, drivers)
+
+          summary = assignments.map { |assignment|
+            "#{assignment[:driver].name}: #{assignment[:riders].map(&:name).join(', ')}"
+          }.join("\n")
+        end
+
+        message += "\nRide Assignments:\n#{summary}"
+
+        @messenger.dm_mods message
         # @messenger.dm_alan message #lol
         event.save
       end

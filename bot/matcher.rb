@@ -90,13 +90,13 @@ class Bot
       assignments.each do |assignment|
         assignment[:riders].each do |rider|
           rider_msg = "You have been assigned to driver #{assignment[:driver].name}" +
-                      "for the event #{assignment[:event].to_s}."
-          @bot.user(rider.discord_id).pm(rider_msg)
+                      "for the event #{assignment[:event]}."
+          @bot.user(rider.discord_id).dm(rider_msg)
         end
         riders_list = assignment[:riders].map(&:name).join(", ")
-        driver_msg = "Pickup route for #{assignment[:event].to_s}:" +
+        driver_msg = "Pickup route for #{assignment[:event]}:" +
               "\n #{assignment[:route].join(" → ")}\nRiders: #{riders_list}"
-        @bot.user(assignment[:driver].discord_id).pm(driver_msg)
+        @bot.user(assignment[:driver].discord_id).dm(driver_msg)
       end
     end
   end
