@@ -230,7 +230,6 @@ class Messenger
       user = User.find_by(discord_id: event.user.id)
       evt = Event.find(event.custom_id.match(/event_disable_(\d+)/)[1].to_i)
       return event.respond('You don\'t have permission to do this!') unless user&.leader || user&.coordinator? || (evt.organizer_id && evt.organizer_id == user&.id)
-      event.defer_update
       event_disable event, evt.id
     end
 
@@ -317,19 +316,19 @@ class Messenger
     evt = Event.find(id)
     event.show_modal(title: 'Part 2', custom_id: "create_event_modal_2_#{'%05d' % evt.id}") do |modal|
       modal.row do |row|
-        row.text_input(style: :short, custom_id: 'start_time', label: 'Start Time', placeholder: evt.start_time, required: false)
+        row.text_input(style: :short, custom_id: 'start_time', label: 'Start Time (YYYY-MM-DD HH:MM)', placeholder: evt.start_time&.strftime('%Y-%m-%d %H:%M'), required: false)
       end
       modal.row do |row|
-        row.text_input(style: :short, custom_id: 'end_time', label: 'End Time', placeholder: evt.end_time, required: false)
+        row.text_input(style: :short, custom_id: 'end_time', label: 'End Time (YYYY-MM-DD HH:MM)', placeholder: evt.end_time&.strftime('%Y-%m-%d %H:%M'), required: false)
       end
       modal.row do |row|
-        row.text_input(style: :short, custom_id: 'message_time', label: 'Message Time', placeholder: evt.message_rides_at, required: false)
+        row.text_input(style: :short, custom_id: 'message_time', label: 'Message Time (YYYY-MM-DD HH:MM)', placeholder: evt.message_rides_at&.strftime('%Y-%m-%d %H:%M'), required: false)
       end
       modal.row do |row|
-        row.text_input(style: :short, custom_id: 'collect_time', label: 'Collect Time', placeholder: evt.collect_rides_at, required: false)
+        row.text_input(style: :short, custom_id: 'collect_time', label: 'Collect Time (YYYY-MM-DD HH:MM)', placeholder: evt.collect_rides_at&.strftime('%Y-%m-%d %H:%M'), required: false)
       end
       modal.row do |row|
-        row.text_input(style: :short, custom_id: 'repeat', label: 'Repeat every (week/never(blank))', placeholder: evt.repeats_every, required: false)
+        row.text_input(style: :short, custom_id: 'repeat', label: 'Repeat every (week/never)', placeholder: evt.repeats_every || 'never', required: false)
       end
     end
   end
@@ -444,7 +443,7 @@ class Messenger
         row.button label: 'Edit Timing', style: :primary, custom_id: "event_create_modal_2_#{'%05d' % evt.id}"
         row.button label: 'Edit Reactions', style: :primary, custom_id: "event_create_modal_3_#{'%05d' % evt.id}"
         row.button label: 'Publish', style: :danger, custom_id: "event_disable_#{'%05d' % evt.id}"
-        row.button label: 'Cancel', style: :danger, custom_id: "event_delete_#{'%05d' % evt.id}"
+        row.button label: 'Delete', style: :danger, custom_id: "event_delete_#{'%05d' % evt.id}"
       end
     end
   end
