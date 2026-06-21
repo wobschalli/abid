@@ -38,6 +38,13 @@ Location.find_or_create_by name: 'lark', lon: -86.9467261, lat: 40.4729654, alia
 Location.find_or_create_by name: 'greater lafayette chinese alliance church', lon: -86.9720287, lat: 40.4521281, aliases: ['glcac', 'chinese alliance church', 'church']
 
 #data privacy or something
-config['users'].each do |user, data|
-  User.find_or_create_by data
+config['users'].each do |_, data|
+  User.find_or_create_by(discord_id: data['discord_id']) do |u|
+    u.name = data['name']
+    u.username = data['username']
+    u.grad_year = data['grad_year']
+    u.capacity = data['capacity']
+    u.leader = data['leader'] || false
+    u.password = 'default_password' # Default password, should be changed on first login
+  end
 end
