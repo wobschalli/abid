@@ -32,6 +32,8 @@ end
 TEST_SERVER = Server.find_or_create_by name: 'Test', discord_id: config.dig('servers', 'test')
 Channel.find_or_create_by name: 'general', discord_id: config.dig('test', 'general'), server: TEST_SERVER
 
+WL_STUDY_SERVER = Server.find_or_create_by name: 'WL Study for Finals Group', discord_id: config.dig('servers', 'wl_study_for_finals_group')
+
 DiscordInfo.find_or_create_by token: config.dig('discord', 'token'), app_id: config.dig('discord', 'app_id'), public_key: config.dig('discord', 'public_key')
 
 Location.find_or_create_by name: 'lark', lon: -86.9467261, lat: 40.4729654, aliases: ['lark apartments', 'lark apts', 'lark west lafayette']

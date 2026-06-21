@@ -6,11 +6,25 @@ class Bot
     # @param bot [Discordrb::Commands::CommandBot]
     def initialize(bot)
       @bot = bot
-      server = Server.find_by(name: 'Abide')
-      setup_channels(server)
-      setup_emojis(server)
-      setup_roles(server)
-      setup_users(server)
+
+      response = Discordrb::API::User.servers(@bot.token)
+      connected_servers = JSON.parse(response.body).map { |s| s['id'].to_i }
+
+      Server.all.each do |server|
+        if connected_servers.include?(server.discord_id)
+          begin
+            setup_channels(server)
+            setup_emojis(server)
+            setup_roles(server)
+            setup_users(server)
+          rescue => e
+            puts "Warning: Could not configure server '#{server.name}' (#{e.message})"
+          end
+        else
+          puts "Bot is not in server '#{server.name}'. Removing from database."
+          server.destroy
+        end
+      end
     end
 
   # @return pronouncable password [String]
@@ -66,11 +80,11 @@ class Bot
       @bot.server(server.discord_id).non_bot_members.each do |user|
         User.find_or_create_by(discord_id: user.id) do |u| #block runs on create only
           pass = passgen
-          leader = Role.find_by(name: 'Leaders').discord_id
-          coordinator = Role.find_by(name: 'Coordinator').discord_id
+          leader = Role.find_by(name: 'Leaders')&.discord_id
+          coordinator = Role.find_by(name: 'Coordinator')&.discord_id
           u.username = user.username
           u.name = user.display_name
-          u.leader = user.permission?(:administrator) || user.role?(leader) || user.role?(coordinator)
+          u.leader = user.permission?(:administrator) || (leader && user.role?(leader)) || (coordinator && user.role?(coordinator))
           u.password = pass
           u.password_confirmation = pass
         end

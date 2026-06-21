@@ -5,7 +5,7 @@ class Messenger < Bot
   def initialize(token)
     @token = token
     @map = Map.new
-    @bot = Discordrb::Commands::CommandBot.new token: @token, prefix: "!", intents: [:server_messages, :server_members], ignore_bots: true
+    @bot = Discordrb::Commands::CommandBot.new token: @token, prefix: "!", intents: [:server_messages, :server_members, :direct_messages], ignore_bots: true
     @bot.init_cache
     register_commands
     set_button_handlers
@@ -75,7 +75,18 @@ class Messenger < Bot
       event_cmd.subcommand(:create, 'create a new event')
     end
 
-    bot.register_application_command(:login, 'send a login code', server_id: Server.find_by(name: 'Abide').discord_id)
+    response = Discordrb::API::User.servers(bot.token)
+    connected_servers = JSON.parse(response.body).map { |s| s['id'].to_i }
+
+    Server.all.each do |server|
+      if connected_servers.include?(server.discord_id)
+        begin
+          bot.register_application_command(:login, 'send a login code', server_id: server.discord_id)
+        rescue => e
+          puts "Warning: Could not register /login command for #{server.name} - #{e.message}"
+        end
+      end
+    end
   end
 
   def set_commands
@@ -450,7 +461,7 @@ class Messenger < Bot
       pass = passgen
       user.username = event.member.username
       user.name = event.member.display_name
-      user.leader = event.member.permission?(:administrator) || event.member.role?('Leaders') || event.member.role?('Coordinator')
+      user.leader = event.member.permission?(:administrator) || (leader && event.member.role?(leader)) || (coordinator && event.member.role?(coordinator))
       user.password = pass
       user.password_confirmation = pass
     end
@@ -458,8 +469,8 @@ class Messenger < Bot
 
   # @param event [Discordrb::Events::ServerMemberDeleteEvent]
   def handle_member_leave(event)
-    return unless Server.find_by(name: 'Abide').discord_id == event.server.id
-    User.find_by(discord_id: event.member.id).destroy
+    return unless Server.exists?(discord_id: event.server.id)
+    User.find_by(discord_id: event.member.id)&.destroy
   end
 
   def event_dashboard_embed(evt)

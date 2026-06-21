@@ -19,6 +19,7 @@ rescue Interrupt
   exit
 rescue => err
   puts err
+  puts err.backtrace.join(%Q{\n})
   binding.irb
 ensure
   r.bot.join

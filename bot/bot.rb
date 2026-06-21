@@ -5,9 +5,8 @@ require_relative 'hfile'
 class Bot
   attr_reader :scheduler, :messenger
 
-  #load bot information and test server
+  #load bot information
   INFO = DiscordInfo.first
-  TEST = Server.find_by(name: 'Test')
 
   def initialize(token)
     @messenger = Messenger.new(INFO.token)
