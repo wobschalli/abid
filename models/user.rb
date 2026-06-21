@@ -18,4 +18,8 @@ class User < ApplicationRecord
   def rider?
     roles.exists(name: "Riders")
   end
+
+  def coordinator?
+    roles.exists(name: "Coordinator")
+  end
 end

@@ -27,7 +27,7 @@ class Bot
     private
     def collect_scheduled_message(event)
       event = Event.find(event.id)
-      if event&.enabled? && event.rides_message_id
+      if event && event.rides_message_id
         reaction_users = @bot.channel(event.channel.discord_id)
                              .load_message(event.rides_message_id)
                              .all_reaction_users
@@ -125,7 +125,7 @@ class Bot
 
     def send_scheduled_message(event)
       event = Event.find(event.id) #update the event upon calling
-      if event && event.enabled? && !event.rides_message_id
+      if event && !event.draft? && !event.cancelled? && !event.rides_message_id
         rides_message = @bot.send(event.channel.discord_id, event.message)
         event.emojis.each do |emoji|
           rides_message.react emoji

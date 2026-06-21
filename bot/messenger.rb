@@ -2,7 +2,6 @@ class Messenger
   attr_reader :bot, :map, :token
   attr_accessor :parent_bot
 
-  # @param bot token [String]
   def initialize(token)
     @token = token
     @map = Map.new
@@ -18,54 +17,33 @@ class Messenger
     end
   end
 
-  # @param message [String]
-  # @return message sent [Discordrb::Message]
-  def dm_mods(message) #mostly for testing purposes, but also just for the trolls
+  def dm_mods(message)
     [:dm_ian, :dm_alan, :dm_bfm].map do |send_msg|
       send(send_msg, message)
     end
   end
 
-  # @param message [String]
-  # @return message sent [Discordrb::Message]
-  def dm_ian(message) #mostly for testing purposes, but also just for the trolls
+  def dm_ian(message)
     @bot.user(User.find_by(name: 'ian').discord_id).dm(message)
   end
 
-  # @param message [String]
-  # @return message sent [Discordrb::Message]
-  def dm_alan(message) #mostly for testing purposes, but also just for the trolls
+  def dm_alan(message)
     @bot.user(User.find_by(name: 'alan').discord_id).dm(message)
   end
 
-  # @param message [String]
-  # @return message sent [Discordrb::Message]
-  def dm_bfm(message) #mostly for testing purposes, but also just for the trolls
+  def dm_bfm(message)
     @bot.user(User.find_by(name: 'bfm').discord_id).dm(message)
   end
 
-  # @param server id [Integer]
-  # @return array of roles [Array<Discordrb::Role>]
   def get_all_roles(server)
     @bot.server(server).roles
   end
 
-  # @param background [true, false]
   def run(background=true)
     @bot.run(background)
     true
   end
 
-  # @param channel id [Discordrb::Channel, String, Integer]
-  # @param message [String]
-  # @param tts [true, false]
-  # @param embeds [Hash, Discordrb::Webhooks::Embed, Array<Hash>, Array<Discordrb::Webhooks::Embed> nil]
-  # @param attachments [Array<File>]
-  # @param allowed_mentions [Hash, Discordrb::AllowedMentions, false, nil]
-  # @param message_reference [Hash, Discordrb::AllowedMentions, false, nil]
-  # @param components [View, Array<Hash>]
-  # @param timeout [Float, nil]
-  # @returns [Discordrb::Message]
   def send(channel, message, tts:false, embeds:nil, attachments:nil, allowed_mentions:false, message_reference:nil, components:nil, timeout:nil)
     @bot.send(channel, message, tts: tts, embeds: embeds, attachments: attachments, allowed_mentions: allowed_mentions, message_reference: message_reference, components: components, timeout: timeout)
   end
@@ -81,17 +59,16 @@ class Messenger
           bot.register_application_command(:login, 'send a login code', server_id: server.discord_id)
 
           bot.register_application_command(:event, 'event commands', server_id: server.discord_id) do |cmd|
-            cmd.subcommand(:list, 'list all events')
+            cmd.subcommand(:list, 'list all events') do |sub|
+              sub.string(:status, 'filter by status (optional)', required: false, choices: { draft: 'draft', scheduled: 'scheduled', active: 'active', completed: 'completed' })
+            end
             cmd.subcommand(:create, 'create a draft event') do |sub|
               sub.string(:name, 'event name', required: true)
             end
             cmd.subcommand(:show, 'show details of an event') do |sub|
               sub.string(:name, 'event name', required: true, autocomplete: true)
             end
-            cmd.subcommand(:edit, 'edit an event') do |sub|
-              sub.string(:name, 'event name', required: true, autocomplete: true)
-            end
-            cmd.subcommand(:cancel, 'cancel an event') do |sub|
+            cmd.subcommand(:delete, 'permanently delete a draft event') do |sub|
               sub.string(:name, 'event name', required: true, autocomplete: true)
             end
             cmd.subcommand(:nuke, 'delete ALL events (owner only)')
@@ -112,10 +89,6 @@ class Messenger
       return event.respond(content: 'Hello there!')
     end
 
-    bot.application_command(:event) do |event|
-      # subcommands are handled below
-    end
-
     bot.autocomplete(:name) do |event|
       search = event.options['name'].to_s.downcase
       events = Event.where("LOWER(name) LIKE ?", "%#{search}%").limit(25)
@@ -124,7 +97,18 @@ class Messenger
     end
 
     bot.application_command(:event).subcommand(:list) do |event|
-      events = Event.where.not(status: :cancelled).limit(10)
+      user = User.find_by(discord_id: event.user.id)
+      status_filter = event.options['status']
+
+      events = if status_filter
+        if status_filter == 'draft' && !(user&.leader || user&.coordinator?)
+          return event.respond(content: 'Only leaders and coordinators can view draft events.', ephemeral: true)
+        end
+        Event.where(status: status_filter.to_sym)
+      else
+        Event.where.not(status: :draft)
+      end.limit(25)
+
       if events.empty?
         event.respond(content: "No events found.", ephemeral: true)
       else
@@ -132,12 +116,21 @@ class Messenger
         event.respond(content: "Events:\n#{desc}")
       end
     end
+    bot.application_command(:event).subcommand(:delete) do |event|
+      user = User.find_by(discord_id: event.user.id)
+      return event.respond(content: 'You are not allowed to do that!', ephemeral: true) unless user&.leader || user&.coordinator?
+      evt = Event.find_by(id: event.options['name'].to_i)
+      return event.respond(content: 'Event not found.', ephemeral: true) unless evt
+      return event.respond(content: 'Only draft events can be deleted with this command.', ephemeral: true) unless evt.draft?
+      name = evt.name || "Untitled_#{evt.id}"
+      evt.destroy
+      event.respond(content: "Event **#{name}** has been permanently deleted.", ephemeral: true)
+    end
 
     bot.application_command(:event).subcommand(:create) do |event|
       user = User.find_by(discord_id: event.user.id)
-      return event.respond(content: 'You are not allowed to do that!', ephemeral: true) unless user&.leader
+      return event.respond(content: 'You are not allowed to do that!', ephemeral: true) unless user&.leader || user&.coordinator?
       base_name = event.options['name'].strip
-      # Count existing events with the same base name (case-insensitive)
       existing_count = Event.where("LOWER(name) = ? OR LOWER(name) LIKE ?", base_name.downcase, "#{base_name.downcase}_%").count
       name = existing_count.zero? ? base_name : "#{base_name}_#{existing_count}"
       event.defer
@@ -145,43 +138,28 @@ class Messenger
     end
 
     bot.application_command(:event).subcommand(:show) do |event|
-      evt = Event.find_by(id: event.options['name'].to_i)
-      return event.respond(content: 'Event not found.', ephemeral: true) unless evt
-      event.respond content: '', embeds: [event_dashboard_embed(evt)]
-    end
-
-    bot.application_command(:event).subcommand(:edit) do |event|
       user = User.find_by(discord_id: event.user.id)
-      return event.respond(content: 'You are not allowed to do that!', ephemeral: true) unless user&.leader
+      return event.respond(content: 'You are not allowed to do that!', ephemeral: true) unless user&.leader || user&.coordinator?
       evt = Event.find_by(id: event.options['name'].to_i)
       return event.respond(content: 'Event not found.', ephemeral: true) unless evt
-      if evt.organizer_id && evt.organizer_id != user.id
-        return event.respond(content: 'You are not the organizer of this event!', ephemeral: true)
-      end
 
-      pt_1_button, pt_2_button, pt_3_button, disable_button = get_changable_event_create_components_from_values(evt)
+      can_edit = (user&.leader || user&.coordinator?) || (evt.organizer_id && evt.organizer_id == user&.id)
+      if can_edit
+        pt_1_button, pt_2_button, pt_3_button, unpublish_button = get_changable_event_create_components_from_values(evt)
+        delete_label = evt.draft? ? 'Delete' : nil
 
-      event.respond content: '', embeds: [event_dashboard_embed(evt)], ephemeral: true do |_, view|
-        view.row do |row|
-          row.button label: 'Edit Basics', style: pt_1_button[:style], custom_id: "event_create_modal_1_#{'%05d' % evt.id}", emoji: pt_1_button[:emoji]
-          row.button label: 'Edit Timing', style: pt_2_button[:style], custom_id: "event_create_modal_2_#{'%05d' % evt.id}", emoji: pt_2_button[:emoji]
-          row.button label: 'Edit Reactions', style: pt_3_button[:style], custom_id: "event_create_modal_3_#{'%05d' % evt.id}", emoji: pt_3_button[:emoji]
-          row.button label: disable_button[:label], style: disable_button[:style], custom_id: "event_disable_#{'%05d' % evt.id}", emoji: disable_button[:emoji]
-          row.button label: 'Cancel', style: :danger, custom_id: "event_delete_#{'%05d' % evt.id}"
+        event.respond content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
+          view.row do |row|
+            row.button label: 'Edit Basics', style: pt_1_button[:style], custom_id: "event_create_modal_1_#{'%05d' % evt.id}", emoji: pt_1_button[:emoji]
+            row.button label: 'Edit Timing', style: pt_2_button[:style], custom_id: "event_create_modal_2_#{'%05d' % evt.id}", emoji: pt_2_button[:emoji]
+            row.button label: 'Edit Reactions', style: pt_3_button[:style], custom_id: "event_create_modal_3_#{'%05d' % evt.id}", emoji: pt_3_button[:emoji]
+            row.button label: unpublish_button[:label], style: unpublish_button[:style], custom_id: "event_disable_#{'%05d' % evt.id}", emoji: unpublish_button[:emoji]
+            row.button label: delete_label, style: :danger, custom_id: "event_delete_#{'%05d' % evt.id}" if delete_label
+          end
         end
+      else
+        event.respond content: '', embeds: [event_dashboard_embed(evt)]
       end
-    end
-
-    bot.application_command(:event).subcommand(:cancel) do |event|
-      user = User.find_by(discord_id: event.user.id)
-      return event.respond(content: 'You are not allowed to do that!', ephemeral: true) unless user&.leader
-      evt = Event.find_by(id: event.options['name'].to_i)
-      return event.respond(content: 'Event not found.', ephemeral: true) unless evt
-      if evt.organizer_id && evt.organizer_id != user.id
-        return event.respond(content: 'You are not the organizer of this event!', ephemeral: true)
-      end
-      evt.update(status: :cancelled)
-      event.respond content: "Event #{evt.name || "Untitled_#{evt.id}"} has been cancelled.", ephemeral: true
     end
 
     bot.application_command(:event).subcommand(:nuke) do |event|
@@ -228,35 +206,40 @@ class Messenger
 
   def set_button_handlers
     bot.button custom_id: /event_create_modal_1_(\d+)/ do |event|
-      return event.respond('You don\'t have permission to do this!') unless User.find_by(discord_id: event.user.id).leader
-      id = event.custom_id.match(/event_create_modal_1_(\d+)/)[1].to_i
-      event_create_pt_one event, id
+      user = User.find_by(discord_id: event.user.id)
+      evt = Event.find(event.custom_id.match(/event_create_modal_1_(\d+)/)[1].to_i)
+      return event.respond('You don\'t have permission to do this!') unless user&.leader || user&.coordinator? || (evt.organizer_id && evt.organizer_id == user&.id)
+      event_create_pt_one event, evt.id
     end
 
     bot.button custom_id: /event_create_modal_2_(\d+)/ do |event|
-      return event.respond('You don\'t have permission to do this!') unless User.find_by(discord_id: event.user.id).leader
-      id = event.custom_id.match(/event_create_modal_2_(\d+)/)[1].to_i
-      event_create_pt_two event, id
+      user = User.find_by(discord_id: event.user.id)
+      evt = Event.find(event.custom_id.match(/event_create_modal_2_(\d+)/)[1].to_i)
+      return event.respond('You don\'t have permission to do this!') unless user&.leader || user&.coordinator? || (evt.organizer_id && evt.organizer_id == user&.id)
+      event_create_pt_two event, evt.id
     end
 
     bot.button custom_id: /event_create_modal_3_(\d+)/ do |event|
-      return event.respond('You don\'t have permission to do this!') unless User.find_by(discord_id: event.user.id).leader
-      id = event.custom_id.match(/event_create_modal_3_(\d+)/)[1].to_i
-      event_create_pt_three event, id
+      user = User.find_by(discord_id: event.user.id)
+      evt = Event.find(event.custom_id.match(/event_create_modal_3_(\d+)/)[1].to_i)
+      return event.respond('You don\'t have permission to do this!') unless user&.leader || user&.coordinator? || (evt.organizer_id && evt.organizer_id == user&.id)
+      event_create_pt_three event, evt.id
     end
 
     bot.button custom_id: /event_disable_(\d+)/ do |event|
-      return event.respond('You don\'t have permission to do this!') unless User.find_by(discord_id: event.user.id).leader
+      user = User.find_by(discord_id: event.user.id)
+      evt = Event.find(event.custom_id.match(/event_disable_(\d+)/)[1].to_i)
+      return event.respond('You don\'t have permission to do this!') unless user&.leader || user&.coordinator? || (evt.organizer_id && evt.organizer_id == user&.id)
       event.defer_update
-      id = event.custom_id.match(/event_disable_(\d+)/)[1].to_i
-      event_disable event, id
+      event_disable event, evt.id
     end
 
     bot.button custom_id: /event_delete_(\d+)/ do |event|
-      return event.respond('You don\'t have permission to do this!') unless User.find_by(discord_id: event.user.id).leader
+      user = User.find_by(discord_id: event.user.id)
+      evt = Event.find(event.custom_id.match(/event_delete_(\d+)/)[1].to_i)
+      return event.respond('You don\'t have permission to do this!') unless user&.leader || user&.coordinator? || (evt.organizer_id && evt.organizer_id == user&.id)
       event.defer_update
-      id = event.custom_id.match(/event_delete_(\d+)/)[1].to_i
-      event_delete event, id
+      event_delete event, evt.id
     end
   end
 
@@ -270,9 +253,6 @@ class Messenger
     end
   end
 
-  # @param event [Discordrb::Events::ButtonEvent]
-  # @param id [Integer]
-  # @return event creation part one modal [Discordrb::Webhooks::Modal]
   def event_create_pt_one(event, id)
     evt = Event.find id
     loc = evt.location
@@ -296,13 +276,10 @@ class Messenger
     end
   end
 
-  # @param event [Discordrb::Events::ModalSubmitEvent]
-  # @param id [Integer]
-  # @return updated message interaction [Discordrb::Events::InteractionCreateEvent]
   def handle_event_create_pt_one(event, id)
     evt = Event.find(id)
 
-    loc = if event.value('location') #God, please forgive me for this block
+    loc = if event.value('location')
       Location.search_by_name(event.value('location')).first
     elsif event.value('lat') && event.value('lon')
       Location.search_by_coords(event.value('lat'), event.value('lon')).first
@@ -324,20 +301,18 @@ class Messenger
       [ TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints, :success ]
     end
 
+    delete_label = evt.draft? ? 'Delete' : 'Cancel'
     event.update_message content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
       view.row do |row|
         row.button label: 'Edit Basics', style: style, custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: emoji&.to_s
         row.button label: 'Edit Timing', style: pt_2_button.style, custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: pt_2_button.emoji&.to_s
         row.button label: 'Edit Reactions', style: pt_3_button.style, custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: pt_3_button.emoji&.to_s
         row.button label: disable_button.label, style: disable_button.style, custom_id: "event_disable_#{'%05d' % id}", emoji: disable_button.emoji&.to_s
-        row.button label: 'Cancel', style: :danger, custom_id: "event_delete_#{'%05d' % id}"
+        row.button label: delete_label, style: :danger, custom_id: "event_delete_#{'%05d' % id}"
       end
     end
   end
 
-  # @param event [Discordrb::Events::ButtonEvent]
-  # @param id [Integer]
-  # @return event creation part two modal [Discordrb::Webhooks::Modal]
   def event_create_pt_two(event, id)
     evt = Event.find(id)
     event.show_modal(title: 'Part 2', custom_id: "create_event_modal_2_#{'%05d' % evt.id}") do |modal|
@@ -359,9 +334,6 @@ class Messenger
     end
   end
 
-  # @param event [Discordrb::Events::ModalSubmitEvent]
-  # @param id [Integer]
-  # @return updated message interaction [Discordrb::Events::InteractionCreateEvent]
   def handle_event_create_pt_two(event, id)
     event.defer_update
     evt = Event.find(id)
@@ -384,20 +356,18 @@ class Messenger
       [ TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints, :success ]
     end
 
+    delete_label = evt.draft? ? 'Delete' : 'Cancel'
     event.edit_response content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
       view.row do |row|
         row.button label: 'Edit Basics', style: pt_1_button[:style], custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button[:emoji]
         row.button label: 'Edit Timing', style: style, custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: emoji&.to_s
         row.button label: 'Edit Reactions', style: pt_3_button[:style], custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: pt_3_button[:emoji]
         row.button label: disable_button[:label], style: disable_button[:style], custom_id: "event_disable_#{'%05d' % id}", emoji: disable_button[:emoji]
-        row.button label: 'Cancel', style: :danger, custom_id: "event_delete_#{'%05d' % id}"
+        row.button label: delete_label, style: :danger, custom_id: "event_delete_#{'%05d' % id}"
       end
     end
   end
 
-  # @param event [Discordrb::Events::ButtonEvent]
-  # @param id [Integer]
-  # @return event creation part two modal [Discordrb::Webhooks::Modal]
   def event_create_pt_three(event, id)
     evt = Event.find(id)
     event.show_modal(title: 'Part 3', custom_id: "create_event_modal_3_#{'%05d' % evt.id}") do |modal|
@@ -419,13 +389,10 @@ class Messenger
     end
   end
 
-  # @param event [Discordrb::Events::ModalSubmitEvent]
-  # @param id [Integer]
-  # @return updated message interaction [Discordrb::Events::InteractionCreateEvent]
   def handle_event_create_pt_three(event, id)
     evt = Event.find(id)
 
-    emojis = 1.upto(4).map do |x| #using i is for your normal cs major
+    emojis = 1.upto(4).map do |x|
       response = event.value("reaction_#{x}")
       if t_emoji = TanukiEmoji.find_by_codepoints(response)
         Emoji.find_or_create_by(name: t_emoji.name)
@@ -457,21 +424,18 @@ class Messenger
 
     bot_schedule(evt) if evt.schedulable?
 
+    delete_label = evt.draft? ? 'Delete' : 'Cancel'
     event.update_message content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
       view.row do |row|
         row.button label: 'Edit Basics', style: pt_1_button[:style], custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button[:emoji]
         row.button label: 'Edit Timing', style: pt_2_button[:style], custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: pt_2_button[:emoji]
         row.button label: 'Edit Reactions', style: style, custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: emoji&.to_s
         row.button label: disable_button[:label], style: disable_button[:style], custom_id: "event_disable_#{'%05d' % id}", emoji: disable_button[:emoji]
-        row.button label: 'Cancel', style: :danger, custom_id: "event_delete_#{'%05d' % id}"
+        row.button label: delete_label, style: :danger, custom_id: "event_delete_#{'%05d' % id}"
       end
     end
   end
 
-  # @param event [Discordrb::Events::SubcommandBuilder]
-  # @param user [User]
-  # @param name [String]
-  # @return event creation part one modal [Discordrb::Webhooks::Modal]
   def event_create_message(event, user, name)
     evt = Event.create(organizer_id: user.id, name: name)
     event.edit_response content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
@@ -485,46 +449,58 @@ class Messenger
     end
   end
 
-  # @param event [Discordrb::Events::ButtonEvent]
-  # @param id [Integer]
-  # @return edit message to say event is disabled [Discordrb::Events::InteractionCreateEvent]
   def event_disable(event, id)
     evt = Event.find(id)
-    evt.update(disabled: !evt.disabled)
-
-    pt_1_button, pt_2_button, pt_3_button, disable_button = get_changable_event_create_components(event, id) || get_changable_event_create_components_from_values(evt)
-
-    emoji, style, label = if disable_button.emoji
-      [ nil, :danger, 'Publish' ]
+    if evt.draft?
+      unless evt.start_time && evt.end_time
+        return event.respond(content: 'Cannot publish: both Start Time and End Time must be set before publishing.', ephemeral: true)
+      end
+      evt.update(status: :scheduled)
     else
-      [ TanukiEmoji.find_by_alpha_code(':pause_button:').codepoints, :secondary, 'Enable event' ]
+      evt.update(status: :draft)
     end
 
+    pt_1_button, pt_2_button, pt_3_button, unpublish_button = get_changable_event_create_components_from_values(evt)
 
+    emoji, style, label = if unpublish_button[:label] == 'Publish'
+      [ nil, :danger, 'Publish' ]
+    else
+      [ TanukiEmoji.find_by_alpha_code(':pause_button:').codepoints, :secondary, 'Unpublish' ]
+    end
+
+    delete_label = evt.draft? ? 'Delete' : 'Cancel'
     event.edit_response content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
       view.row do |row|
         row.button label: 'Edit Basics', style: pt_1_button[:style], custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button[:emoji]
         row.button label: 'Edit Timing', style: pt_2_button[:style], custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: pt_2_button[:emoji]
         row.button label: 'Edit Reactions', style: pt_3_button[:style], custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: pt_3_button[:emoji]
         row.button label: label, style: style, custom_id: "event_disable_#{'%05d' % id}", emoji: emoji&.to_s
-        row.button label: 'Cancel', style: :danger, custom_id: "event_delete_#{'%05d' % id}"
+        row.button label: delete_label, style: :danger, custom_id: "event_delete_#{'%05d' % id}"
       end
     end
   end
 
-  # @param event [Discordrb::Events::ButtonEvent]
-  # @param id [Integer]
-  # @return delete message for event [Discordrb::Events::InteractionCreateEvent]
   def event_delete(event, id)
     evt = Event.find(id)
-    evt.update(status: :cancelled)
-
-    event.delete_response
+    if evt.draft?
+      name = evt.name || "Untitled_#{evt.id}"
+      evt.destroy
+      event.respond(content: "Event **#{name}** has been permanently deleted.", ephemeral: true)
+    else
+      evt.update(status: :draft)
+      event.edit_response content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
+        pt_1_button, pt_2_button, pt_3_button, unpublish_button = get_changable_event_create_components_from_values(evt)
+        view.row do |row|
+          row.button label: 'Edit Basics', style: pt_1_button[:style], custom_id: "event_create_modal_1_#{'%05d' % evt.id}", emoji: pt_1_button[:emoji]
+          row.button label: 'Edit Timing', style: pt_2_button[:style], custom_id: "event_create_modal_2_#{'%05d' % evt.id}", emoji: pt_2_button[:emoji]
+          row.button label: 'Edit Reactions', style: pt_3_button[:style], custom_id: "event_create_modal_3_#{'%05d' % evt.id}", emoji: pt_3_button[:emoji]
+          row.button label: unpublish_button[:label], style: unpublish_button[:style], custom_id: "event_disable_#{'%05d' % evt.id}", emoji: unpublish_button[:emoji]
+          row.button label: 'Delete', style: :danger, custom_id: "event_delete_#{'%05d' % evt.id}"
+        end
+      end
+    end
   end
 
-  # @param event [Discordrb::Events::ModalSubmitEvent]
-  # @param id [Integer]
-  # @return part 1, part 2, part3, and disable buttons [Array<Discordrb::Components::Button>]
   def get_changable_event_create_components(event, id)
     [
       event.get_component("event_create_modal_1_#{'%05d' % id}"),
@@ -534,16 +510,14 @@ class Messenger
     ]
   end
 
-  # @param user [User]
   def handle_login_code(user)
     code = passgen
     user.update(password: code, password_confirmation: code)
     @bot.user(user.discord_id).dm("Here is your login code: #{code}")
   end
 
-  # @param event [Discordrb::Events::ServerMemberAddEvent]
   def handle_member_join(event)
-    return unless Server.find_by(name: 'Abide').discord_id == event.server.id #we only care if it's the abide server
+    return unless Server.find_by(name: 'Abide').discord_id == event.server.id
     User.find_or_create_by(discord_id: event.member.id) do |user|
       pass = passgen
       user.username = event.member.username
@@ -554,7 +528,6 @@ class Messenger
     end
   end
 
-  # @param event [Discordrb::Events::ServerMemberDeleteEvent]
   def handle_member_leave(event)
     return unless Server.exists?(discord_id: event.server.id)
     User.find_by(discord_id: event.member.id)&.destroy
@@ -562,9 +535,9 @@ class Messenger
 
   def event_dashboard_embed(evt)
     {
-      title: "Event Draft: #{evt.name || 'Untitled'}",
+      title: "Event: #{evt.name || 'Untitled'}",
       description: "Use the buttons below to configure your event.",
-      color: evt.enabled? ? 0x00FF00 : 0xFF0000,
+      color: evt.draft? ? 0xFF0000 : 0x00FF00,
       fields: [
         { name: "Basics", value: "Location: #{evt.location&.name || 'None'}\nChannel: #{evt.channel&.name || 'None'}" },
         { name: "Timing", value: "Start: #{evt.start_time || 'None'}\nEnd: #{evt.end_time || 'None'}\nMessage At: #{evt.message_rides_at || 'None'}\nCollect At: #{evt.collect_rides_at || 'None'}\nRepeats: #{evt.repeats_every || 'never'}" },
@@ -575,16 +548,15 @@ class Messenger
   end
 
   def get_changable_event_create_components_from_values(evt)
-    # returns an array of hashes matching what get_changable_event_create_components natively extracts
+    is_draft = evt.draft?
     [
       { style: (evt.name && evt.location && evt.channel) ? :success : :primary, emoji: (evt.name && evt.location && evt.channel) ? TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints.to_s : nil },
       { style: (evt.start_time && evt.end_time && evt.message_rides_at && evt.collect_rides_at) ? :success : :primary, emoji: (evt.start_time && evt.end_time && evt.message_rides_at && evt.collect_rides_at) ? TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints.to_s : nil },
       { style: (evt.message && evt.emojis.length > 0) ? :success : :primary, emoji: (evt.message && evt.emojis.length > 0) ? TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints.to_s : nil },
-      { label: evt.disabled ? 'Publish' : 'Disable', style: evt.disabled ? :danger : :secondary, emoji: evt.disabled ? nil : TanukiEmoji.find_by_alpha_code(':pause_button:').codepoints.to_s }
+      { label: is_draft ? 'Publish' : 'Unpublish', style: is_draft ? :danger : :secondary, emoji: is_draft ? nil : TanukiEmoji.find_by_alpha_code(':pause_button:').codepoints.to_s }
     ]
   end
 
-  # @return pronouncable password [String]
   def passgen
     Passgen::generate(pronouncable: true, uppercase: false)
   end
@@ -597,5 +569,3 @@ class Messenger
     @parent_bot&.bot_schedule(event)
   end
 end
-
-# i[' ]?a?m (.+)

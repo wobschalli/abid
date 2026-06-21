@@ -15,34 +15,17 @@ class Event < ApplicationRecord
            through: :driver_assignments,
            source: :user
 
-  enum :status, { draft: 0, scheduled: 1, active: 2, completed: 3, cancelled: 4 }
+  enum :status, { draft: 0, scheduled: 1, active: 2, completed: 3 }
 
-  scope :active, -> { where(disabled: false) }
+  scope :active, -> { where.not(status: :draft) }
   scope :current, -> { where("start_time <= :now AND end_time >= :now", now: DateTime.now) }
-  scope :inactive, -> { where(disabled: true) }
+  scope :inactive, -> { where(status: :draft) }
   scope :past, -> { where("end_time <= ?", DateTime.now) }
   scope :not_scheduled, -> { where(scheduled: false) }
   scope :scheduled, -> { where(scheduled: true) }
   scope :upcoming, -> { where("start_time >= ?", DateTime.now)}
   scope :unscheduled, -> { where(scheduled: false) }
-
-  def disable
-    self.disabled = true
-    self.save
-  end
-
-  def disabled?
-    self.disabled
-  end
-
-  def enable
-    self.disabled = false
-    self.save
-  end
-
-  def enabled?
-    !self.disabled
-  end
+  scope :not_draft, -> { where.not(status: :draft) }
 
   def schedulable?
     name && start_time && end_time && message_rides_at && collect_rides_at && channel && location

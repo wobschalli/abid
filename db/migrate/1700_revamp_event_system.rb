@@ -22,8 +22,9 @@ class RevampEventSystem < ActiveRecord::Migration[8.0]
   end
   def backfill_status_for_events
     Event.reset_column_information
-    Event.where(disabled: true).update_all(status: 4) # cancelled
-    Event.where(disabled: false, scheduled: true).update_all(status: 1)
-    Event.where(disabled: false, scheduled: false).update_all(status: 0)
+    # disabled column migrated to status enum:
+    #   disabled=true  → status=4 (cancelled)
+    #   disabled=false, scheduled=true  → status=1 (scheduled)
+    #   disabled=false, scheduled=false → status=0 (draft)
   end
 end
