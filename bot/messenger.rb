@@ -83,6 +83,10 @@ class Messenger < Bot
       event.user.name
     end
 
+    bot.application_command(:hello) do |event|
+      return event.respond(content: 'Hello there!')
+    end
+
     bot.application_command(:event).subcommand(:create) do |event|
       return event.respond(content: 'You are not allowed to do that!') unless User.find_by(discord_id: event.user.id).leader
       event_create_message event

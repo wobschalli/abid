@@ -4,6 +4,8 @@ services:
     environment: 
       POSTGRES_PASSWORD: 'password'
     volumes:
-      - ./tmp/db:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql
     ports:
-      - 5432:5432
+      - "5432:5432"
+volumes:
+  db_data:
