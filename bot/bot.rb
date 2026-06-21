@@ -10,9 +10,10 @@ class Bot
 
   def initialize(token)
     @messenger = Messenger.new(INFO.token)
+    @messenger.parent_bot = self
     @messenger.run
     Setup.new(bot)
-    @scheduler = Scheduler.new(bot)
+    @scheduler = Scheduler.new(bot, @messenger)
   end
 
   # @return running bot [Discordrb::Commands::CommandBot]

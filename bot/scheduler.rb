@@ -3,9 +3,10 @@ require_relative 'bot'
 
 class Bot
   class Scheduler
-    def initialize(bot)
+    def initialize(bot, messenger)
       @scheduler = Rufus::Scheduler.new(discard_past: false)
       @bot = bot
+      @messenger = messenger
       schedule_existing_events
       @task_thread = Thread.new { task_scheduler } #simplest way to ensure all events are scheduled
       at_exit do

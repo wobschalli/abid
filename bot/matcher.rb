@@ -7,10 +7,10 @@ class Bot
 
     def match_riders_to_drivers(event, riders, drivers)
       rider_drivers_list = knn_by_proximity(riders, drivers)
-      assignments = knapsack_assignment(rider_drivers_list)
-      optimized_routes = optimize_routes(assignments)
+      assignments, unassigned_riders = knapsack_assignment(rider_drivers_list)
+      optimized_routes = optimize_routes(event, assignments)
       save_assignments(event, optimized_routes)
-      notify_drivers(optimized_routes)
+      notify_drivers(event, optimized_routes)
 
       optimized_routes
     end
@@ -58,7 +58,7 @@ class Bot
       [assignments, unassigned_riders]
     end
 
-    def optimize_routes(assignments)
+    def optimize_routes(event, assignments)
       assignments.map do |assignment|
         assignment => { driver:, riders: }
 
@@ -91,15 +91,15 @@ class Bot
       end
     end
 
-    def notify_drivers(assignments)
+    def notify_drivers(event, assignments)
       assignments.each do |assignment|
         assignment[:riders].each do |rider|
-          rider_msg = "You have been assigned to driver #{assignment[:driver].name}" +
-                      "for the event #{assignment[:event]}."
+          rider_msg = "You have been assigned to driver #{assignment[:driver].name} " +
+                      "for the event #{event.name}."
           @bot.user(rider.discord_id).dm(rider_msg)
         end
         riders_list = assignment[:riders].map(&:name).join(", ")
-        driver_msg = "Pickup route for #{assignment[:event]}:" +
+        driver_msg = "Pickup route for #{event.name}:" +
               "\n #{assignment[:route].join(" → ")}\nRiders: #{riders_list}"
         @bot.user(assignment[:driver].discord_id).dm(driver_msg)
       end

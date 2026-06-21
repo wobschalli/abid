@@ -1,5 +1,6 @@
-class Messenger < Bot
+class Messenger
   attr_reader :bot, :map, :token
+  attr_accessor :parent_bot
 
   # @param bot token [String]
   def initialize(token)
@@ -71,10 +72,6 @@ class Messenger < Bot
 
   private
   def register_commands
-    bot.register_application_command(:event, 'event commands') do |event_cmd|
-      event_cmd.subcommand(:create, 'create a new event')
-    end
-
     response = Discordrb::API::User.servers(bot.token)
     connected_servers = JSON.parse(response.body).map { |s| s['id'].to_i }
 
@@ -82,8 +79,25 @@ class Messenger < Bot
       if connected_servers.include?(server.discord_id)
         begin
           bot.register_application_command(:login, 'send a login code', server_id: server.discord_id)
+
+          bot.register_application_command(:event, 'event commands', server_id: server.discord_id) do |cmd|
+            cmd.subcommand(:list, 'list all events')
+            cmd.subcommand(:create, 'create a draft event') do |sub|
+              sub.string(:name, 'event name', required: true)
+            end
+            cmd.subcommand(:show, 'show details of an event') do |sub|
+              sub.string(:name, 'event name', required: true, autocomplete: true)
+            end
+            cmd.subcommand(:edit, 'edit an event') do |sub|
+              sub.string(:name, 'event name', required: true, autocomplete: true)
+            end
+            cmd.subcommand(:cancel, 'cancel an event') do |sub|
+              sub.string(:name, 'event name', required: true, autocomplete: true)
+            end
+            cmd.subcommand(:nuke, 'delete ALL events (owner only)')
+          end
         rescue => e
-          puts "Warning: Could not register /login command for #{server.name} - #{e.message}"
+          puts "Warning: Could not register cmds for #{server.name} - #{e.message}"
         end
       end
     end
@@ -98,9 +112,82 @@ class Messenger < Bot
       return event.respond(content: 'Hello there!')
     end
 
+    bot.application_command(:event) do |event|
+      # subcommands are handled below
+    end
+
+    bot.autocomplete(:name) do |event|
+      search = event.options['name'].to_s.downcase
+      events = Event.where("LOWER(name) LIKE ?", "%#{search}%").limit(25)
+      choices = events.map { |e| { name: e.name || "Untitled_#{e.id}", value: e.id.to_s } }
+      event.respond(choices: choices)
+    end
+
+    bot.application_command(:event).subcommand(:list) do |event|
+      events = Event.where.not(status: :cancelled).limit(10)
+      if events.empty?
+        event.respond(content: "No events found.", ephemeral: true)
+      else
+        desc = events.map { |e| "**#{e.name || "Untitled_#{e.id}"}** - #{e.status}" }.join("\n")
+        event.respond(content: "Events:\n#{desc}")
+      end
+    end
+
     bot.application_command(:event).subcommand(:create) do |event|
-      return event.respond(content: 'You are not allowed to do that!') unless User.find_by(discord_id: event.user.id).leader
-      event_create_message event
+      user = User.find_by(discord_id: event.user.id)
+      return event.respond(content: 'You are not allowed to do that!', ephemeral: true) unless user&.leader
+      base_name = event.options['name'].strip
+      # Count existing events with the same base name (case-insensitive)
+      existing_count = Event.where("LOWER(name) = ? OR LOWER(name) LIKE ?", base_name.downcase, "#{base_name.downcase}_%").count
+      name = existing_count.zero? ? base_name : "#{base_name}_#{existing_count}"
+      event.defer
+      event_create_message(event, user, name)
+    end
+
+    bot.application_command(:event).subcommand(:show) do |event|
+      evt = Event.find_by(id: event.options['name'].to_i)
+      return event.respond(content: 'Event not found.', ephemeral: true) unless evt
+      event.respond content: '', embeds: [event_dashboard_embed(evt)]
+    end
+
+    bot.application_command(:event).subcommand(:edit) do |event|
+      user = User.find_by(discord_id: event.user.id)
+      return event.respond(content: 'You are not allowed to do that!', ephemeral: true) unless user&.leader
+      evt = Event.find_by(id: event.options['name'].to_i)
+      return event.respond(content: 'Event not found.', ephemeral: true) unless evt
+      if evt.organizer_id && evt.organizer_id != user.id
+        return event.respond(content: 'You are not the organizer of this event!', ephemeral: true)
+      end
+
+      pt_1_button, pt_2_button, pt_3_button, disable_button = get_changable_event_create_components_from_values(evt)
+
+      event.respond content: '', embeds: [event_dashboard_embed(evt)], ephemeral: true do |_, view|
+        view.row do |row|
+          row.button label: 'Edit Basics', style: pt_1_button[:style], custom_id: "event_create_modal_1_#{'%05d' % evt.id}", emoji: pt_1_button[:emoji]
+          row.button label: 'Edit Timing', style: pt_2_button[:style], custom_id: "event_create_modal_2_#{'%05d' % evt.id}", emoji: pt_2_button[:emoji]
+          row.button label: 'Edit Reactions', style: pt_3_button[:style], custom_id: "event_create_modal_3_#{'%05d' % evt.id}", emoji: pt_3_button[:emoji]
+          row.button label: disable_button[:label], style: disable_button[:style], custom_id: "event_disable_#{'%05d' % evt.id}", emoji: disable_button[:emoji]
+          row.button label: 'Cancel', style: :danger, custom_id: "event_delete_#{'%05d' % evt.id}"
+        end
+      end
+    end
+
+    bot.application_command(:event).subcommand(:cancel) do |event|
+      user = User.find_by(discord_id: event.user.id)
+      return event.respond(content: 'You are not allowed to do that!', ephemeral: true) unless user&.leader
+      evt = Event.find_by(id: event.options['name'].to_i)
+      return event.respond(content: 'Event not found.', ephemeral: true) unless evt
+      if evt.organizer_id && evt.organizer_id != user.id
+        return event.respond(content: 'You are not the organizer of this event!', ephemeral: true)
+      end
+      evt.update(status: :cancelled)
+      event.respond content: "Event #{evt.name || "Untitled_#{evt.id}"} has been cancelled.", ephemeral: true
+    end
+
+    bot.application_command(:event).subcommand(:nuke) do |event|
+      return event.respond(content: 'You are not authorized to use this command.', ephemeral: true) unless event.user.id == 434430979075997707
+      Event.destroy_all
+      event.respond(content: 'All events have been destroyed.', ephemeral: true)
     end
 
     bot.application_command(:login) do |event|
@@ -276,6 +363,7 @@ class Messenger < Bot
   # @param id [Integer]
   # @return updated message interaction [Discordrb::Events::InteractionCreateEvent]
   def handle_event_create_pt_two(event, id)
+    event.defer_update
     evt = Event.find(id)
 
     values = {
@@ -288,7 +376,7 @@ class Messenger < Bot
 
     evt.update(values)
 
-    pt_1_button, _, pt_3_button, disable_button = get_changable_event_create_components event, id
+    pt_1_button, pt_2_button, pt_3_button, disable_button = get_changable_event_create_components(event, id) || get_changable_event_create_components_from_values(evt)
 
     emoji, style = if !(evt.start_time && evt.end_time && evt.message_rides_at && evt.collect_rides_at)
       [ nil, :primary ]
@@ -296,14 +384,12 @@ class Messenger < Bot
       [ TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints, :success ]
     end
 
-    # bot_schedule(evt) if evt.schedulable?
-
-    event.update_message content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
+    event.edit_response content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
       view.row do |row|
-        row.button label: 'Edit Basics', style: pt_1_button.style, custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button.emoji&.to_s
+        row.button label: 'Edit Basics', style: pt_1_button[:style], custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button[:emoji]
         row.button label: 'Edit Timing', style: style, custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: emoji&.to_s
-        row.button label: 'Edit Reactions', style: pt_3_button.style, custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: pt_3_button.emoji&.to_s
-        row.button label: disable_button.label, style: disable_button.style, custom_id: "event_disable_#{'%05d' % id}", emoji: disable_button.emoji&.to_s
+        row.button label: 'Edit Reactions', style: pt_3_button[:style], custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: pt_3_button[:emoji]
+        row.button label: disable_button[:label], style: disable_button[:style], custom_id: "event_disable_#{'%05d' % id}", emoji: disable_button[:emoji]
         row.button label: 'Cancel', style: :danger, custom_id: "event_delete_#{'%05d' % id}"
       end
     end
@@ -361,7 +447,7 @@ class Messenger < Bot
 
     evt.update(values)
 
-    pt_1_button, pt_2_button, _, disable_button = get_changable_event_create_components event, id
+    pt_1_button, pt_2_button, _, disable_button = get_changable_event_create_components(event, id) || get_changable_event_create_components_from_values(evt)
 
     emoji, style = if !(evt.message && evt.emojis.length > 0)
       [ nil, :primary ]
@@ -373,21 +459,22 @@ class Messenger < Bot
 
     event.update_message content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
       view.row do |row|
-        row.button label: 'Edit Basics', style: pt_1_button.style, custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button.emoji&.to_s
-        row.button label: 'Edit Timing', style: pt_2_button.style, custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: pt_2_button.emoji&.to_s
+        row.button label: 'Edit Basics', style: pt_1_button[:style], custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button[:emoji]
+        row.button label: 'Edit Timing', style: pt_2_button[:style], custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: pt_2_button[:emoji]
         row.button label: 'Edit Reactions', style: style, custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: emoji&.to_s
-        row.button label: disable_button.label, style: disable_button.style, custom_id: "event_disable_#{'%05d' % id}", emoji: disable_button.emoji&.to_s
+        row.button label: disable_button[:label], style: disable_button[:style], custom_id: "event_disable_#{'%05d' % id}", emoji: disable_button[:emoji]
         row.button label: 'Cancel', style: :danger, custom_id: "event_delete_#{'%05d' % id}"
       end
     end
   end
 
   # @param event [Discordrb::Events::SubcommandBuilder]
-  # @param id [Integer]
+  # @param user [User]
+  # @param name [String]
   # @return event creation part one modal [Discordrb::Webhooks::Modal]
-  def event_create_message(event)
-    evt = Event.create
-    event.respond content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
+  def event_create_message(event, user, name)
+    evt = Event.create(organizer_id: user.id, name: name)
+    event.edit_response content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
       view.row do |row|
         row.button label: 'Edit Basics', style: :primary, custom_id: "event_create_modal_1_#{'%05d' % evt.id}"
         row.button label: 'Edit Timing', style: :primary, custom_id: "event_create_modal_2_#{'%05d' % evt.id}"
@@ -405,7 +492,7 @@ class Messenger < Bot
     evt = Event.find(id)
     evt.update(disabled: !evt.disabled)
 
-    pt_1_button, pt_2_button, pt_3_button, disable_button = get_changable_event_create_components event, id
+    pt_1_button, pt_2_button, pt_3_button, disable_button = get_changable_event_create_components(event, id) || get_changable_event_create_components_from_values(evt)
 
     emoji, style, label = if disable_button.emoji
       [ nil, :danger, 'Publish' ]
@@ -416,9 +503,9 @@ class Messenger < Bot
 
     event.edit_response content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
       view.row do |row|
-        row.button label: 'Edit Basics', style: pt_1_button.style, custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button.emoji&.to_s
-        row.button label: 'Edit Timing', style: pt_2_button.style, custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: pt_2_button.emoji&.to_s
-        row.button label: 'Edit Reactions', style: pt_3_button.style, custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: pt_3_button.emoji&.to_s
+        row.button label: 'Edit Basics', style: pt_1_button[:style], custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button[:emoji]
+        row.button label: 'Edit Timing', style: pt_2_button[:style], custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: pt_2_button[:emoji]
+        row.button label: 'Edit Reactions', style: pt_3_button[:style], custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: pt_3_button[:emoji]
         row.button label: label, style: style, custom_id: "event_disable_#{'%05d' % id}", emoji: emoji&.to_s
         row.button label: 'Cancel', style: :danger, custom_id: "event_delete_#{'%05d' % id}"
       end
@@ -485,6 +572,29 @@ class Messenger < Bot
         { name: "Status", value: evt.status.to_s.capitalize }
       ]
     }
+  end
+
+  def get_changable_event_create_components_from_values(evt)
+    # returns an array of hashes matching what get_changable_event_create_components natively extracts
+    [
+      { style: (evt.name && evt.location && evt.channel) ? :success : :primary, emoji: (evt.name && evt.location && evt.channel) ? TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints.to_s : nil },
+      { style: (evt.start_time && evt.end_time && evt.message_rides_at && evt.collect_rides_at) ? :success : :primary, emoji: (evt.start_time && evt.end_time && evt.message_rides_at && evt.collect_rides_at) ? TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints.to_s : nil },
+      { style: (evt.message && evt.emojis.length > 0) ? :success : :primary, emoji: (evt.message && evt.emojis.length > 0) ? TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints.to_s : nil },
+      { label: evt.disabled ? 'Publish' : 'Disable', style: evt.disabled ? :danger : :secondary, emoji: evt.disabled ? nil : TanukiEmoji.find_by_alpha_code(':pause_button:').codepoints.to_s }
+    ]
+  end
+
+  # @return pronouncable password [String]
+  def passgen
+    Passgen::generate(pronouncable: true, uppercase: false)
+  end
+
+  def debug
+    binding.irb
+  end
+
+  def bot_schedule(event)
+    @parent_bot&.bot_schedule(event)
   end
 end
 
