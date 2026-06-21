@@ -80,12 +80,14 @@ class Bot
 
     def save_assignments(event, assignments)
       assignments.each do |assignment|
-        RideAssignment.create(
-          event: event,
-          driver: assignment[:driver],
-          rider_ids: assignment[:riders].map(&:id),
-          route: assignment[:route].to_json
-        )
+        assignment[:riders].each do |rider|
+          RideAssignment.create(
+            event: event,
+            driver: assignment[:driver],
+            user: rider,
+            route: assignment[:route]
+          )
+        end
       end
     end
 
@@ -104,4 +106,3 @@ class Bot
     end
   end
 end
-

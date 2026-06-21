@@ -1,7 +1,9 @@
 class RideAssignment < ApplicationRecord
   belongs_to :event
+  belongs_to :user
   belongs_to :driver, class_name: 'User'
-  has_and_belongs_to_many :riders, class_name: 'User'
+
+  enum :role, { driver: 0, rider: 1 }
 
   store :route, accessors: [:waypoints]
 

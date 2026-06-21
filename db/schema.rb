@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 1600) do
+ActiveRecord::Schema[8.0].define(version: 1701) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -41,6 +41,18 @@ ActiveRecord::Schema[8.0].define(version: 1600) do
     t.index ["server_id"], name: "index_emojis_on_server_id"
   end
 
+  create_table "event_signups", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "user_id", null: false
+    t.bigint "emoji_id", null: false
+    t.integer "response_type", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["emoji_id"], name: "index_event_signups_on_emoji_id"
+    t.index ["event_id"], name: "index_event_signups_on_event_id"
+    t.index ["user_id"], name: "index_event_signups_on_user_id"
+  end
+
   create_table "events", force: :cascade do |t|
     t.string "name"
     t.bigint "rides_message_id"
@@ -58,16 +70,12 @@ ActiveRecord::Schema[8.0].define(version: 1600) do
     t.boolean "scheduled", default: false
     t.string "send_schedule_id"
     t.string "collect_schedule_id"
+    t.bigint "organizer_id"
+    t.integer "status", default: 0
     t.index ["channel_id"], name: "index_events_on_channel_id"
     t.index ["location_id"], name: "index_events_on_location_id"
+    t.index ["organizer_id"], name: "index_events_on_organizer_id"
     t.unique_constraint ["rides_message_id"]
-  end
-
-  create_table "events_users", id: false, force: :cascade do |t|
-    t.bigint "event_id"
-    t.bigint "user_id"
-    t.index ["event_id"], name: "index_events_users_on_event_id"
-    t.index ["user_id"], name: "index_events_users_on_user_id"
   end
 
   create_table "locations", force: :cascade do |t|
@@ -77,6 +85,19 @@ ActiveRecord::Schema[8.0].define(version: 1600) do
     t.decimal "lat", precision: 15, scale: 10
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+  end
+
+  create_table "ride_assignments", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "user_id", null: false
+    t.bigint "driver_id", null: false
+    t.integer "role", default: 1, null: false
+    t.jsonb "route", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["driver_id"], name: "index_ride_assignments_on_driver_id"
+    t.index ["event_id"], name: "index_ride_assignments_on_event_id"
+    t.index ["user_id"], name: "index_ride_assignments_on_user_id"
   end
 
   create_table "roles", force: :cascade do |t|
@@ -124,8 +145,15 @@ ActiveRecord::Schema[8.0].define(version: 1600) do
 
   add_foreign_key "channels", "servers"
   add_foreign_key "emojis", "servers"
+  add_foreign_key "event_signups", "emojis"
+  add_foreign_key "event_signups", "events"
+  add_foreign_key "event_signups", "users"
   add_foreign_key "events", "channels"
   add_foreign_key "events", "locations"
+  add_foreign_key "events", "users", column: "organizer_id"
+  add_foreign_key "ride_assignments", "events"
+  add_foreign_key "ride_assignments", "users"
+  add_foreign_key "ride_assignments", "users", column: "driver_id"
   add_foreign_key "users", "locations"
   add_foreign_key "users", "users", column: "driver_id"
 end

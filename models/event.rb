@@ -1,11 +1,21 @@
 class Event < ApplicationRecord
   belongs_to :channel
-  belongs_to :driver, class_name: 'User', optional: true
   belongs_to :location
+  belongs_to :organizer, class_name: 'User'
 
-  has_many :riders, class_name: 'User', foreign_key: 'driver_id'
-  has_many :emojis
-  has_and_belongs_to_many :users
+  has_many :event_signups, dependent: :destroy
+  has_many :riders, through: :event_signups, source: :user
+  has_many :emojis, dependent: :destroy
+  has_many :ride_assignments, dependent: :destroy
+
+  has_many :driver_assignments,
+           -> { where(role: :driver) },
+           class_name: 'RideAssignment'
+  has_many :drivers,
+           through: :driver_assignments,
+           source: :user
+
+  enum :status, { draft: 0, scheduled: 1, active: 2, completed: 3, cancelled: 4 }
 
   scope :active, -> { where(disabled: false) }
   scope :current, -> { where("start_time <= :now AND end_time >= :now", now: DateTime.now) }

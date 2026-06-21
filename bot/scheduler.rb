@@ -30,23 +30,39 @@ class Bot
         reaction_users = @bot.channel(event.channel.discord_id)
                              .load_message(event.rides_message_id)
                              .all_reaction_users
+
+        driver_emoji = event.emojis[0]
+        rider_emoji = event.emojis[1]
+
+        # Prioritize drivers
+        drivers = []
+        if driver_emoji
+          d_users = reaction_users[driver_emoji.to_reaction] || reaction_users[driver_emoji.modal_display] || []
+          db_users = d_users.map { |u| User.find_by(discord_id: u.id) unless u.bot_account }.compact.uniq
+          db_users.each do |u|
+            EventSignup.find_or_create_by!(event: event, user: u, emoji: driver_emoji) do |es|
+              es.response_type = :driver
+            end
+            drivers << u
+          end
+        end
+
         riders = []
+        if rider_emoji
+          r_users = reaction_users[rider_emoji.to_reaction] || reaction_users[rider_emoji.modal_display] || []
+          db_users = r_users.map { |u| User.find_by(discord_id: u.id) unless u.bot_account }.compact.uniq
+          db_users.each do |u|
+            next if drivers.include?(u)
+            EventSignup.find_or_create_by!(event: event, user: u, emoji: rider_emoji) do |es|
+              es.response_type = :rider
+            end
+            riders << u
+          end
+        end
 
         message = "reaction details for event: #{event}\n"
-        message += reaction_users.map do |emoji, users|
-          emoji_riders = users.map {
-            |u| User.find_by(discord_id: u.id) unless u.bot_account
-          }.compact.uniq
-
-          "#{emoji}: #{users.join(", ")}"
-
-          # Assuming for now that all emojis are for the same event
-          riders.concat(emoji_riders.users)
-        end.join("\n")
-
-        event.users = riders.uniq
-
-        drivers = User.drivers
+        message += "Drivers: #{drivers.map(&:name).join(', ')}\n"
+        message += "Riders: #{riders.map(&:name).join(', ')}\n"
 
         if riders.any? && drivers.any?
           @matcher = Bot::Matcher.new(@bot)
@@ -55,12 +71,10 @@ class Bot
           summary = assignments.map { |assignment|
             "#{assignment[:driver].name}: #{assignment[:riders].map(&:name).join(', ')}"
           }.join("\n")
+          message += "\nRide Assignments:\n#{summary}"
         end
 
-        message += "\nRide Assignments:\n#{summary}"
-
         @messenger.dm_mods message
-        # @messenger.dm_alan message #lol
         event.save
       end
     end

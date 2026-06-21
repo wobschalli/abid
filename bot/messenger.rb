@@ -226,13 +226,13 @@ class Messenger < Bot
       [ TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints, :success ]
     end
 
-    event.update_message content: event.message.content do |_, view|
+    event.update_message content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
       view.row do |row|
-        row.button label: 'Pt 1', style: style, custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: emoji&.to_s
-        row.button label: 'Pt 2', style: pt_2_button.style, custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: pt_2_button.emoji&.to_s
-        row.button label: 'Pt 3', style: pt_3_button.style, custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: pt_3_button.emoji&.to_s
+        row.button label: 'Edit Basics', style: style, custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: emoji&.to_s
+        row.button label: 'Edit Timing', style: pt_2_button.style, custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: pt_2_button.emoji&.to_s
+        row.button label: 'Edit Reactions', style: pt_3_button.style, custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: pt_3_button.emoji&.to_s
         row.button label: disable_button.label, style: disable_button.style, custom_id: "event_disable_#{'%05d' % id}", emoji: disable_button.emoji&.to_s
-        row.button label: 'Delete event', style: :danger, custom_id: "event_delete_#{'%05d' % id}"
+        row.button label: 'Cancel', style: :danger, custom_id: "event_delete_#{'%05d' % id}"
       end
     end
   end
@@ -287,13 +287,13 @@ class Messenger < Bot
 
     # bot_schedule(evt) if evt.schedulable?
 
-    event.update_message content: event.message.content do |_, view|
+    event.update_message content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
       view.row do |row|
-        row.button label: 'Pt 1', style: pt_1_button.style, custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button.emoji&.to_s
-        row.button label: 'Pt 2', style: style, custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: emoji&.to_s
-        row.button label: 'Pt 3', style: pt_3_button.style, custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: pt_3_button.emoji&.to_s
+        row.button label: 'Edit Basics', style: pt_1_button.style, custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button.emoji&.to_s
+        row.button label: 'Edit Timing', style: style, custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: emoji&.to_s
+        row.button label: 'Edit Reactions', style: pt_3_button.style, custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: pt_3_button.emoji&.to_s
         row.button label: disable_button.label, style: disable_button.style, custom_id: "event_disable_#{'%05d' % id}", emoji: disable_button.emoji&.to_s
-        row.button label: 'Delete event', style: :danger, custom_id: "event_delete_#{'%05d' % id}"
+        row.button label: 'Cancel', style: :danger, custom_id: "event_delete_#{'%05d' % id}"
       end
     end
   end
@@ -360,13 +360,13 @@ class Messenger < Bot
 
     bot_schedule(evt) if evt.schedulable?
 
-    event.update_message content: event.message.content do |_, view|
+    event.update_message content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
       view.row do |row|
-        row.button label: 'Pt 1', style: pt_1_button.style, custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button.emoji&.to_s
-        row.button label: 'Pt 2', style: pt_2_button.style, custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: pt_2_button.emoji&.to_s
-        row.button label: 'Pt 3', style: style, custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: emoji&.to_s
+        row.button label: 'Edit Basics', style: pt_1_button.style, custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button.emoji&.to_s
+        row.button label: 'Edit Timing', style: pt_2_button.style, custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: pt_2_button.emoji&.to_s
+        row.button label: 'Edit Reactions', style: style, custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: emoji&.to_s
         row.button label: disable_button.label, style: disable_button.style, custom_id: "event_disable_#{'%05d' % id}", emoji: disable_button.emoji&.to_s
-        row.button label: 'Delete event', style: :danger, custom_id: "event_delete_#{'%05d' % id}"
+        row.button label: 'Cancel', style: :danger, custom_id: "event_delete_#{'%05d' % id}"
       end
     end
   end
@@ -376,13 +376,13 @@ class Messenger < Bot
   # @return event creation part one modal [Discordrb::Webhooks::Modal]
   def event_create_message(event)
     evt = Event.create
-    event.respond content: "Please fill out the following modals to create the event. All previously entered information will be shown in the text placeholders" do |_, view|
+    event.respond content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
       view.row do |row|
-        row.button label: 'Pt 1', style: :primary, custom_id: "event_create_modal_1_#{'%05d' % evt.id}"
-        row.button label: 'Pt 2', style: :primary, custom_id: "event_create_modal_2_#{'%05d' % evt.id}"
-        row.button label: 'Pt 3', style: :primary, custom_id: "event_create_modal_3_#{'%05d' % evt.id}"
-        row.button label: 'Disable event', style: :danger, custom_id: "event_disable_#{'%05d' % evt.id}"
-        row.button label: 'Delete event', style: :danger, custom_id: "event_delete_#{'%05d' % evt.id}"
+        row.button label: 'Edit Basics', style: :primary, custom_id: "event_create_modal_1_#{'%05d' % evt.id}"
+        row.button label: 'Edit Timing', style: :primary, custom_id: "event_create_modal_2_#{'%05d' % evt.id}"
+        row.button label: 'Edit Reactions', style: :primary, custom_id: "event_create_modal_3_#{'%05d' % evt.id}"
+        row.button label: 'Publish', style: :danger, custom_id: "event_disable_#{'%05d' % evt.id}"
+        row.button label: 'Cancel', style: :danger, custom_id: "event_delete_#{'%05d' % evt.id}"
       end
     end
   end
@@ -397,19 +397,19 @@ class Messenger < Bot
     pt_1_button, pt_2_button, pt_3_button, disable_button = get_changable_event_create_components event, id
 
     emoji, style, label = if disable_button.emoji
-      [ nil, :danger, 'Disable event' ]
+      [ nil, :danger, 'Publish' ]
     else
       [ TanukiEmoji.find_by_alpha_code(':pause_button:').codepoints, :secondary, 'Enable event' ]
     end
 
 
-    event.edit_response content: event.message.content do |_, view|
+    event.edit_response content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
       view.row do |row|
-        row.button label: 'Pt 1', style: pt_1_button.style, custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button.emoji&.to_s
-        row.button label: 'Pt 2', style: pt_2_button.style, custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: pt_2_button.emoji&.to_s
-        row.button label: 'Pt 3', style: pt_3_button.style, custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: pt_3_button.emoji&.to_s
+        row.button label: 'Edit Basics', style: pt_1_button.style, custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button.emoji&.to_s
+        row.button label: 'Edit Timing', style: pt_2_button.style, custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: pt_2_button.emoji&.to_s
+        row.button label: 'Edit Reactions', style: pt_3_button.style, custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: pt_3_button.emoji&.to_s
         row.button label: label, style: style, custom_id: "event_disable_#{'%05d' % id}", emoji: emoji&.to_s
-        row.button label: 'Delete event', style: :danger, custom_id: "event_delete_#{'%05d' % id}"
+        row.button label: 'Cancel', style: :danger, custom_id: "event_delete_#{'%05d' % id}"
       end
     end
   end
@@ -419,7 +419,7 @@ class Messenger < Bot
   # @return delete message for event [Discordrb::Events::InteractionCreateEvent]
   def event_delete(event, id)
     evt = Event.find(id)
-    evt.destroy
+    evt.update(status: :cancelled)
 
     event.delete_response
   end
@@ -460,6 +460,20 @@ class Messenger < Bot
   def handle_member_leave(event)
     return unless Server.find_by(name: 'Abide').discord_id == event.server.id
     User.find_by(discord_id: event.member.id).destroy
+  end
+
+  def event_dashboard_embed(evt)
+    {
+      title: "Event Draft: #{evt.name || 'Untitled'}",
+      description: "Use the buttons below to configure your event.",
+      color: evt.enabled? ? 0x00FF00 : 0xFF0000,
+      fields: [
+        { name: "Basics", value: "Location: #{evt.location&.name || 'None'}\nChannel: #{evt.channel&.name || 'None'}" },
+        { name: "Timing", value: "Start: #{evt.start_time || 'None'}\nEnd: #{evt.end_time || 'None'}\nMessage At: #{evt.message_rides_at || 'None'}\nCollect At: #{evt.collect_rides_at || 'None'}\nRepeats: #{evt.repeats_every || 'never'}" },
+        { name: "Reactions", value: "Message: #{evt.message || 'None'}\nEmojis: #{evt.emojis.map(&:modal_display).join(', ')}" },
+        { name: "Status", value: evt.status.to_s.capitalize }
+      ]
+    }
   end
 end
 

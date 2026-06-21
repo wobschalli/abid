@@ -27,5 +27,5 @@ end
 require_relative File.join(Dir.pwd, '..', 'map', 'map.rb')
 
 #set timezone to local
-Time.zone = TZInfo::Timezone.get('America/Indianapolis')
+Time.zone = TZInfo::Timezone.get('America/Indiana/Indianapolis')
 Chronic.time_class = Time.zone
