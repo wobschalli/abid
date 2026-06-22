@@ -1,9 +1,9 @@
 require_relative 'hfile'
-require_relative 'bot'
+require_relative 'app_manager'
 
-class Runner < Bot
+class Runner < AppManager
   def initialize
-    super(INFO.token)
+    super()
   end
 end
 
@@ -13,13 +13,13 @@ begin
   # Set up signal handlers for clean shutdown
   trap('INT') do
     puts "\nShutting down bot..."
-    r.bot.stop
+    r.client.stop
     exit(0)
   end
 
   trap('TERM') do
     puts "\nTerminating bot..."
-    r.bot.stop
+    r.client.stop
     exit(0)
   end
 
@@ -28,7 +28,7 @@ begin
   end
 rescue Interrupt
   puts "Interrupt received"
-  r.bot.stop
+  r.client.stop
   exit(0)
 rescue => err
   puts err
@@ -36,7 +36,7 @@ rescue => err
   binding.irb
 ensure
   begin
-    r.bot.stop
+    r.client.stop
   rescue
   end
   exit(0)

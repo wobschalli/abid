@@ -1,7 +1,7 @@
 require_relative 'hfile'
-require_relative 'bot'
+require_relative 'app_manager'
 
-class Bot
+class AppManager
   class Setup
     # @param bot [Discordrb::Commands::CommandBot]
     def initialize(bot)

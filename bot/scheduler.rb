@@ -1,12 +1,11 @@
 require_relative 'hfile'
-require_relative 'bot'
+require_relative 'app_manager'
 
-class Bot
+class AppManager
   class Scheduler
-    def initialize(bot, messenger)
+    def initialize(bot)
       @scheduler = Rufus::Scheduler.new(discard_past: false)
       @bot = bot
-      @messenger = messenger
       rehydrate_schedules!
       @task_thread = Thread.new { task_scheduler }
       at_exit do
@@ -47,7 +46,7 @@ class Bot
         # Ensure the previously sent rides message still exists; if not, clear it
         # so a new one can be sent on schedule.
         begin
-          if event.rides_message_id && @bot.channel(event.channel.discord_id).load_message(event.rides_message_id).nil?
+          if event.rides_message_id && @bot.client.channel(event.channel.discord_id).load_message(event.rides_message_id).nil?
             event.update!(rides_message_id: nil)
           end
         rescue ArgumentError
@@ -60,9 +59,9 @@ class Bot
 
     def collect_scheduled_message(event)
       event = Event.find(event.id)
-      return unless event && event.rides_message_id
+      return unless event.rides_message_id
 
-      message = @bot.channel(event.channel.discord_id).load_message(event.rides_message_id)
+      message = @bot.client.channel(event.channel.discord_id).load_message(event.rides_message_id)
       return unless message
 
       driver_emoji = event.emojis[0]
@@ -104,15 +103,16 @@ class Bot
       summary += "Riders: #{riders.map(&:name).join(', ')}\n"
 
       if riders.any? && drivers.any?
-        @matcher = Bot::Matcher.new(@bot)
-        assignments = @matcher.match_riders_to_drivers(event, riders, drivers)
+        @matcher = AppManager::Matcher.new(@bot.client)
+        assignments, unassigned_riders = @matcher.match_riders_to_drivers(event, riders, drivers)
         assignment_text = assignments.map { |a|
           "#{a[:driver].name}: #{a[:riders].map(&:name).join(', ')}"
         }.join("\n")
-        summary += "\nRide Assignments:\n#{assignment_text}"
+        summary += "\nRide Assignments:\n#{assignment_text}\n"
+        summary += "Unassigned Riders: #{unassigned_riders.map(&:name).join(', ')}" if unassigned_riders.any?
       end
 
-      @messenger.dm_mods summary
+      @bot.dm_mods summary
     end
 
     def schedule_existing_events
@@ -120,7 +120,7 @@ class Bot
         next unless event.schedulable?
 
         begin
-          event.update!(rides_message_id: nil) unless @bot.channel(event.channel.discord_id).load_message(event.rides_message_id)
+          event.update!(rides_message_id: nil) unless @bot.client.channel(event.channel.discord_id).load_message(event.rides_message_id)
         rescue ArgumentError
           event.update!(rides_message_id: nil)
         end
@@ -159,9 +159,9 @@ class Bot
 
     def send_scheduled_message(event)
       event = Event.find(event.id)
-      return unless event && event.scheduled? && !event.cancelled? && event.rides_message_id.nil?
+      return unless event.scheduled? && !event.cancelled? && event.rides_message_id.nil?
 
-      rides_message = @bot.send(event.channel.discord_id, event.message)
+      rides_message = @bot.client.send(event.channel.discord_id, event.message)
       event.emojis.each do |emoji|
         rides_message.react emoji
       end
