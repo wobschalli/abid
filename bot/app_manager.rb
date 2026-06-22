@@ -1,6 +1,6 @@
+require_relative 'bot'
 require_relative 'scheduler'
 require_relative 'setup'
-require_relative 'hfile'
 
 class AppManager
   attr_reader :scheduler, :bot
@@ -9,6 +9,9 @@ class AppManager
   INFO = DiscordInfo.first
 
   def initialize
+    if INFO.nil?
+      abort "CRITICAL: No configuration found in DiscordInfo table. Run database seeds using config.yml (if you don't have it, contact Ian)."
+    end
     @bot = Bot.new(INFO.token)
     @bot.manager = self
     @bot.run
@@ -27,10 +30,5 @@ class AppManager
 
   def bot_schedule(event)
     @scheduler.schedule(event)
-  end
-
-  # @return pronouncable password [String]
-  def passgen
-    Passgen::generate(pronouncable: true, uppercase: false)
   end
 end

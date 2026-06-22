@@ -13,13 +13,13 @@ begin
   # Set up signal handlers for clean shutdown
   trap('INT') do
     puts "\nShutting down bot..."
-    r.client.stop
+    r.client&.stop
     exit(0)
   end
 
   trap('TERM') do
     puts "\nTerminating bot..."
-    r.client.stop
+    r.client&.stop
     exit(0)
   end
 
@@ -28,16 +28,17 @@ begin
   end
 rescue Interrupt
   puts "Interrupt received"
-  r.client.stop
+  r&.client&.stop
   exit(0)
 rescue => err
   puts err
-  puts err.backtrace.join(%Q{\n})
+  puts err.backtrace&.join("\n") || "No backtrace available"
   binding.irb
 ensure
   begin
-    r.client.stop
+    r&.client&.stop
   rescue
+    # Ignored
   end
   exit(0)
 end

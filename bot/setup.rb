@@ -1,13 +1,10 @@
-require_relative 'hfile'
-require_relative 'app_manager'
-
 class AppManager
   class Setup
-    # @param bot [Discordrb::Commands::CommandBot]
-    def initialize(bot)
-      @bot = bot
+    # @param client [Discordrb::Commands::CommandBot]
+    def initialize(client)
+      @client = client
 
-      response = Discordrb::API::User.servers(@bot.token)
+      response = Discordrb::API::User.servers(@client.token)
       connected_servers = JSON.parse(response.body).map { |s| s['id'].to_i }
 
       Server.all.each do |server|
@@ -38,13 +35,13 @@ class AppManager
     def setup_channels(server)
       #discordrb caching is dumb and needs to be done manually
       #after using this library, i can understand nietzsche more
-      response = Discordrb::API::Server.channels(@bot.token, server.discord_id)
+      response = Discordrb::API::Server.channels(@client.token, server.discord_id)
       JSON.parse(response.body).each do |channel_info|
-        @bot.server(server.discord_id).add_channel(Discordrb::Channel.new(channel_info, @bot))
+        @client.server(server.discord_id).add_channel(Discordrb::Channel.new(channel_info, @client))
       end
 
       #now the cache is populated, so you can use it
-      @bot.server(server.discord_id).channels.each do |channel|
+      @client.server(server.discord_id).channels.each do |channel|
         Channel.find_or_create_by(discord_id: channel.id) do |c|
           c.name = channel.name
           c.server = server
@@ -55,7 +52,7 @@ class AppManager
     # @param server [Server]
     # @return array of emojis [Array<Discordrb::Emoji>]
     def setup_emojis(server)
-      @bot.server(server.discord_id).emojis.each do |id, emoji|
+      @client.server(server.discord_id).emojis.each do |id, emoji|
         Emoji.find_or_create_by(discord_id: id) do |e|
           e.name = emoji.name
           e.server = server
@@ -66,7 +63,7 @@ class AppManager
     # @param server [Server]
     # @return array of roles [Array<Discordrb::Role>]
     def setup_roles(server)
-      @bot.server(server.discord_id).roles.each do |role|
+      @client.server(server.discord_id).roles.each do |role|
         Role.find_or_create_by(discord_id: role.id) do |r|
           r.name = role.name
           r.admin = role.permissions.administrator
@@ -77,16 +74,20 @@ class AppManager
     # @param server [Server]
     # @return array of users [Array<Discordrb::Member>]
     def setup_users(server)
-      @bot.server(server.discord_id).non_bot_members.each do |user|
+      @client.server(server.discord_id).non_bot_members.each do |user|
+        pass = passgen
+        leader = Role.find_by(name: 'Leaders')&.discord_id
+        coordinator = Role.find_by(name: 'Coordinator')&.discord_id
+
+        is_leader = user.permission?(:administrator) ||
+                    (leader && user.role?(leader)) ||
+                    (coordinator && user.role?(coordinator))
+
         User.find_or_create_by(discord_id: user.id) do |u| #block runs on create only
-          pass = passgen
-          leader = Role.find_by(name: 'Leaders')&.discord_id
-          coordinator = Role.find_by(name: 'Coordinator')&.discord_id
           u.username = user.username
           u.name = user.display_name
-          u.leader = user.permission?(:administrator) || (leader && user.role?(leader)) || (coordinator && user.role?(coordinator))
+          u.leader = is_leader
           u.password = pass
-          u.password_confirmation = pass
         end
       end
     end

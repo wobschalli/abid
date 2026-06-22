@@ -1,16 +1,11 @@
-require 'open_street_map'
-require 'http'
-
-require_relative File.join('..', 'models', 'location.rb')
-
 class Map
   attr_accessor :map_client, :box
   BOXES = {
     tippecanoe: %w( -87.0955 40.2143 -86.6948 40.5630 ),
     indiana: %w( -88.102 37.760 -84.798 41.761 )
   }
-  OSRM_TRIP_URL = "http://router.project-osrm.org/trip/v1/driving"
-  OSRM_ROUTE_URL = "http://router.project-osrm.org/route/v1/driving"
+  OSRM_TRIP_URL = "https://router.project-osrm.org/trip/v1/driving"
+  OSRM_ROUTE_URL = "https://router.project-osrm.org/route/v1/driving"
 
   private_constant :OSRM_TRIP_URL, :OSRM_ROUTE_URL
 
@@ -69,7 +64,7 @@ class Map
     end
   end
 
-  # @param location data, either a hash with lon, lat or a string [Hash, String]
+  # @param data, either a hash with lon, lat or a string [Hash, String]
   # @return [Location, nil]
   def create_new_location(data)
     case data.class.to_s

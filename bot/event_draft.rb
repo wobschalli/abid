@@ -56,25 +56,36 @@ class EventDraft
     end
   end
 
-  attr_accessor :id, :event_id, :organizer_id, :name, :location, :channel,
-                :start_time, :end_time, :message_rides_at, :collect_rides_at,
-                :repeats_every, :message, :emojis, :status
+  attr_accessor :id, :event_id, :organizer_id
+
+  FIELDS = [
+    :name, :location, :channel, :start_time, :end_time, :message_rides_at, :collect_rides_at,
+    :repeats_every, :message, :emojis, :status
+  ].freeze
+
+  FIELDS.each do |field|
+    define_method(field) { @attributes[field] }
+    define_method("#{field}=") { |val| @attributes[field] = val }
+  end
 
   def initialize(attrs = {})
     @id = SecureRandom.hex(4)
     @event_id = attrs[:event_id]
     @organizer_id = attrs[:organizer_id]
-    @name = attrs[:name]
-    @location = attrs[:location]
-    @channel = attrs[:channel]
-    @start_time = attrs[:start_time]
-    @end_time = attrs[:end_time]
-    @message_rides_at = attrs[:message_rides_at]
-    @collect_rides_at = attrs[:collect_rides_at]
-    @repeats_every = attrs[:repeats_every] || 'never'
-    @message = attrs[:message]
-    @emojis = attrs[:emojis] || []
-    @status = attrs[:status] || :draft_in_memory
+
+    @attributes = {
+      name: attrs[:name],
+      location: attrs[:location],
+      channel: attrs[:channel],
+      start_time: attrs[:start_time],
+      end_time: attrs[:end_time],
+      message_rides_at: attrs[:message_rides_at],
+      collect_rides_at: attrs[:collect_rides_at],
+      repeats_every: attrs[:repeats_every] || 'never',
+      message: attrs[:message],
+      emojis: attrs[:emojis] || [],
+      status: attrs[:status] || :draft_in_memory
+    }
   end
 
   def persisted?
@@ -92,7 +103,7 @@ class EventDraft
   end
 
   def repeats_every
-    @repeats_every || 'never'
+    @attributes[:repeats_every] || 'never'
   end
 
   def organization_valid?
