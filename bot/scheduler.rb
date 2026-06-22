@@ -7,10 +7,10 @@ class Bot
       @scheduler = Rufus::Scheduler.new(discard_past: false)
       @bot = bot
       @messenger = messenger
-      schedule_existing_events
-      @task_thread = Thread.new { task_scheduler } #simplest way to ensure all events are scheduled
+      rehydrate_schedules!
+      @task_thread = Thread.new { task_scheduler }
       at_exit do
-        Event.scheduled.map(&:unschedule) #scheduler lives in memory only
+        Event.scheduled_scope.each(&:unschedule)
         @task_thread.join
       end
     end
@@ -18,78 +18,114 @@ class Bot
     # @param event [Event]
     # @return scheduled event [Event]
     def schedule(event)
+      unschedule(event) if event.scheduled?
       ssi = schedule_rides_message event
       csi = schedule_rides_collect event
-      event.update(scheduled: true, send_schedule_id: ssi, collect_schedule_id: csi)
+      event.update!(scheduled: true, send_schedule_id: ssi, collect_schedule_id: csi)
       puts "scheduled #{event}"
     end
 
+    # @param event [Event]
+    def unschedule(event)
+      return unless event.scheduled?
+
+      @scheduler.job(event.send_schedule_id)&.unschedule if event.send_schedule_id
+      @scheduler.job(event.collect_schedule_id)&.unschedule if event.collect_schedule_id
+      event.unschedule
+    end
+
     private
+
+    def rehydrate_schedules!
+      Event.where(status: :scheduled).find_each do |event|
+        next unless event.schedulable?
+        next if event.message_rides_at.nil? || event.collect_rides_at.nil?
+
+        # If the collection time has already passed, the event is effectively over.
+        next if event.collect_rides_at < Time.now
+
+        # Ensure the previously sent rides message still exists; if not, clear it
+        # so a new one can be sent on schedule.
+        begin
+          if event.rides_message_id && @bot.channel(event.channel.discord_id).load_message(event.rides_message_id).nil?
+            event.update!(rides_message_id: nil)
+          end
+        rescue ArgumentError
+          event.update!(rides_message_id: nil)
+        end
+
+        schedule(event)
+      end
+    end
+
     def collect_scheduled_message(event)
       event = Event.find(event.id)
-      if event && event.rides_message_id
-        reaction_users = @bot.channel(event.channel.discord_id)
-                             .load_message(event.rides_message_id)
-                             .all_reaction_users
+      return unless event && event.rides_message_id
 
-        driver_emoji = event.emojis[0]
-        rider_emoji = event.emojis[1]
+      message = @bot.channel(event.channel.discord_id).load_message(event.rides_message_id)
+      return unless message
 
-        # Prioritize drivers
-        drivers = []
-        if driver_emoji
-          d_users = reaction_users[driver_emoji.to_reaction] || reaction_users[driver_emoji.modal_display] || []
-          db_users = d_users.map { |u| User.find_by(discord_id: u.id) unless u.bot_account }.compact.uniq
-          db_users.each do |u|
-            EventSignup.find_or_create_by!(event: event, user: u, emoji: driver_emoji) do |es|
-              es.response_type = :driver
-            end
-            drivers << u
+      driver_emoji = event.emojis[0]
+      rider_emoji = event.emojis[1]
+
+      drivers = []
+      if driver_emoji
+        d_users = message.reaction_users(driver_emoji.to_reaction) || []
+        d_users.concat(message.reaction_users(driver_emoji.modal_display) || [])
+        d_users.uniq.each do |u|
+          next if u.bot_account
+          user = User.find_by(discord_id: u.id)
+          next unless user&.driver?
+          EventSignup.find_or_create_by!(event: event, user: user, emoji: driver_emoji) do |es|
+            es.response_type = :driver
           end
+          drivers << user unless drivers.include?(user)
         end
-
-        riders = []
-        if rider_emoji
-          r_users = reaction_users[rider_emoji.to_reaction] || reaction_users[rider_emoji.modal_display] || []
-          db_users = r_users.map { |u| User.find_by(discord_id: u.id) unless u.bot_account }.compact.uniq
-          db_users.each do |u|
-            next if drivers.include?(u)
-            EventSignup.find_or_create_by!(event: event, user: u, emoji: rider_emoji) do |es|
-              es.response_type = :rider
-            end
-            riders << u
-          end
-        end
-
-        message = "reaction details for event: #{event}\n"
-        message += "Drivers: #{drivers.map(&:name).join(', ')}\n"
-        message += "Riders: #{riders.map(&:name).join(', ')}\n"
-
-        if riders.any? && drivers.any?
-          @matcher = Bot::Matcher.new(@bot)
-          assignments = @matcher.match_riders_to_drivers(event, riders, drivers)
-
-          summary = assignments.map { |assignment|
-            "#{assignment[:driver].name}: #{assignment[:riders].map(&:name).join(', ')}"
-          }.join("\n")
-          message += "\nRide Assignments:\n#{summary}"
-        end
-
-        @messenger.dm_mods message
-        event.save
       end
+
+      riders = []
+      if rider_emoji
+        r_users = message.reaction_users(rider_emoji.to_reaction) || []
+        r_users.concat(message.reaction_users(rider_emoji.modal_display) || [])
+        r_users.uniq.each do |u|
+          next if u.bot_account
+          user = User.find_by(discord_id: u.id)
+          next unless user&.rider?
+          next if drivers.include?(user)
+          EventSignup.find_or_create_by!(event: event, user: user, emoji: rider_emoji) do |es|
+            es.response_type = :rider
+          end
+          riders << user unless riders.include?(user)
+        end
+      end
+
+      summary = "Reaction details for event: #{event}\n"
+      summary += "Drivers: #{drivers.map(&:name).join(', ')}\n"
+      summary += "Riders: #{riders.map(&:name).join(', ')}\n"
+
+      if riders.any? && drivers.any?
+        @matcher = Bot::Matcher.new(@bot)
+        assignments = @matcher.match_riders_to_drivers(event, riders, drivers)
+        assignment_text = assignments.map { |a|
+          "#{a[:driver].name}: #{a[:riders].map(&:name).join(', ')}"
+        }.join("\n")
+        summary += "\nRide Assignments:\n#{assignment_text}"
+      end
+
+      @messenger.dm_mods summary
     end
 
     def schedule_existing_events
       Event.upcoming.unscheduled.each do |event|
         next unless event.schedulable?
 
-        #ensure the message actually exists in the server
         begin
-          event.update(rides_message_id: nil) unless @bot.channel(event.channel.discord_id).load_message(event.rides_message_id)
+          event.update!(rides_message_id: nil) unless @bot.channel(event.channel.discord_id).load_message(event.rides_message_id)
         rescue ArgumentError
+          event.update!(rides_message_id: nil)
         end
-        schedule event
+
+        schedule(event)
       end
     end
 
@@ -97,11 +133,10 @@ class Bot
       case event.repeats_every
       when 'week'
         collect = "#{event.collect_rides_at.min} #{event.collect_rides_at.hour} * * #{event.collect_rides_at.wday}"
-
         @scheduler.schedule_cron collect do
           collect_scheduled_message event
         end
-      when 'never' || '' || nil
+      else
         @scheduler.schedule_at event.collect_rides_at do
           collect_scheduled_message event
         end
@@ -112,11 +147,10 @@ class Bot
       case event.repeats_every
       when 'week'
         message = "#{event.message_rides_at.min} #{event.message_rides_at.hour} * * #{event.message_rides_at.wday}"
-
         @scheduler.schedule_cron message do
           send_scheduled_message event
         end
-      when 'never' || '' || nil
+      else
         @scheduler.schedule_at event.message_rides_at do
           send_scheduled_message event
         end
@@ -124,17 +158,17 @@ class Bot
     end
 
     def send_scheduled_message(event)
-      event = Event.find(event.id) #update the event upon calling
-      if event && !event.draft? && !event.cancelled? && !event.rides_message_id
-        rides_message = @bot.send(event.channel.discord_id, event.message)
-        event.emojis.each do |emoji|
-          rides_message.react emoji
-        end
-        event.update({ rides_message_id: rides_message.id })
+      event = Event.find(event.id)
+      return unless event && event.scheduled? && !event.cancelled? && event.rides_message_id.nil?
+
+      rides_message = @bot.send(event.channel.discord_id, event.message)
+      event.emojis.each do |emoji|
+        rides_message.react emoji
       end
+      event.update!(rides_message_id: rides_message.id)
     end
 
-    def task_scheduler #proof of original sin
+    def task_scheduler
       @scheduler.every '5 minutes' do
         schedule_existing_events
       end

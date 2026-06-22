@@ -1,3 +1,5 @@
+require_relative 'event_draft'
+
 class Messenger
   attr_reader :bot, :map, :token
   attr_accessor :parent_bot
@@ -9,6 +11,7 @@ class Messenger
     @bot.init_cache
     register_commands
     set_button_handlers
+    set_select_handlers
     set_modal_handlers
     set_commands
     set_event_handlers
@@ -49,6 +52,7 @@ class Messenger
   end
 
   private
+
   def register_commands
     response = Discordrb::API::User.servers(bot.token)
     connected_servers = JSON.parse(response.body).map { |s| s['id'].to_i }
@@ -60,7 +64,7 @@ class Messenger
 
           bot.register_application_command(:event, 'event commands', server_id: server.discord_id) do |cmd|
             cmd.subcommand(:list, 'list all events') do |sub|
-              sub.string(:status, 'filter by status (optional)', required: false, choices: { draft: 'draft', scheduled: 'scheduled', active: 'active', completed: 'completed' })
+              sub.string(:status, 'filter by status (optional)', required: false, choices: { unpublished: 'unpublished', scheduled: 'scheduled', active: 'active', completed: 'completed', cancelled: 'cancelled' })
             end
             cmd.subcommand(:create, 'create a draft event') do |sub|
               sub.string(:name, 'event name', required: true)
@@ -68,7 +72,7 @@ class Messenger
             cmd.subcommand(:show, 'show details of an event') do |sub|
               sub.string(:name, 'event name', required: true, autocomplete: true)
             end
-            cmd.subcommand(:delete, 'permanently delete a draft event') do |sub|
+            cmd.subcommand(:delete, 'permanently delete an unpublished event') do |sub|
               sub.string(:name, 'event name', required: true, autocomplete: true)
             end
             cmd.subcommand(:nuke, 'delete ALL events (owner only)')
@@ -101,12 +105,12 @@ class Messenger
       status_filter = event.options['status']
 
       events = if status_filter
-        if status_filter == 'draft' && !(user&.leader || user&.coordinator?)
-          return event.respond(content: 'Only leaders and coordinators can view draft events.', ephemeral: true)
+        if status_filter == 'unpublished' && !(user&.leader || user&.coordinator?)
+          return event.respond(content: 'Only leaders and coordinators can view unpublished events.', ephemeral: true)
         end
         Event.where(status: status_filter.to_sym)
       else
-        Event.where.not(status: :draft)
+        Event.published
       end.limit(25)
 
       if events.empty?
@@ -116,12 +120,13 @@ class Messenger
         event.respond(content: "Events:\n#{desc}")
       end
     end
+
     bot.application_command(:event).subcommand(:delete) do |event|
       user = User.find_by(discord_id: event.user.id)
       return event.respond(content: 'You are not allowed to do that!', ephemeral: true) unless user&.leader || user&.coordinator?
       evt = Event.find_by(id: event.options['name'].to_i)
       return event.respond(content: 'Event not found.', ephemeral: true) unless evt
-      return event.respond(content: 'Only draft events can be deleted with this command.', ephemeral: true) unless evt.draft?
+      return event.respond(content: 'Only unpublished events can be deleted with this command.', ephemeral: true) unless evt.unpublished?
       name = evt.name || "Untitled_#{evt.id}"
       evt.destroy
       event.respond(content: "Event **#{name}** has been permanently deleted.", ephemeral: true)
@@ -130,11 +135,14 @@ class Messenger
     bot.application_command(:event).subcommand(:create) do |event|
       user = User.find_by(discord_id: event.user.id)
       return event.respond(content: 'You are not allowed to do that!', ephemeral: true) unless user&.leader || user&.coordinator?
+
       base_name = event.options['name'].strip
-      existing_count = Event.where("LOWER(name) = ? OR LOWER(name) LIKE ?", base_name.downcase, "#{base_name.downcase}_%").count
-      name = existing_count.zero? ? base_name : "#{base_name}_#{existing_count}"
-      event.defer
-      event_create_message(event, user, name)
+      name = generate_unique_event_name(base_name)
+      draft = EventDraft.create(organizer_id: user.id, name: name)
+
+      event.respond(content: "Let's build your event!", embeds: [event_dashboard_embed(draft)]) do |_, view|
+        render_builder_components(view, draft)
+      end
     end
 
     bot.application_command(:event).subcommand(:show) do |event|
@@ -143,19 +151,10 @@ class Messenger
       evt = Event.find_by(id: event.options['name'].to_i)
       return event.respond(content: 'Event not found.', ephemeral: true) unless evt
 
-      can_edit = (user&.leader || user&.coordinator?) || (evt.organizer_id && evt.organizer_id == user&.id)
+      can_edit = user&.leader || user&.coordinator? || (evt.organizer_id && evt.organizer_id == user&.id)
       if can_edit
-        pt_1_button, pt_2_button, pt_3_button, unpublish_button = get_changable_event_create_components_from_values(evt)
-        delete_label = evt.draft? ? 'Delete' : nil
-
         event.respond content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
-          view.row do |row|
-            row.button label: 'Edit Basics', style: pt_1_button[:style], custom_id: "event_create_modal_1_#{'%05d' % evt.id}", emoji: pt_1_button[:emoji]
-            row.button label: 'Edit Timing', style: pt_2_button[:style], custom_id: "event_create_modal_2_#{'%05d' % evt.id}", emoji: pt_2_button[:emoji]
-            row.button label: 'Edit Reactions', style: pt_3_button[:style], custom_id: "event_create_modal_3_#{'%05d' % evt.id}", emoji: pt_3_button[:emoji]
-            row.button label: unpublish_button[:label], style: unpublish_button[:style], custom_id: "event_disable_#{'%05d' % evt.id}", emoji: unpublish_button[:emoji]
-            row.button label: delete_label, style: :danger, custom_id: "event_delete_#{'%05d' % evt.id}" if delete_label
-          end
+          render_event_management_components(view, evt)
         end
       else
         event.respond content: '', embeds: [event_dashboard_embed(evt)]
@@ -170,9 +169,9 @@ class Messenger
 
     bot.application_command(:login) do |event|
       user = User.find_by(discord_id: event.user.id)
-      return event.respond('You are not able to do that!', ephemeral: true) unless user.leader
+      return event.respond(content: 'You are not able to do that!', ephemeral: true) unless user.leader
       handle_login_code(user)
-      event.respond content: 'Your login code has been sent', ephemeral: true
+      event.respond(content: 'Your login code has been sent', ephemeral: true)
     end
 
     bot.application_command(:debug) do |event|
@@ -182,63 +181,79 @@ class Messenger
         event.send_message(content: 'Your debug session is finished', ephemeral: true)
       else
         dm_ian("an unauthorized user (#{event.user.username} | #{event.user.id}) attempted to use debug")
-        event.respond content: 'You do not have the proper authentication to perform this action!'
+        event.respond(content: 'You do not have the proper authentication to perform this action!')
+      end
+    end
+  end
+
+  def set_button_handlers
+    bot.button custom_id: /event_edit_basics_(.+)/ do |event|
+      with_draft_or_event(event) { |draft| show_edit_basics_modal(event, draft) }
+    end
+
+    bot.button custom_id: /event_edit_timing_(.+)/ do |event|
+      with_draft_or_event(event) { |draft| show_edit_timing_modal(event, draft) }
+    end
+
+    bot.button custom_id: /event_edit_reactions_(.+)/ do |event|
+      with_draft_or_event(event) { |draft| show_edit_reactions_modal(event, draft) }
+    end
+
+    bot.button custom_id: /event_publish_(.+)/ do |event|
+      with_draft(event) { |draft| publish_draft(event, draft) }
+    end
+
+    bot.button custom_id: /event_save_unpublished_(.+)/ do |event|
+      with_draft(event) { |draft| save_draft_as_unpublished(event, draft) }
+    end
+
+    bot.button custom_id: /event_discard_(.+)/ do |event|
+      with_draft(event) { |draft| discard_draft(event, draft) }
+    end
+
+    bot.button custom_id: /event_unpublish_(\d+)/ do |event|
+      with_event(event) { |evt| unpublish_event(event, evt) }
+    end
+
+    bot.button custom_id: /event_republish_(\d+)/ do |event|
+      with_event(event) { |evt| republish_event(event, evt) }
+    end
+
+    bot.button custom_id: /event_cancel_(\d+)/ do |event|
+      with_event(event) { |evt| cancel_event(event, evt) }
+    end
+
+    bot.button custom_id: /event_delete_(\d+)/ do |event|
+      with_event(event) { |evt| delete_event(event, evt) }
+    end
+
+    bot.button custom_id: /event_duplicate_(\d+)/ do |event|
+      with_event(event) { |evt| duplicate_event(event, evt) }
+    end
+  end
+
+  def set_select_handlers
+    bot.select_menu custom_id: /event_set_channel_(.+)/ do |event|
+      with_draft_or_event(event) do |draft|
+        channel_id = event.values.first.to_i
+        channel = Channel.find_by(discord_id: channel_id)
+        draft.channel = channel if channel
+        refresh_dashboard(event, draft)
       end
     end
   end
 
   def set_modal_handlers
-    bot.modal_submit custom_id: /create_event_modal_1_(\d+)/ do |event|
-      id = event.custom_id.match(/create_event_modal_1_(\d+)/)[1].to_i
-      handle_event_create_pt_one event, id
+    bot.modal_submit custom_id: /event_modal_basics_(.+)/ do |event|
+      with_draft_or_event(event) { |draft| handle_edit_basics(event, draft) }
     end
 
-    bot.modal_submit custom_id: /create_event_modal_2_(\d+)/ do |event|
-      id = event.custom_id.match(/create_event_modal_2_(\d+)/)[1].to_i
-      handle_event_create_pt_two event, id
+    bot.modal_submit custom_id: /event_modal_timing_(.+)/ do |event|
+      with_draft_or_event(event) { |draft| handle_edit_timing(event, draft) }
     end
 
-    bot.modal_submit custom_id: /create_event_modal_3_(\d+)/ do |event|
-      id = event.custom_id.match(/create_event_modal_3_(\d+)/)[1].to_i
-      handle_event_create_pt_three event, id
-    end
-  end
-
-  def set_button_handlers
-    bot.button custom_id: /event_create_modal_1_(\d+)/ do |event|
-      user = User.find_by(discord_id: event.user.id)
-      evt = Event.find(event.custom_id.match(/event_create_modal_1_(\d+)/)[1].to_i)
-      return event.respond('You don\'t have permission to do this!') unless user&.leader || user&.coordinator? || (evt.organizer_id && evt.organizer_id == user&.id)
-      event_create_pt_one event, evt.id
-    end
-
-    bot.button custom_id: /event_create_modal_2_(\d+)/ do |event|
-      user = User.find_by(discord_id: event.user.id)
-      evt = Event.find(event.custom_id.match(/event_create_modal_2_(\d+)/)[1].to_i)
-      return event.respond('You don\'t have permission to do this!') unless user&.leader || user&.coordinator? || (evt.organizer_id && evt.organizer_id == user&.id)
-      event_create_pt_two event, evt.id
-    end
-
-    bot.button custom_id: /event_create_modal_3_(\d+)/ do |event|
-      user = User.find_by(discord_id: event.user.id)
-      evt = Event.find(event.custom_id.match(/event_create_modal_3_(\d+)/)[1].to_i)
-      return event.respond('You don\'t have permission to do this!') unless user&.leader || user&.coordinator? || (evt.organizer_id && evt.organizer_id == user&.id)
-      event_create_pt_three event, evt.id
-    end
-
-    bot.button custom_id: /event_disable_(\d+)/ do |event|
-      user = User.find_by(discord_id: event.user.id)
-      evt = Event.find(event.custom_id.match(/event_disable_(\d+)/)[1].to_i)
-      return event.respond('You don\'t have permission to do this!') unless user&.leader || user&.coordinator? || (evt.organizer_id && evt.organizer_id == user&.id)
-      event_disable event, evt.id
-    end
-
-    bot.button custom_id: /event_delete_(\d+)/ do |event|
-      user = User.find_by(discord_id: event.user.id)
-      evt = Event.find(event.custom_id.match(/event_delete_(\d+)/)[1].to_i)
-      return event.respond('You don\'t have permission to do this!') unless user&.leader || user&.coordinator? || (evt.organizer_id && evt.organizer_id == user&.id)
-      event.defer_update
-      event_delete event, evt.id
+    bot.modal_submit custom_id: /event_modal_reactions_(.+)/ do |event|
+      with_draft_or_event(event) { |draft| handle_edit_reactions(event, draft) }
     end
   end
 
@@ -252,262 +267,514 @@ class Messenger
     end
   end
 
-  def event_create_pt_one(event, id)
-    evt = Event.find id
-    loc = evt.location
+  # ---------------------------------------------------------------------------
+  # Permission / draft helpers
+  # ---------------------------------------------------------------------------
 
-    event.show_modal(title: 'Part 1', custom_id: "create_event_modal_1_#{'%05d' % id}") do |modal|
-      modal.row do |row|
-        row.text_input(style: :short, custom_id: 'name', label: 'Name', placeholder: evt.name, required: false)
-      end
-      modal.row do |row|
-        row.text_input(style: :short, custom_id: 'location', label: 'Location', placeholder: (loc&.name), required: false)
-      end
-      modal.row do |row|
-        row.text_input(style: :short, custom_id: 'lat', label: 'Latitude', placeholder: loc&.lat&.to_s, required: false)
-      end
-      modal.row do |row|
-        row.text_input(style: :short, custom_id: 'lon', label: 'Longitude', placeholder: loc&.lon&.to_s, required: false)
-      end
-      modal.row do |row|
-        row.text_input(style: :short, custom_id: 'channel', label: 'Channel Name', placeholder: evt.channel&.name, required: false)
-      end
-    end
+  def with_draft(event)
+    draft_id = event.custom_id.to_s.split('_').last
+    draft = EventDraft.find(draft_id)
+    return event.respond(content: 'This draft has expired or was already saved.', ephemeral: true) unless draft
+
+    user = User.find_by(discord_id: event.user.id)
+    return event.respond(content: 'You don\'t have permission to do this!', ephemeral: true) unless user&.leader || user&.coordinator? || draft.organizer_id == user&.id
+
+    yield draft
   end
 
-  def handle_event_create_pt_one(event, id)
-    evt = Event.find(id)
+  def with_event(event)
+    event_id = event.custom_id.to_s.match(/_(\d+)$/)&.[](1).to_i
+    evt = Event.find_by(id: event_id)
+    return event.respond(content: 'Event not found.', ephemeral: true) unless evt
 
-    loc = if event.value('location')
-      Location.search_by_name(event.value('location')).first
-    elsif event.value('lat') && event.value('lon')
-      Location.search_by_coords(event.value('lat'), event.value('lon')).first
-    end || @map.create_new_location(event.value('location') || { lat: event.value('lat'), lon: event.value('lon') }) || evt.location
+    user = User.find_by(discord_id: event.user.id)
+    return event.respond(content: 'You don\'t have permission to do this!', ephemeral: true) unless user&.leader || user&.coordinator? || evt.organizer_id == user&.id
 
-    values = {
-      name: event.value('name') || evt.name,
-      location: loc,
-      channel: Channel.find_by(name: event.value('channel')) || evt.channel
-    }.delete_if{ |_, value| value.nil? || (value.is_a?(String) && value.empty?) }
+    yield evt
+  end
 
-    evt.update(values)
-
-    _, pt_2_button, pt_3_button, disable_button = get_changable_event_create_components event, id
-
-    emoji, style = if !(evt.name && evt.location && evt.channel)
-      [ nil, :primary ]
+  def with_draft_or_event(event)
+    identifier = event.custom_id.to_s.split('_').last
+    if identifier.to_s.match?(/\A[0-9a-f]{8}\z/i)
+      with_draft(event) { |draft| yield draft }
     else
-      [ TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints, :success ]
-    end
-
-    delete_label = evt.draft? ? 'Delete' : 'Cancel'
-    event.update_message content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
-      view.row do |row|
-        row.button label: 'Edit Basics', style: style, custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: emoji&.to_s
-        row.button label: 'Edit Timing', style: pt_2_button.style, custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: pt_2_button.emoji&.to_s
-        row.button label: 'Edit Reactions', style: pt_3_button.style, custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: pt_3_button.emoji&.to_s
-        row.button label: disable_button.label, style: disable_button.style, custom_id: "event_disable_#{'%05d' % id}", emoji: disable_button.emoji&.to_s
-        row.button label: delete_label, style: :danger, custom_id: "event_delete_#{'%05d' % id}"
+      with_event(event) do |evt|
+        draft = EventDraft.for_event(evt, organizer_id: evt.organizer_id)
+        yield draft
       end
     end
   end
 
-  def event_create_pt_two(event, id)
-    evt = Event.find(id)
-    event.show_modal(title: 'Part 2', custom_id: "create_event_modal_2_#{'%05d' % evt.id}") do |modal|
-      modal.row do |row|
-        row.text_input(style: :short, custom_id: 'start_time', label: 'Start Time (YYYY-MM-DD HH:MM)', placeholder: evt.start_time&.strftime('%Y-%m-%d %H:%M'), required: false)
-      end
-      modal.row do |row|
-        row.text_input(style: :short, custom_id: 'end_time', label: 'End Time (YYYY-MM-DD HH:MM)', placeholder: evt.end_time&.strftime('%Y-%m-%d %H:%M'), required: false)
-      end
-      modal.row do |row|
-        row.text_input(style: :short, custom_id: 'message_time', label: 'Message Time (YYYY-MM-DD HH:MM)', placeholder: evt.message_rides_at&.strftime('%Y-%m-%d %H:%M'), required: false)
-      end
-      modal.row do |row|
-        row.text_input(style: :short, custom_id: 'collect_time', label: 'Collect Time (YYYY-MM-DD HH:MM)', placeholder: evt.collect_rides_at&.strftime('%Y-%m-%d %H:%M'), required: false)
-      end
-      modal.row do |row|
-        row.text_input(style: :short, custom_id: 'repeat', label: 'Repeat every (week/never)', placeholder: evt.repeats_every || 'never', required: false)
-      end
-    end
-  end
+  # ---------------------------------------------------------------------------
+  # Dashboard rendering
+  # ---------------------------------------------------------------------------
 
-  def handle_event_create_pt_two(event, id)
-    event.defer_update
-    evt = Event.find(id)
-
-    values = {
-      start_time: Chronic.parse(event.value('start_time')) || evt.start_time,
-      end_time: Chronic.parse(event.value('end_time')) || evt.end_time,
-      message_rides_at: Chronic.parse(event.value('message_time')) || evt.message_rides_at,
-      collect_rides_at: Chronic.parse(event.value('collect_time')) || evt.collect_rides_at,
-      repeats_every: event.value('repeat').nil? || (event.value('repeat').empty? ? 'never' : event.value('repeat').downcase) || evt.repeats_every
-    }.delete_if{ |_, value| value.nil? || (value.is_a?(String) && value.empty?) }
-
-    evt.update(values)
-
-    pt_1_button, pt_2_button, pt_3_button, disable_button = get_changable_event_create_components(event, id) || get_changable_event_create_components_from_values(evt)
-
-    emoji, style = if !(evt.start_time && evt.end_time && evt.message_rides_at && evt.collect_rides_at)
-      [ nil, :primary ]
+  def event_dashboard_embed(obj)
+    if obj.is_a?(EventDraft)
+      draft_dashboard_embed(obj)
     else
-      [ TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints, :success ]
-    end
-
-    delete_label = evt.draft? ? 'Delete' : 'Cancel'
-    event.edit_response content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
-      view.row do |row|
-        row.button label: 'Edit Basics', style: pt_1_button[:style], custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button[:emoji]
-        row.button label: 'Edit Timing', style: style, custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: emoji&.to_s
-        row.button label: 'Edit Reactions', style: pt_3_button[:style], custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: pt_3_button[:emoji]
-        row.button label: disable_button[:label], style: disable_button[:style], custom_id: "event_disable_#{'%05d' % id}", emoji: disable_button[:emoji]
-        row.button label: delete_label, style: :danger, custom_id: "event_delete_#{'%05d' % id}"
-      end
+      persisted_event_dashboard_embed(obj)
     end
   end
 
-  def event_create_pt_three(event, id)
-    evt = Event.find(id)
-    event.show_modal(title: 'Part 3', custom_id: "create_event_modal_3_#{'%05d' % evt.id}") do |modal|
-      modal.row do |row|
-        row.text_input(style: :paragraph, custom_id: 'message', label: 'Message', placeholder: evt.message, required: false)
-      end
-      modal.row do |row|
-        row.text_input(style: :short, custom_id: 'reaction_1', label: 'Reaction 1 (name/character/blank)', placeholder: evt.emojis&.first&.modal_display, required: false)
-      end
-      modal.row do |row|
-        row.text_input(style: :short, custom_id: 'reaction_2', label: 'Reaction 2 (name/character/blank)', placeholder: evt.emojis&.second&.modal_display, required: false)
-      end
-      modal.row do |row|
-        row.text_input(style: :short, custom_id: 'reaction_3', label: 'Reaction 3 (name/character/blank)', placeholder: evt.emojis&.third&.modal_display, required: false)
-      end
-      modal.row do |row|
-        row.text_input(style: :short, custom_id: 'reaction_4', label: 'Reaction 4 (name/character/blank)', placeholder: evt.emojis&.fourth&.modal_display, required: false)
-      end
+  def draft_dashboard_embed(draft)
+    {
+      title: "🛠️ Event Builder: #{draft.name || 'Untitled'}",
+      description: "Use the buttons below to configure your event. All changes are saved to this message until you publish.",
+      color: 0x3498db,
+      fields: [
+        { name: '📝 Basics', value: basics_field_value(draft) },
+        { name: '🕒 Timing', value: timing_field_value(draft) },
+        { name: '🎭 Reactions', value: reactions_field_value(draft) },
+        { name: '📊 Status', value: "In-progress draft" }
+      ]
+    }
+  end
+
+  def persisted_event_dashboard_embed(evt)
+    {
+      title: "📅 Event: #{evt.name || 'Untitled'}",
+      description: "Use the buttons below to manage this event.",
+      color: event_color(evt),
+      fields: [
+        { name: '📝 Basics', value: basics_field_value(evt) },
+        { name: '🕒 Timing', value: timing_field_value(evt) },
+        { name: '🎭 Reactions', value: reactions_field_value(evt) },
+        { name: '📊 Status', value: evt.status.to_s.capitalize }
+      ]
+    }
+  end
+
+  def event_color(evt)
+    case evt.status
+    when 'unpublished' then 0x95a5a6
+    when 'scheduled' then 0x3498db
+    when 'active' then 0x2ecc71
+    when 'completed' then 0x9b59b6
+    when 'cancelled' then 0xe74c3c
+    else 0x3498db
     end
   end
 
-  def handle_event_create_pt_three(event, id)
-    evt = Event.find(id)
+  def basics_field_value(obj)
+    loc = obj.location
+    chan = obj.channel
+    <<~VALUE.strip
+      **Name:** #{obj.name || 'Not set'}
+      **Location:** #{loc ? "#{loc.name} (#{loc.lat}, #{loc.lon})" : 'Not set'}
+      **Channel:** #{chan&.name || 'Not set'}
+    VALUE
+  end
 
-    emojis = 1.upto(4).map do |x|
-      response = event.value("reaction_#{x}")
-      if t_emoji = TanukiEmoji.find_by_codepoints(response)
-        Emoji.find_or_create_by(name: t_emoji.name)
-      elsif t_emoji = TanukiEmoji.find_by_alpha_code(":#{response.remove(':')}:")
-        Emoji.find_or_create_by(name: t_emoji.name)
-      elsif emoji = Emoji.find_by(name: response)
-        emoji
-      elsif emoji = Emoji.find_by(discord_id: response.to_i)
-        emoji
+  def timing_field_value(obj)
+    <<~VALUE.strip
+      **Start:** #{format_time(obj.start_time)}
+      **End:** #{format_time(obj.end_time)}
+      **Message At:** #{format_time(obj.message_rides_at)}
+      **Collect At:** #{format_time(obj.collect_rides_at)}
+      **Repeats:** #{obj.repeats_every || 'never'}
+    VALUE
+  end
+
+  def reactions_field_value(obj)
+    emojis = obj.respond_to?(:emojis) ? obj.emojis.to_a : (obj.emojis || [])
+    emoji_text = emojis.any? ? emojis.map(&:modal_display).join(', ') : 'None'
+    <<~VALUE.strip
+      **Message:** #{obj.message || 'Not set'}
+      **Emojis:** #{emoji_text}
+    VALUE
+  end
+
+  def format_time(time)
+    return 'Not set' unless time
+    "<t:#{time.to_i}:F>"
+  end
+
+  def render_builder_components(view, draft)
+    view.row do |row|
+      row.button label: '📝 Edit Basics', style: section_style(draft, :basics), custom_id: "event_edit_basics_#{draft.id}"
+      row.button label: '🕒 Edit Timing', style: section_style(draft, :timing), custom_id: "event_edit_timing_#{draft.id}"
+      row.button label: '🎭 Edit Reactions', style: section_style(draft, :reactions), custom_id: "event_edit_reactions_#{draft.id}"
+    end
+
+    view.row do |row|
+      row.channel_select(
+        custom_id: "event_set_channel_#{draft.id}",
+        placeholder: draft.channel ? "Channel: #{draft.channel.name}" : 'Select a channel',
+        min_values: 1,
+        max_values: 1
+      )
+    end
+
+    view.row do |row|
+      if draft.ready_to_publish?
+        row.button label: '🚀 Publish', style: :success, custom_id: "event_publish_#{draft.id}"
       else
-        nil
+        row.button label: '🚀 Publish (Needs Info)', style: :secondary, custom_id: "event_publish_disabled_#{draft.id}", disabled: true
       end
-    end.delete_if{ |value| value.nil? } || evt.emojis
 
-    values = {
-      message: event.value('message') || evt.message,
-      emojis: emojis
-    }.delete_if{ |_, value| value.nil? || (value.is_a?(String) && value.empty?) || (value.is_a?(Array) && value.empty?) }
+      if draft.ready_to_save?
+        row.button label: '💾 Save as Unpublished', style: :primary, custom_id: "event_save_unpublished_#{draft.id}"
+      else
+        row.button label: '💾 Save as Unpublished', style: :secondary, custom_id: "event_save_unpublished_disabled_#{draft.id}", disabled: true
+      end
 
-    evt.update(values)
+      row.button label: '❌ Discard', style: :danger, custom_id: "event_discard_#{draft.id}"
+    end
+  end
 
-    pt_1_button, pt_2_button, _, disable_button = get_changable_event_create_components(event, id) || get_changable_event_create_components_from_values(evt)
-
-    emoji, style = if !(evt.message && evt.emojis.length > 0)
-      [ nil, :primary ]
-    else
-      [ TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints, :success ]
+  def render_event_management_components(view, evt)
+    view.row do |row|
+      row.button label: '📝 Edit Basics', style: section_style(evt, :basics), custom_id: "event_edit_basics_#{evt.id}"
+      row.button label: '🕒 Edit Timing', style: section_style(evt, :timing), custom_id: "event_edit_timing_#{evt.id}"
+      row.button label: '🎭 Edit Reactions', style: section_style(evt, :reactions), custom_id: "event_edit_reactions_#{evt.id}"
+      row.button label: '📄 Duplicate', style: :primary, custom_id: "event_duplicate_#{evt.id}"
     end
 
-    bot_schedule(evt) if evt.schedulable?
-
-    delete_label = evt.draft? ? 'Delete' : 'Cancel'
-    event.update_message content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
-      view.row do |row|
-        row.button label: 'Edit Basics', style: pt_1_button[:style], custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button[:emoji]
-        row.button label: 'Edit Timing', style: pt_2_button[:style], custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: pt_2_button[:emoji]
-        row.button label: 'Edit Reactions', style: style, custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: emoji&.to_s
-        row.button label: disable_button[:label], style: disable_button[:style], custom_id: "event_disable_#{'%05d' % id}", emoji: disable_button[:emoji]
-        row.button label: delete_label, style: :danger, custom_id: "event_delete_#{'%05d' % id}"
+    view.row do |row|
+      if evt.unpublished?
+        row.button label: '▶️ Republish', style: :success, custom_id: "event_republish_#{evt.id}"
+        row.button label: '🗑️ Delete', style: :danger, custom_id: "event_delete_#{evt.id}"
+      elsif evt.scheduled? || evt.active?
+        row.button label: '⏸️ Unpublish', style: :secondary, custom_id: "event_unpublish_#{evt.id}"
+        row.button label: '🚫 Cancel Event', style: :danger, custom_id: "event_cancel_#{evt.id}"
+      else
+        row.button label: '🗑️ Delete', style: :danger, custom_id: "event_delete_#{evt.id}"
       end
     end
   end
 
-  def event_create_message(event, user, name)
-    evt = Event.create(organizer_id: user.id, name: name)
-    event.edit_response content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
-      view.row do |row|
-        row.button label: 'Edit Basics', style: :primary, custom_id: "event_create_modal_1_#{'%05d' % evt.id}"
-        row.button label: 'Edit Timing', style: :primary, custom_id: "event_create_modal_2_#{'%05d' % evt.id}"
-        row.button label: 'Edit Reactions', style: :primary, custom_id: "event_create_modal_3_#{'%05d' % evt.id}"
-        row.button label: 'Publish', style: :danger, custom_id: "event_disable_#{'%05d' % evt.id}"
-        row.button label: 'Delete', style: :danger, custom_id: "event_delete_#{'%05d' % evt.id}"
+  def section_style(obj, section)
+    complete = case section
+               when :basics then obj.name && obj.location && obj.channel
+               when :timing then obj.start_time && obj.end_time && obj.message_rides_at && obj.collect_rides_at
+               when :reactions then obj.message && obj.emojis.to_a.any?
+               end
+    complete ? :success : :primary
+  end
+
+  def refresh_dashboard(event, draft)
+    event.update_message(content: '', embeds: [event_dashboard_embed(draft)]) do |_, view|
+      render_builder_components(view, draft)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Modals
+  # ---------------------------------------------------------------------------
+
+  def show_edit_basics_modal(event, draft)
+    loc = draft.location
+    event.show_modal(title: '📝 Edit Basics', custom_id: "event_modal_basics_#{draft.id}") do |modal|
+      modal.row do |row|
+        row.text_input(style: :short, custom_id: 'name', label: 'Name', placeholder: draft.name, required: false)
+      end
+      modal.row do |row|
+        row.text_input(style: :short, custom_id: 'location', label: 'Location (address or place name)', placeholder: loc&.name, required: false)
+      end
+      modal.row do |row|
+        row.text_input(style: :short, custom_id: 'lat', label: 'Latitude (optional)', placeholder: loc&.lat&.to_s, required: false)
+      end
+      modal.row do |row|
+        row.text_input(style: :short, custom_id: 'lon', label: 'Longitude (optional)', placeholder: loc&.lon&.to_s, required: false)
       end
     end
   end
 
-  def event_disable(event, id)
-    evt = Event.find(id)
-    if evt.draft?
-      unless evt.start_time && evt.end_time
-        return event.respond(content: 'Cannot publish: both Start Time and End Time must be set before publishing.', ephemeral: true)
+  def show_edit_timing_modal(event, draft)
+    event.show_modal(title: '🕒 Edit Timing', custom_id: "event_modal_timing_#{draft.id}") do |modal|
+      modal.row do |row|
+        row.text_input(style: :short, custom_id: 'start_time', label: 'Start Time', placeholder: draft.start_time&.strftime('%Y-%m-%d %H:%M') || 'e.g. Friday at 6pm', required: false)
       end
-      evt.update(status: :scheduled)
-    else
-      evt.update(status: :draft)
-    end
-
-    pt_1_button, pt_2_button, pt_3_button, unpublish_button = get_changable_event_create_components_from_values(evt)
-
-    emoji, style, label = if unpublish_button[:label] == 'Publish'
-      [ nil, :danger, 'Publish' ]
-    else
-      [ TanukiEmoji.find_by_alpha_code(':pause_button:').codepoints, :secondary, 'Unpublish' ]
-    end
-
-    delete_label = evt.draft? ? 'Delete' : 'Cancel'
-    event.edit_response content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
-      view.row do |row|
-        row.button label: 'Edit Basics', style: pt_1_button[:style], custom_id: "event_create_modal_1_#{'%05d' % id}", emoji: pt_1_button[:emoji]
-        row.button label: 'Edit Timing', style: pt_2_button[:style], custom_id: "event_create_modal_2_#{'%05d' % id}", emoji: pt_2_button[:emoji]
-        row.button label: 'Edit Reactions', style: pt_3_button[:style], custom_id: "event_create_modal_3_#{'%05d' % id}", emoji: pt_3_button[:emoji]
-        row.button label: label, style: style, custom_id: "event_disable_#{'%05d' % id}", emoji: emoji&.to_s
-        row.button label: delete_label, style: :danger, custom_id: "event_delete_#{'%05d' % id}"
+      modal.row do |row|
+        row.text_input(style: :short, custom_id: 'end_time', label: 'End Time', placeholder: draft.end_time&.strftime('%Y-%m-%d %H:%M') || 'e.g. Friday at 9pm', required: false)
+      end
+      modal.row do |row|
+        row.text_input(style: :short, custom_id: 'message_time', label: 'Message Time', placeholder: draft.message_rides_at&.strftime('%Y-%m-%d %H:%M') || 'e.g. Thursday at 6pm', required: false)
+      end
+      modal.row do |row|
+        row.text_input(style: :short, custom_id: 'collect_time', label: 'Collect Time', placeholder: draft.collect_rides_at&.strftime('%Y-%m-%d %H:%M') || 'e.g. Friday at 8am', required: false)
+      end
+      modal.row do |row|
+        row.text_input(style: :short, custom_id: 'repeat', label: 'Repeat every (week/never)', placeholder: draft.repeats_every || 'never', required: false)
       end
     end
   end
 
-  def event_delete(event, id)
-    evt = Event.find(id)
-    if evt.draft?
-      name = evt.name || "Untitled_#{evt.id}"
-      evt.destroy
-      event.respond(content: "Event **#{name}** has been permanently deleted.", ephemeral: true)
-    else
-      evt.update(status: :draft)
-      event.edit_response content: '', embeds: [event_dashboard_embed(evt)] do |_, view|
-        pt_1_button, pt_2_button, pt_3_button, unpublish_button = get_changable_event_create_components_from_values(evt)
-        view.row do |row|
-          row.button label: 'Edit Basics', style: pt_1_button[:style], custom_id: "event_create_modal_1_#{'%05d' % evt.id}", emoji: pt_1_button[:emoji]
-          row.button label: 'Edit Timing', style: pt_2_button[:style], custom_id: "event_create_modal_2_#{'%05d' % evt.id}", emoji: pt_2_button[:emoji]
-          row.button label: 'Edit Reactions', style: pt_3_button[:style], custom_id: "event_create_modal_3_#{'%05d' % evt.id}", emoji: pt_3_button[:emoji]
-          row.button label: unpublish_button[:label], style: unpublish_button[:style], custom_id: "event_disable_#{'%05d' % evt.id}", emoji: unpublish_button[:emoji]
-          row.button label: 'Delete', style: :danger, custom_id: "event_delete_#{'%05d' % evt.id}"
+  def show_edit_reactions_modal(event, draft)
+    emojis = draft.emojis.to_a
+    event.show_modal(title: '🎭 Edit Reactions', custom_id: "event_modal_reactions_#{draft.id}") do |modal|
+      modal.row do |row|
+        row.text_input(style: :paragraph, custom_id: 'message', label: 'Message', placeholder: draft.message, required: false)
+      end
+      4.times do |i|
+        modal.row do |row|
+          row.text_input(style: :short, custom_id: "reaction_#{i + 1}", label: "Reaction #{i + 1}", placeholder: emojis[i]&.modal_display, required: false)
         end
       end
     end
   end
 
-  def get_changable_event_create_components(event, id)
-    [
-      event.get_component("event_create_modal_1_#{'%05d' % id}"),
-      event.get_component("event_create_modal_2_#{'%05d' % id}"),
-      event.get_component("event_create_modal_3_#{'%05d' % id}"),
-      event.get_component("event_disable_#{'%05d' % id}")
-    ]
+  # ---------------------------------------------------------------------------
+  # Modal handlers
+  # ---------------------------------------------------------------------------
+
+  def handle_edit_basics(event, draft)
+    name = event.value('name')
+    draft.name = name if name && !name.strip.empty?
+
+    location_input = event.value('location')
+    lat_input = event.value('lat')
+    lon_input = event.value('lon')
+
+    loc = nil
+    if location_input && !location_input.strip.empty?
+      loc = Location.search_by_name(location_input).first || @map.create_new_location(location_input)
+    elsif lat_input && lon_input && !lat_input.strip.empty? && !lon_input.strip.empty?
+      loc = Location.search_by_coords(lat_input, lon_input).first || @map.create_new_location({ lat: lat_input, lon: lon_input })
+    end
+
+    if loc
+      draft.location = loc
+    elsif location_input || lat_input || lon_input
+      return event.respond(content: 'Could not resolve that location. Try a more specific address or leave coordinates blank.', ephemeral: true)
+    end
+
+    refresh_dashboard(event, draft)
   end
+
+  def handle_edit_timing(event, draft)
+    parsed = {}
+    errors = []
+
+    { start_time: 'start_time', end_time: 'end_time', message_rides_at: 'message_time', collect_rides_at: 'collect_time' }.each do |attr, input_id|
+      value = event.value(input_id)
+      next unless value && !value.strip.empty?
+      parsed_time = parse_time(value)
+      if parsed_time
+        parsed[attr] = parsed_time
+      else
+        errors << "Could not understand #{input_id.humanize}."
+      end
+    end
+
+    return event.respond(content: errors.join("\n"), ephemeral: true) if errors.any?
+
+    parsed.each { |attr, time| draft.send("#{attr}=", time) }
+
+    repeat = event.value('repeat')
+    draft.repeats_every = if repeat.nil? || repeat.strip.empty?
+                            draft.repeats_every || 'never'
+                          else
+                            repeat.strip.downcase
+                          end
+
+    time_errors = draft.validation_errors
+    if time_errors.any?
+      return event.respond(content: "Times updated, but they don't look right yet:\n#{time_errors.join("\n")}", ephemeral: true)
+    end
+
+    refresh_dashboard(event, draft)
+  end
+
+  def handle_edit_reactions(event, draft)
+    message = event.value('message')
+    draft.message = message if message && !message.strip.empty?
+
+    server = draft.channel&.server
+    emojis = 1.upto(4).map do |x|
+      response = event.value("reaction_#{x}")
+      next nil unless response && !response.strip.empty?
+      resolve_emoji(response, server: server)
+    end.compact
+
+    draft.emojis = emojis if emojis.any?
+
+    refresh_dashboard(event, draft)
+  end
+
+  def parse_time(value)
+    parsed = Chronic.parse(value)
+    return nil unless parsed
+
+    # Ensure the parsed time is expressed in the configured application timezone.
+    parsed.respond_to?(:in_time_zone) ? parsed.in_time_zone : Time.zone.parse(parsed.to_s)
+  rescue ArgumentError
+    nil
+  end
+
+  def resolve_emoji(response, server: nil)
+    cleaned = response.to_s.strip.delete(':')
+    return nil if cleaned.empty?
+
+    if t_emoji = TanukiEmoji.find_by_codepoints(cleaned)
+      Emoji.find_or_create_by(name: t_emoji.name) do |e|
+        e.server = server if server
+      end
+    elsif t_emoji = TanukiEmoji.find_by_alpha_code(":#{cleaned}:")
+      Emoji.find_or_create_by(name: t_emoji.name) do |e|
+        e.server = server if server
+      end
+    elsif emoji = Emoji.find_by(name: cleaned)
+      emoji
+    elsif emoji = Emoji.find_by(discord_id: cleaned.to_i)
+      emoji
+    else
+      nil
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Publish / save / discard
+  # ---------------------------------------------------------------------------
+
+  def publish_draft(event, draft)
+    unless draft.ready_to_publish?
+      return event.respond(content: 'This event is missing required information before it can be published.', ephemeral: true)
+    end
+
+    time_errors = draft.validation_errors
+    return event.respond(content: "Cannot publish:\n#{time_errors.join("\n")}", ephemeral: true) if time_errors.any?
+
+    event.defer_update
+    evt = persist_draft(draft, status: :scheduled)
+    bot_schedule(evt)
+    EventDraft.delete(draft.id)
+
+    event.edit_response content: "🚀 Event **#{evt.name}** published and scheduled!", embeds: [event_dashboard_embed(evt)] do |_, view|
+      render_event_management_components(view, evt)
+    end
+  end
+
+  def save_draft_as_unpublished(event, draft)
+    unless draft.ready_to_save?
+      return event.respond(content: 'An event name is required to save.', ephemeral: true)
+    end
+
+    event.defer_update
+    evt = persist_draft(draft, status: :unpublished)
+    EventDraft.delete(draft.id)
+
+    event.edit_response content: "💾 Event **#{evt.name}** saved as unpublished.", embeds: [event_dashboard_embed(evt)] do |_, view|
+      render_event_management_components(view, evt)
+    end
+  end
+
+  def discard_draft(event, draft)
+    EventDraft.delete(draft.id)
+    event.update_message(content: '❌ Draft discarded.', embeds: [], components: [])
+  end
+
+  def persist_draft(draft, status:)
+    if draft.persisted?
+      evt = Event.find(draft.event_id)
+      evt.update!(draft.to_event_attributes.merge(status: status, scheduled: (status == :scheduled)))
+      evt.emojis = draft.emojis if draft.emojis.any?
+      evt
+    else
+      attrs = draft.to_event_attributes.merge(status: status, scheduled: (status == :scheduled))
+      evt = Event.create!(attrs)
+      evt.emojis = draft.emojis if draft.emojis.any?
+      evt
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Existing event management
+  # ---------------------------------------------------------------------------
+
+  def unpublish_event(event, evt)
+    event.defer_update
+    evt.update!(status: :unpublished)
+    evt.unschedule
+    event.edit_response content: "⏸️ Event **#{evt.name}** unpublished.", embeds: [event_dashboard_embed(evt)] do |_, view|
+      render_event_management_components(view, evt)
+    end
+  end
+
+  def republish_event(event, evt)
+    unless evt.schedulable?
+      return event.respond(content: 'Cannot republish: the event is missing required information.', ephemeral: true)
+    end
+
+    event.defer_update
+    evt.update!(status: :scheduled)
+    bot_schedule(evt)
+    event.edit_response content: "▶️ Event **#{evt.name}** republished and scheduled.", embeds: [event_dashboard_embed(evt)] do |_, view|
+      render_event_management_components(view, evt)
+    end
+  end
+
+  def cancel_event(event, evt)
+    event.defer_update
+    evt.update!(status: :cancelled)
+    evt.unschedule
+    event.edit_response content: "🚫 Event **#{evt.name}** has been cancelled.", embeds: [event_dashboard_embed(evt)] do |_, view|
+      render_event_management_components(view, evt)
+    end
+  end
+
+  def delete_event(event, evt)
+    unless evt.unpublished?
+      return event.respond(content: 'Only unpublished events can be permanently deleted.', ephemeral: true)
+    end
+
+    event.defer_update
+    name = evt.name || "Untitled_#{evt.id}"
+    evt.destroy
+    event.edit_response content: "🗑️ Event **#{name}** has been permanently deleted.", embeds: [], components: []
+  end
+
+  def duplicate_event(event, evt)
+    user = User.find_by(discord_id: event.user.id)
+    return event.respond(content: 'Could not identify your user record.', ephemeral: true) unless user
+
+    draft = EventDraft.create(
+      organizer_id: user.id,
+      name: generate_duplicate_name(evt.name),
+      location: evt.location,
+      channel: evt.channel,
+      message: evt.message,
+      emojis: evt.emojis.to_a,
+      start_time: nil,
+      end_time: nil,
+      message_rides_at: nil,
+      collect_rides_at: nil,
+      repeats_every: evt.repeats_every
+    )
+
+    event.respond content: "📄 Created a template from **#{evt.name}**. Set new times and publish when ready.", embeds: [event_dashboard_embed(draft)] do |_, view|
+      render_builder_components(view, draft)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Naming helpers
+  # ---------------------------------------------------------------------------
+
+  def generate_unique_event_name(base_name)
+    base = base_name.strip
+    existing = Event.where("name LIKE ?", "#{base}%").pluck(:name)
+    return base if existing.none?
+
+    numbers = existing.map { |n| n.match(/\((\d+)\)$/)&.[](1).to_i }
+    next_number = (numbers.max || 0) + 1
+    "#{base} (#{next_number})"
+  end
+
+  def generate_duplicate_name(base_name)
+    clean_name = base_name.to_s.sub(/\s*\(\d+\)$/, '').strip
+    existing = Event.where("name LIKE ?", "#{clean_name}%").pluck(:name)
+    return clean_name if existing.none?
+
+    numbers = existing.map { |n| n.match(/\((\d+)\)$/)&.[](1).to_i }
+    next_number = (numbers.max || 0) + 1
+    "#{clean_name} (#{next_number})"
+  end
+
+  # ---------------------------------------------------------------------------
+  # Other handlers
+  # ---------------------------------------------------------------------------
 
   def handle_login_code(user)
     code = passgen
@@ -517,11 +784,17 @@ class Messenger
 
   def handle_member_join(event)
     return unless Server.find_by(name: 'Abide').discord_id == event.server.id
+
+    leader_role_id = Role.find_by(name: 'Leaders')&.discord_id
+    coordinator_role_id = Role.find_by(name: 'Coordinator')&.discord_id
+
     User.find_or_create_by(discord_id: event.member.id) do |user|
       pass = passgen
       user.username = event.member.username
       user.name = event.member.display_name
-      user.leader = event.member.permission?(:administrator) || (leader && event.member.role?(leader)) || (coordinator && event.member.role?(coordinator))
+      user.leader = event.member.permission?(:administrator) ||
+                     (leader_role_id && event.member.role?(leader_role_id)) ||
+                     (coordinator_role_id && event.member.role?(coordinator_role_id))
       user.password = pass
       user.password_confirmation = pass
     end
@@ -530,30 +803,6 @@ class Messenger
   def handle_member_leave(event)
     return unless Server.exists?(discord_id: event.server.id)
     User.find_by(discord_id: event.member.id)&.destroy
-  end
-
-  def event_dashboard_embed(evt)
-    {
-      title: "Event: #{evt.name || 'Untitled'}",
-      description: "Use the buttons below to configure your event.",
-      color: evt.draft? ? 0xFF0000 : 0x00FF00,
-      fields: [
-        { name: "Basics", value: "Location: #{evt.location&.name || 'None'}\nChannel: #{evt.channel&.name || 'None'}" },
-        { name: "Timing", value: "Start: #{evt.start_time || 'None'}\nEnd: #{evt.end_time || 'None'}\nMessage At: #{evt.message_rides_at || 'None'}\nCollect At: #{evt.collect_rides_at || 'None'}\nRepeats: #{evt.repeats_every || 'never'}" },
-        { name: "Reactions", value: "Message: #{evt.message || 'None'}\nEmojis: #{evt.emojis.map(&:modal_display).join(', ')}" },
-        { name: "Status", value: evt.status.to_s.capitalize }
-      ]
-    }
-  end
-
-  def get_changable_event_create_components_from_values(evt)
-    is_draft = evt.draft?
-    [
-      { style: (evt.name && evt.location && evt.channel) ? :success : :primary, emoji: (evt.name && evt.location && evt.channel) ? TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints.to_s : nil },
-      { style: (evt.start_time && evt.end_time && evt.message_rides_at && evt.collect_rides_at) ? :success : :primary, emoji: (evt.start_time && evt.end_time && evt.message_rides_at && evt.collect_rides_at) ? TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints.to_s : nil },
-      { style: (evt.message && evt.emojis.length > 0) ? :success : :primary, emoji: (evt.message && evt.emojis.length > 0) ? TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints.to_s : nil },
-      { label: is_draft ? 'Publish' : 'Unpublish', style: is_draft ? :danger : :secondary, emoji: is_draft ? nil : TanukiEmoji.find_by_alpha_code(':pause_button:').codepoints.to_s }
-    ]
   end
 
   def passgen

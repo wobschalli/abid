@@ -44,4 +44,17 @@ class Discordrb::Webhooks::View::RowBuilder
 
     @options << { label: label, value: value, description: description, emoji: emoji, default: default }
   end
+
+  # Native Discord channel select menu. Discord auto-populates the dropdown
+  # with the server's channels, so users no longer have to type channel names.
+  def channel_select(custom_id:, placeholder: nil, min_values: 1, max_values: 1, disabled: nil)
+    @components << {
+      type: COMPONENT_TYPES[:channel_select],
+      custom_id: custom_id,
+      placeholder: placeholder,
+      min_values: min_values,
+      max_values: max_values,
+      disabled: disabled
+    }
+  end
 end

@@ -1,6 +1,4 @@
 require_relative 'hfile'
-require_relative 'scheduler'
-require_relative 'messenger'
 require_relative 'bot'
 
 class Runner < Bot

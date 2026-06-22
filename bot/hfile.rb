@@ -26,6 +26,14 @@ end
 #get the map class
 require_relative File.join(File.dirname(__dir__), 'map', 'map.rb')
 
-#set timezone to local
+# Set the application timezone so all parsed/created times are consistent.
 Time.zone = TZInfo::Timezone.get('America/Indiana/Indianapolis')
 Chronic.time_class = Time.zone
+ActiveRecord.default_timezone = :utc
+ActiveRecord::Base.time_zone_aware_attributes = true
+ActiveRecord::Base.time_zone_aware_types = [:datetime]
+
+#load bot helper classes after models, patches, and timezone are ready
+Dir.glob(File.join(File.dirname(__dir__), 'bot', '*.rb')).each do |bot_file|
+  require_relative bot_file unless bot_file.end_with?('run.rb')
+end
