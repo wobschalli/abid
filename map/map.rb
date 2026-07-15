@@ -1,3 +1,8 @@
+require 'open_street_map'
+require 'http'
+
+require_relative File.join('..', 'models', 'location.rb')
+
 class Map
   attr_accessor :map_client, :box
   BOXES = {
