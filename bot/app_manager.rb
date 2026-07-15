@@ -1,5 +1,5 @@
 require_relative 'bot'
-require_relative 'scheduler'
+require_relative 'abide_event_manager/scheduler/scheduler'
 require_relative 'setup'
 
 class AppManager
