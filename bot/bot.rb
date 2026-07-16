@@ -1,10 +1,14 @@
 require_relative 'abide_event_manager/abide_event_handlers.rb'
+require_relative 'abide_event_manager/helpers/draft_helper.rb'
 require_relative 'abide_event_manager/helpers/naming_helper.rb'
 require_relative 'abide_event_manager/helpers/modal_helper.rb'
-require_relative 'abide_event_manager/helpers/draft_helper.rb'
 require_relative 'abide_event_manager/event_draft'
 
 class Bot
+  include AbideEventHandlers
+  include DraftHelper
+  include NamingHelper
+  include ModalHelper
   attr_reader :client, :map, :token
   attr_accessor :manager
 
@@ -70,7 +74,7 @@ class Bot
     Server.all.each do |server|
       if connected_servers.include?(server.discord_id)
         begin
-          client.register_application_command(:login, 'send a login code', server_id: server.discord_id)
+          client.register_application_command(:hello, 'say hello', server_id: server.discord_id)
 
           client.register_application_command(:event, 'event commands', server_id: server.discord_id) do |cmd|
             cmd.subcommand(:list, 'list all events') do |sub|
@@ -87,6 +91,10 @@ class Bot
             end
             cmd.subcommand(:nuke, 'delete ALL events (owner only)')
           end
+
+          client.register_application_command(:login, 'send a login code', server_id: server.discord_id)
+
+          client.register_application_command(:debug, 'debug the bot', server_id: server.discord_id)
         rescue => e
           puts "Warning: Could not register cmds for #{server.name} - #{e.message}"
         end
@@ -96,11 +104,16 @@ class Bot
 
   def set_commands
     client.command :user do |event|
+      puts "User command invoked by #{event.user.name} (#{event.user.id})"
       event.user.name
     end
 
+    client.command :hello do |event|
+      event.respond(content: 'Hello there!')
+    end
+
     client.application_command(:hello) do |event|
-      return event.respond(content: 'Hello there!')
+      event.respond(content: 'Hello there!')
     end
 
     client.autocomplete(:name) do |event|
@@ -190,7 +203,7 @@ class Bot
         debug
         event.send_message(content: 'Your debug session is finished', ephemeral: true)
       else
-        dm_ian("an unauthorized user (#{event.user.username} | #{event.user.id}) attempted to use debug")
+        dm_mods("an unauthorized user (#{event.user.username} | #{event.user.id}) attempted to use debug")
         event.respond(content: 'You do not have the proper authentication to perform this action!')
       end
     end
