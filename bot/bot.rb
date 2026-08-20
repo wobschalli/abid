@@ -108,11 +108,7 @@ class Bot
       event.user.name
     end
 
-    client.command :hello do |event|
-      event.respond(content: 'Hello there!')
-    end
-
-    client.application_command(:hello) do |event|
+    client.hybrid_command :hello do |event|
       event.respond(content: 'Hello there!')
     end
 
