@@ -1,3 +1,4 @@
+# Hybrid command support remains unfinished
 class HybridContext
   attr_reader :event, :args, :user, :server, :channel
 

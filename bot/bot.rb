@@ -108,8 +108,8 @@ class Bot
       event.user.name
     end
 
-    client.hybrid_command :hello do |event|
-      event.respond(content: 'Hello there!')
+    client.command :hello do |event|
+      'Hello there!'
     end
 
     client.autocomplete(:name) do |event|
