@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# First-run setup for a local checkout. Idempotent — safe to re-run.
+# Everything that does not need root: gems, node packages, session secret,
+# database, demo data. Run bin/setup-deps first if this complains.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -7,20 +8,26 @@ cd "$(dirname "$0")/.."
 info() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-if ! have ruby; then
-  info 'Installing Ruby, Postgres and build dependencies (needs sudo)'
-  sudo apt-get update
-  sudo apt-get install -y \
-    ruby-full ruby-dev build-essential libpq-dev libyaml-dev \
-    postgresql postgresql-contrib git
+missing=""
+have ruby || missing="$missing ruby"
+have bundle || missing="$missing bundler"
+[ -f /usr/include/libpq-fe.h ] || missing="$missing libpq-dev"
+
+if [ -n "$missing" ]; then
+  cat >&2 <<EOF
+
+Missing system dependencies:$missing
+
+These need root, so run this once in a real terminal:
+
+  bin/setup-deps
+
+then run bin/setup again.
+EOF
+  exit 1
 fi
 
 info "Ruby $(ruby -v)"
-
-if ! have bundle; then
-  info 'Installing bundler'
-  sudo gem install bundler --no-document
-fi
 
 info 'Installing gems'
 bundle install
@@ -28,11 +35,10 @@ bundle install
 info 'Installing node packages'
 if have yarn; then yarn install; else npm install; fi
 
-info 'Starting Postgres'
-sudo service postgresql start || true
-# The app defaults to user "postgres" with password "password"; make that true
-# locally. Override with DB_USER / DB_PASSWORD instead if you prefer.
-sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'password';" >/dev/null
+if ! (timeout 2 bash -c '</dev/tcp/127.0.0.1/5432') 2>/dev/null; then
+  echo "Postgres is not listening on 5432. Start it with: sudo service postgresql start" >&2
+  exit 1
+fi
 
 if [ ! -f .session_secret ]; then
   info 'Generating .session_secret'

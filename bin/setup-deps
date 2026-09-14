@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# System packages and the Postgres service. This is the only part that needs
+# root, so it lives apart from bin/setup — run it once in a real terminal:
+#
+#   bin/setup-deps
+#
+# Then bin/setup handles everything else without sudo.
+set -euo pipefail
+
+info() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
+
+if [ "$(id -u)" -ne 0 ] && ! sudo -v; then
+  echo "This script needs sudo. Run it from a terminal, not from a tool or editor." >&2
+  exit 1
+fi
+
+info 'Installing Ruby, Postgres and build dependencies'
+sudo apt-get update
+sudo apt-get install -y \
+  ruby-full ruby-dev build-essential pkg-config git \
+  libpq-dev libssl-dev libyaml-dev libffi-dev zlib1g-dev \
+  postgresql postgresql-contrib
+
+info 'Installing bundler'
+sudo gem install bundler --no-document
+
+info 'Starting Postgres'
+sudo service postgresql start
+
+# The app defaults to user "postgres" with password "password". Set DB_USER and
+# DB_PASSWORD instead if you would rather not change the local superuser.
+info 'Setting the local postgres password'
+sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'password';"
+
+cat <<'DONE'
+
+System dependencies installed.
+
+Next, run (no sudo needed — Claude can run this for you):
+
+  bin/setup
+DONE
