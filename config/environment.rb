@@ -23,12 +23,23 @@ module Abid
       File.join(ROOT, *parts)
     end
 
+    # config/database.yml holds the development defaults; anything set in the
+    # environment wins. Kept in Ruby rather than ERB in the YAML because
+    # sinatra-activerecord's rake tasks read that file themselves.
     def database_config
-      raw = ERB.new(File.read(root('config', 'database.yml'))).result
-      config = YAML.safe_load(raw, aliases: true).fetch(env) do
+      return ENV['DATABASE_URL'] if ENV['DATABASE_URL'].present?
+
+      config = YAML.safe_load_file(root('config', 'database.yml'), aliases: true).fetch(env) do
         raise "no '#{env}' section in config/database.yml"
       end
-      config.compact
+
+      config.merge(
+        'username' => ENV['DB_USER'],
+        'password' => ENV['DB_PASSWORD'],
+        'host' => ENV['DB_HOST'],
+        'port' => ENV['DB_PORT'],
+        'database' => ENV['DB_NAME']
+      ) { |_key, from_file, from_env| from_env.presence || from_file }
     end
 
     def establish_connection

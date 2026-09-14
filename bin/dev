@@ -5,8 +5,8 @@ if gem list --no-installed --exact --silent foreman; then
   gem install foreman
 fi
 
-# Default to port 4455 if not specified
-export PORT="${PORT:-4455}"
+# Default to port 5544 if not specified
+export PORT="${PORT:-5544}"
 export RACK_ENV="development"
 export NODE_ENV="development"
 

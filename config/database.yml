@@ -1,24 +1,23 @@
+# Plain YAML on purpose — sinatra-activerecord's rake tasks read this file
+# directly. Environment overrides (DB_USER, DB_PASSWORD, DB_HOST, DB_PORT,
+# DB_NAME, DATABASE_URL) are applied in Ruby by Abid.database_config.
 default: &default
   adapter: postgresql
   encoding: unicode
-  pool: <%= ENV.fetch('DB_POOL', 5) %>
-  username: <%= ENV.fetch('DB_USER', 'postgres') %>
-  password: <%= ENV.fetch('DB_PASSWORD', 'password') %>
-  host: <%= ENV.fetch('DB_HOST', 'localhost') %>
-  port: <%= ENV.fetch('DB_PORT', 5432) %>
+  pool: 5
+  username: postgres
+  password: password
+  host: localhost
+  port: 5432
 
 development:
   <<: *default
-  database: <%= ENV.fetch('DB_NAME', 'abid_development') %>
+  database: abid_development
 
 test:
   <<: *default
-  database: <%= ENV.fetch('DB_NAME', 'abid_test') %>
+  database: abid_test
 
-# Production must be configured through the environment; there is no default
-# password here on purpose.
 production:
   <<: *default
-  url: <%= ENV['DATABASE_URL'] %>
-  database: <%= ENV.fetch('DB_NAME', 'abid_production') %>
-  password: <%= ENV['DB_PASSWORD'] %>
+  database: abid_production

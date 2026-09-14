@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# First-run setup for a local checkout. Idempotent — safe to re-run.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+info() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+if ! have ruby; then
+  info 'Installing Ruby, Postgres and build dependencies (needs sudo)'
+  sudo apt-get update
+  sudo apt-get install -y \
+    ruby-full ruby-dev build-essential libpq-dev libyaml-dev \
+    postgresql postgresql-contrib git
+fi
+
+info "Ruby $(ruby -v)"
+
+if ! have bundle; then
+  info 'Installing bundler'
+  sudo gem install bundler --no-document
+fi
+
+info 'Installing gems'
+bundle install
+
+info 'Installing node packages'
+if have yarn; then yarn install; else npm install; fi
+
+info 'Starting Postgres'
+sudo service postgresql start || true
+# The app defaults to user "postgres" with password "password"; make that true
+# locally. Override with DB_USER / DB_PASSWORD instead if you prefer.
+sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'password';" >/dev/null
+
+if [ ! -f .session_secret ]; then
+  info 'Generating .session_secret'
+  ruby -rsecurerandom -e 'print SecureRandom.hex(64)' > .session_secret
+fi
+
+info 'Creating and migrating the database'
+bundle exec rake db:create
+bundle exec rake db:migrate
+
+info 'Loading demo data'
+bundle exec rake db:demo
+
+cat <<'DONE'
+
+Setup complete.
+
+  bin/dev      start the web app on http://localhost:5544
+  bin/console  IRB with the models loaded
+
+Log in at /login as "alan" with password "ridedemo", then open /board.
+
+The Discord bot (bin/bot) additionally needs DISCORD_TOKEN and a config.yml;
+it is not required to work on the dashboard.
+DONE

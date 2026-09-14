@@ -13,6 +13,10 @@ class App < Sinatra::Base
   helpers Phlex::Sinatra
   register Sinatra::ActiveRecordExtension
 
+  # Connect using the same ENV-aware config the bot and console use, rather than
+  # letting the extension read config/database.yml on its own.
+  set :database, Abid.database_config
+
   # The board's edit/delete forms rely on _method; Sinatra::Base leaves this off
   # by default (unlike a classic Sinatra app).
   enable :method_override
