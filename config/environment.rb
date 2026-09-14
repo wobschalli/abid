@@ -51,6 +51,10 @@ module Abid
       Dir.glob(root('models', '*.rb')).sort.each { |model| require model }
     end
 
+    def load_services
+      Dir.glob(root('services', '*.rb')).sort.each { |service| require service }
+    end
+
     def load_patches
       Dir.glob(root('patches', '*.rb')).sort.each { |patch| require patch }
     end

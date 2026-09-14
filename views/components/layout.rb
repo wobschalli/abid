@@ -1,15 +1,23 @@
 require_relative 'components'
 
 class Components::Layout < Phlex::HTML
-  def initialize(title:'abid', leader:false)
+  # full_bleed: the ride board manages its own scrolling and fills the viewport,
+  # so it opts out of the padded main container.
+  def initialize(title:'abid', leader:false, full_bleed:false)
     @title = title
     @leader = leader
+    @full_bleed = full_bleed
   end
 
   def view_template(&)
     head do
       title { @title }
+      link rel: 'preconnect', href: 'https://fonts.googleapis.com'
+      link rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: true
+      link rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap'
       link href: url('css/application.min.css'), type: 'text/css', rel: 'stylesheet'
+      # Intentionally render-blocking: darkmode.js sets the .dark class before
+      # first paint, and deferring it reintroduces a flash of the light theme.
       script src: url('js/application.min.js')
     end
 
@@ -43,6 +51,7 @@ class Components::Layout < Phlex::HTML
       aside id: 'sidebar', aria_label: 'Sidebar', class: 'fixed top-0 left-0 z-40 w-64 h-screen pt-20 transition-transform -translate-x-full bg-white border-r border-gray-200 sm:translate-x-0 dark:bg-gray-800 dark:border-gray-700' do
         div class: 'h-full px-3 pb-4 overflow-y-auto bg-white dark:bg-gray-800' do
           ul class: 'space-y-2 font-medium' do
+            sidenav text: 'Ride board', href: url('/board')
             sidenav text: 'Events', href: url('/events')
             sidenav text: 'Locations', href: url('/locations')
             sidenav text: 'Users', href: url('/users')
@@ -52,9 +61,13 @@ class Components::Layout < Phlex::HTML
           end
         end
       end
-      main class: 'p-4 sm:ml-64' do
-        div class: 'p-4 mt-14' do
+      main class: (@full_bleed ? 'sm:ml-64 mt-14' : 'p-4 sm:ml-64') do
+        if @full_bleed
           yield
+        else
+          div class: 'p-4 mt-14' do
+            yield
+          end
         end
       end
     end

@@ -2,6 +2,10 @@ class Ride < ApplicationRecord
   ROLES = %w[rider driver].freeze
   STATUSES = %w[requested assigned confirmed cancelled no_show].freeze
 
+  # Statuses that take someone off the board for the day. The design calls this
+  # "not coming" for riders and "not driving today" for drivers.
+  OUT_STATUSES = %w[cancelled no_show].freeze
+
   belongs_to :event
   belongs_to :user
   belongs_to :pickup_location, class_name: 'Location', optional: true
@@ -20,9 +24,11 @@ class Ride < ApplicationRecord
 
   scope :riders, -> { where(role: 'rider') }
   scope :drivers, -> { where(role: 'driver') }
-  scope :active, -> { where.not(status: %w[cancelled no_show]) }
+  scope :active, -> { where.not(status: OUT_STATUSES) }
+  scope :out, -> { where(status: OUT_STATUSES) }
   scope :assigned, -> { where.not(driver_ride_id: nil) }
   scope :unassigned, -> { riders.active.where(driver_ride_id: nil) }
+  scope :in_zone, ->(zone) { where(zone: zone) }
 
   def rider?
     role == 'rider'
@@ -56,6 +62,38 @@ class Ride < ApplicationRecord
 
   def coords
     pickup&.coords
+  end
+
+  # Per-occurrence override wins, then the pickup location's zone.
+  def zone
+    self[:zone].presence || pickup&.zone
+  end
+
+  def zone_short
+    Location.zone_short(zone)
+  end
+
+  # What the details rail shows in the address field: the free text the
+  # coordinator typed, falling back to whatever location we have on file.
+  def address
+    pickup_address.presence || pickup&.name
+  end
+
+  def out?
+    OUT_STATUSES.include?(status)
+  end
+
+  def active?
+    !out?
+  end
+
+  def display_name
+    user&.display_name.to_s
+  end
+
+  # Riders this one must not share a car with.
+  def clash_user_ids
+    @clash_user_ids ||= Clash.ids_for(user_id)
   end
 
   def to_s

@@ -1,0 +1,296 @@
+require_relative 'components'
+require_relative 'board_helpers'
+
+# The right-hand rail: per-person details, or the full roster for the occurrence.
+class Components::BoardRail < Phlex::HTML
+  include BoardHelpers
+
+  def initialize(board:, leader: false, tab: :details)
+    @board = board
+    @leader = leader
+    @tab = tab
+    @focus = board.focused
+  end
+
+  def view_template
+    div(class: 'flex-none w-[308px] border-l border-line flex flex-col min-h-0') do
+      tabs
+      @tab == :roster ? roster_pane : details_pane
+    end
+  end
+
+  private
+
+  def tabs
+    div(class: 'flex-none flex gap-1 px-3.5 pt-3') do
+      tab_link('Details', :details)
+      tab_link('Roster', :roster)
+    end
+  end
+
+  def tab_link(label, id)
+    active = @tab == id
+    a(
+      href: board_url(tab: (id == :roster ? 'roster' : nil)),
+      class: [
+        'flex-1 text-center cursor-pointer font-semibold text-[11.5px] px-2.5 py-2 rounded-[7px] no-underline',
+        active ? 'bg-ink text-ink-invert' : 'bg-ink/5 text-ink/55 hover:text-ink'
+      ].join(' ')
+    ) { label }
+  end
+
+  # --- details -------------------------------------------------------------
+
+  def details_pane
+    div(class: 'flex-1 overflow-y-auto p-3.5 flex flex-col gap-3.5') do
+      @focus ? person_form : no_focus
+    end
+  end
+
+  def no_focus
+    div(class: 'px-1.5 py-[30px] text-[13px] leading-[1.6] text-ink/65') do
+      'Pick anyone on the board — or a name in the waiting list — to fill in their phone, pickup spot, seats and notes.'
+    end
+  end
+
+  def person_form
+    ride = @focus
+
+    div(class: 'flex flex-col gap-3.5') do
+      div(class: 'flex items-center gap-2') do
+        span(class: role_badge_class(ride)) { ride.role.upcase }
+        span(class: 'font-display font-bold text-[17px] capitalize') { ride.display_name }
+      end
+
+      action_form("rides/#{ride.id}", method: 'patch', class: 'flex flex-col gap-3.5') do
+        labeled('Full name') { text_field('name', ride.user&.name) }
+        labeled('Phone') { text_field('phone', ride.user&.phone, mono: true, placeholder: '(000) 000-0000') }
+        labeled(ride.driver? ? 'Starts from' : 'Pickup spot') do
+          text_field('pickup_address', ride.address, placeholder: 'Street address or landmark')
+        end
+
+        div(class: 'flex gap-2.5') do
+          div(class: 'flex-1') { labeled('Zone') { zone_select(ride) } }
+          div(class: 'w-24') { labeled('Seats') { seats_field(ride) } } if ride.driver?
+        end
+
+        labeled('Notes') { notes_field(ride) }
+
+        if @leader
+          button(type: 'submit', class: 'board-btn-solid w-full') { 'Save details' }
+        end
+      end
+
+      clashes(ride) if ride.rider?
+      person_actions(ride) if @leader
+    end
+  end
+
+  def role_badge_class(ride)
+    base = 'font-mono text-[9px] font-semibold tracking-[.09em] px-[7px] py-[3px] rounded-[5px] '
+    base + (ride.driver? ? 'bg-accent-tint-strong text-accent' : 'bg-ink/[.07] text-ink/70')
+  end
+
+  def labeled(label, &block)
+    div(class: 'flex flex-col gap-[5px]') do
+      span(class: 'board-label') { label }
+      yield
+    end
+  end
+
+  def text_field(name, value, mono: false, placeholder: nil)
+    input(
+      type: 'text',
+      name: name,
+      value: value.to_s,
+      placeholder: placeholder,
+      disabled: !@leader,
+      class: "board-input #{mono ? 'font-mono' : ''}"
+    )
+  end
+
+  def seats_field(ride)
+    input(
+      type: 'number',
+      name: 'seats',
+      min: 1,
+      max: 20,
+      value: ride.capacity,
+      disabled: !@leader,
+      class: 'board-input font-mono font-medium'
+    )
+  end
+
+  def zone_select(ride)
+    select(name: 'zone', disabled: !@leader, class: 'board-input') do
+      option(value: '', selected: ride.zone.blank?) { '—' }
+      Location::ZONES.each do |zone|
+        option(value: zone, selected: ride.zone == zone) { zone }
+      end
+    end
+  end
+
+  def notes_field(ride)
+    textarea(
+      name: 'note',
+      rows: 3,
+      disabled: !@leader,
+      placeholder: 'Car seat needed, gets picked up at the back door, avoid pairing with…',
+      class: 'board-input resize-y text-[12.5px] leading-[1.5]'
+    ) { ride.note.to_s }
+  end
+
+  # "WON'T RIDE WITH" — user-level, so it carries across weeks.
+  def clashes(ride)
+    div(class: 'flex flex-col gap-1.5 pt-1 border-t border-line') do
+      span(class: 'board-label pt-2.5') { "Won't ride with" }
+      div(class: 'flex flex-wrap gap-1.5') do
+        clash_rides(ride).each { |other| clash_chip(ride, other) }
+        clash_picker(ride) if @leader
+      end
+    end
+  end
+
+  def clash_rides(ride)
+    ids = @board.clashes_for(ride)
+    @board.rider_rides.select { |r| ids.include?(r.user_id) && r.id != ride.id }
+  end
+
+  def clash_chip(ride, other)
+    span(class: 'flex items-center gap-1.5 font-medium text-[11px] bg-danger-tint text-danger pl-2.5 pr-1.5 py-1 rounded-full capitalize') do
+      plain other.display_name
+      next unless @leader
+
+      action_form('clashes', method: 'delete', ride_id: ride.id, other_ride_id: other.id, class: 'contents') do
+        button(
+          type: 'submit',
+          class: 'border-0 bg-transparent text-danger font-mono text-[11px] font-semibold cursor-pointer px-0.5 opacity-60 hover:opacity-100'
+        ) { '✕' }
+      end
+    end
+  end
+
+  def clash_picker(ride)
+    existing = @board.clashes_for(ride)
+    options = @board.rider_rides.reject { |r| r.id == ride.id || existing.include?(r.user_id) }
+    return if options.empty?
+
+    action_form('clashes', ride_id: ride.id, class: 'contents') do
+      select(
+        name: 'other_ride_id',
+        data_board_autosubmit: true,
+        class: 'border border-dashed border-line rounded-full px-2 py-1 text-[11px] font-medium text-ink/55 bg-transparent cursor-pointer'
+      ) do
+        option(value: '') { '+ add' }
+        options.each { |r| option(value: r.id) { r.display_name } }
+      end
+    end
+  end
+
+  def person_actions(ride)
+    div(class: 'flex gap-2 pt-1.5') do
+      action_form('toggle-out', ride_id: ride.id, class: 'flex-1') do
+        button(
+          type: 'submit',
+          class: "board-btn w-full #{ride.out? ? 'bg-accent-tint' : ''}"
+        ) { toggle_label(ride) }
+      end
+
+      action_form("rides/#{ride.id}", method: 'delete', class: 'contents') do
+        button(
+          type: 'submit',
+          title: 'remove from roster',
+          data_confirm: "Remove #{ride.display_name} from this event?",
+          class: 'border border-danger/25 bg-surface text-danger font-semibold text-xs px-3 py-[9px] rounded-[7px] cursor-pointer hover:bg-danger-tint'
+        ) { 'Remove' }
+      end
+    end
+  end
+
+  def toggle_label(ride)
+    if ride.driver?
+      ride.out? ? 'Mark as driving today' : 'Not driving today'
+    else
+      ride.out? ? 'Back in the queue' : 'Mark not coming'
+    end
+  end
+
+  # --- roster --------------------------------------------------------------
+
+  def roster_pane
+    div(class: 'flex-1 overflow-y-auto p-3.5 flex flex-col gap-[18px]') do
+      roster_section('Drivers', @board.driver_rides) { |r| driver_meta(r) }
+      roster_section('Riders', @board.rider_rides) { |r| r.zone_short }
+      add_person if @leader
+    end
+  end
+
+  def roster_section(label, rides, &meta)
+    div(class: 'flex flex-col gap-[7px]') do
+      div(class: 'flex items-baseline gap-[7px]') do
+        span(class: 'board-label') { label }
+        span(class: 'font-mono text-[10px] text-ink/60') { rides.size.to_s }
+      end
+      rides.each { |ride| roster_row(ride, meta.call(ride)) }
+      if rides.empty?
+        span(class: 'text-[12px] text-ink/55 px-0.5') { "No #{label.downcase} yet." }
+      end
+    end
+  end
+
+  def driver_meta(ride)
+    return 'not driving' if ride.out?
+    "#{ride.capacity} seats · #{ride.zone_short}"
+  end
+
+  def roster_row(ride, meta)
+    focused = @board.focus_ride_id == ride.id
+    a(
+      href: board_url(focus: ride.id),
+      class: [
+        'flex items-center gap-2 px-2.5 py-2 rounded-[7px] border no-underline text-ink',
+        focused ? 'border-ink bg-ink/[.06]' : 'border-line bg-surface hover:border-accent'
+      ].join(' ')
+    ) do
+      span(class: "flex-1 text-[12.5px] capitalize #{ride.driver? ? 'font-semibold' : 'font-medium'}") { ride.display_name }
+      span(class: 'board-meta') { meta.to_s }
+    end
+  end
+
+  def add_person
+    div(class: 'flex flex-col gap-2.5 p-3 bg-surface-sunk border border-line rounded-[9px]') do
+      span(class: 'board-label') { 'Add someone' }
+      action_form('rides', class: 'flex flex-col gap-2.5') do
+        user_select
+        div(class: 'flex gap-[7px]') do
+          select(name: 'role', class: 'board-input flex-1 text-[12.5px]') do
+            option(value: 'rider') { 'Rider' }
+            option(value: 'driver') { 'Driver' }
+          end
+          select(name: 'zone', class: 'board-input flex-1 text-[12.5px]') do
+            option(value: '') { 'Zone' }
+            Location::ZONES.each { |z| option(value: z) { z } }
+          end
+        end
+        button(type: 'submit', class: 'board-btn-solid w-full') { "Add to #{@board.event.name}" }
+      end
+    end
+  end
+
+  # People come from the Discord member sync, so this picks an existing user
+  # rather than the design's free-text name field — a typo here would otherwise
+  # create a second person who can never be matched to their Discord account.
+  def user_select
+    taken = @board.rides.map(&:user_id)
+    candidates = User.where.not(id: taken).by_name.limit(500)
+
+    if candidates.empty?
+      span(class: 'text-[12px] text-ink/60') { 'Everyone in the server is already on this board.' }
+    else
+      select(name: 'user_id', required: true, class: 'board-input text-[12.5px]') do
+        option(value: '') { 'Choose a person…' }
+        candidates.each { |u| option(value: u.id) { u.display_name } }
+      end
+    end
+  end
+end

@@ -28,19 +28,51 @@ class Bot
     private
     def collect_scheduled_message(event)
       event = Event.find(event.id)
-      if event && event.enabled? && event.rides_message_id
-        reaction_users = @bot.channel(event.channel.discord_id).load_message(event.rides_message_id).all_reaction_users
-        message = "reaction details for event: #{event}\n"
-        message += reaction_users.map do |emoji, users|
-          event.users = users.map do |reaction_user|
-            reaction_user.bot_account? ? nil : User.find_by(discord_id: reaction_user.id)
-          end.delete_if{ _1.nil? }
+      return unless event && event.enabled? && event.rides_message_id
 
-          "#{emoji}: #{users.join(", ")}"
-        end.join("\n")
-        @messenger&.dm_ian message
-        event.save
+      reaction_users = @bot.channel(event.channel.discord_id).load_message(event.rides_message_id).all_reaction_users
+
+      # `event.users = ...` used to run inside this loop, so each emoji replaced
+      # the previous one's reactors and only the last emoji survived.
+      signed_up = []
+      summary = reaction_users.map do |emoji, users|
+        signed_up.concat(known_users(users))
+        "#{emoji}: #{users.join(', ')}"
+      end.join("\n")
+
+      signed_up.uniq!
+      event.users = signed_up
+      event.collected_at = Time.zone.now
+      event.save
+
+      sync_rides(event, signed_up)
+
+      @messenger&.dm_ian "reaction details for event: #{event}\n#{summary}"
+    end
+
+    def known_users(reaction_users)
+      reaction_users.filter_map do |reaction_user|
+        next if reaction_user.bot_account?
+        User.find_by(discord_id: reaction_user.id)
       end
+    end
+
+    # Turn sign-ups into Ride rows so the web ride board has something to show.
+    # Everyone comes in as a rider; coordinators flip people to driver on the
+    # board, since the reaction emoji doesn't say which one someone meant.
+    def sync_rides(event, users)
+      users.each do |user|
+        ride = event.rides.find_or_initialize_by(user_id: user.id)
+        next if ride.persisted?
+
+        ride.role = 'rider'
+        ride.status = 'requested'
+        ride.zone = user.location&.zone
+        ride.signed_up_at = Time.zone.now
+        ride.save
+      end
+    rescue StandardError => e
+      warn "could not sync rides for event #{event.id}: #{e.class}: #{e.message}"
     end
 
     def schedule_existing_events

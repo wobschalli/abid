@@ -2,9 +2,132 @@
 @import "flowbite/src/themes/default";
 @plugin "flowbite/plugin";
 @source "../../node_modules/flowbite";
+
+/* Phlex templates are Ruby, so point the scanner at them explicitly rather than
+   relying on auto-detection finding .rb files. */
+@source "../../views";
+@source "../../app.rb";
+
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Ride board palette, from the Ride Board design. Named semantically so the
+   dark-mode block below can flip the values and every `bg-surface` /
+   `text-ink` utility follows without a single dark: variant in the markup. */
+@theme {
+  --color-surface: #ffffff;
+  --color-surface-sunk: #faf8f4;
+  --color-surface-board: #f6f4ef;
+  --color-ink: #17201c;
+  --color-ink-invert: #ffffff;
+  --color-line: rgba(23, 32, 28, 0.13);
+  --color-line-soft: rgba(23, 32, 28, 0.055);
+  --color-accent: #1e6b52;
+  --color-accent-deep: #14513e;
+  --color-accent-tint: #dff0e7;
+  --color-accent-tint-strong: #c9e7d6;
+  --color-warn: #e8a33d;
+  --color-warn-ink: #8a5a12;
+  --color-warn-tint: #fbf0dc;
+  --color-count: #b5701b;
+  --color-danger: #8c3030;
+  --color-danger-tint: #f6dfdf;
+
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-display: "Bricolage Grotesque", "IBM Plex Sans", sans-serif;
+}
+
+.dark {
+  --color-surface: #1b211e;
+  --color-surface-sunk: #151a18;
+  --color-surface-board: #101413;
+  --color-ink: #e7ebe8;
+  --color-ink-invert: #10130f;
+  --color-line: rgba(231, 235, 232, 0.16);
+  --color-line-soft: rgba(231, 235, 232, 0.07);
+  --color-accent: #5fb894;
+  --color-accent-deep: #8ed2b3;
+  --color-accent-tint: rgba(95, 184, 148, 0.16);
+  --color-accent-tint-strong: rgba(95, 184, 148, 0.28);
+  --color-warn: #e8a33d;
+  --color-warn-ink: #e0b06a;
+  --color-warn-tint: rgba(232, 163, 61, 0.16);
+  --color-count: #e0a35e;
+  --color-danger: #e08585;
+  --color-danger-tint: rgba(224, 133, 133, 0.16);
+}
+
 @layer components {
+  /* Board primitives — the design repeats these three inline style blocks on
+     nearly every element. */
+  .board-label {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+  }
+
+  .board-meta {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+  }
+
+  .board-input {
+    width: 100%;
+    border: 1px solid var(--color-line);
+    background: var(--color-surface);
+    color: var(--color-ink);
+    border-radius: 7px;
+    padding: 9px 10px;
+    font-size: 13px;
+    outline: none;
+  }
+  .board-input:focus {
+    border-color: var(--color-accent);
+  }
+
+  .board-btn {
+    border: 1px solid var(--color-line);
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font-weight: 600;
+    font-size: 12px;
+    padding: 9px 13px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .board-btn:hover {
+    background: color-mix(in srgb, var(--color-ink) 5%, transparent);
+  }
+
+  .board-btn-solid {
+    border: 0;
+    background: var(--color-ink);
+    color: var(--color-ink-invert);
+    font-weight: 600;
+    font-size: 12px;
+    padding: 9px 15px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .board-btn-solid:hover {
+    background: var(--color-accent);
+    color: #fff;
+  }
+
+  /* Drag feedback — the design has no equivalent because the prototype only
+     styled the drop target through React state. */
+  .board-drop-active {
+    border-color: var(--color-accent) !important;
+    background: var(--color-accent-tint);
+  }
+  .board-dragging {
+    opacity: 0.45;
+  }
+
   .btn-primary {
     border-radius: calc(infinity * 1px);
     background-color: #c00050;
