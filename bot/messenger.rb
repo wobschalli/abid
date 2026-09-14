@@ -81,16 +81,10 @@ class Messenger < Bot
       event.respond content: 'Your login code has been sent', ephemeral: true
     end
 
-    bot.application_command(:debug) do |event|
-      if User.find_by(discord_id: event.user.id)&.leader
-        event.defer
-        debug
-        event.send_message(content: 'Your debug session is finished', ephemeral: true)
-      else
-        dm_ian("an unauthorized user (#{event.user.username} | #{event.user.id}) attempted to use debug")
-        event.respond content: 'You do not have the proper authentication to perform this action!'
-      end
-    end
+    # The /debug command used to open `binding.irb` on the host for anyone with
+    # the `leader` flag — which is granted automatically from the Leaders and
+    # Coordinator Discord roles. That is a remote Ruby shell handed out by role
+    # assignment, so it's gone. Use `bin/console` locally instead.
   end
 
   def set_modal_handlers

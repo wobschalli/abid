@@ -3,9 +3,11 @@ require_relative 'bot'
 
 class Bot
   class Scheduler
-    def initialize(bot)
+    def initialize(bot, messenger = nil)
       @scheduler = Rufus::Scheduler.new(discard_past: false)
       @bot = bot
+      # Was never assigned, so every collect job died on `@messenger.dm_ian`.
+      @messenger = messenger
       schedule_existing_events
       @task_thread = Thread.new { task_scheduler } #simplest way to ensure all events are scheduled
       at_exit do
@@ -36,8 +38,7 @@ class Bot
 
           "#{emoji}: #{users.join(", ")}"
         end.join("\n")
-        @messenger.dm_ian message
-        # @messenger.dm_alan message #lol
+        @messenger&.dm_ian message
         event.save
       end
     end
@@ -63,7 +64,9 @@ class Bot
         @scheduler.schedule_cron collect do
           collect_scheduled_message event
         end
-      when 'never' || '' || nil
+      else
+        # `when 'never' || '' || nil` evaluated to just `when 'never'`, so a blank
+        # or nil repeats_every scheduled nothing at all.
         @scheduler.schedule_at event.collect_rides_at do
           collect_scheduled_message event
         end
@@ -78,7 +81,7 @@ class Bot
         @scheduler.schedule_cron message do
           send_scheduled_message event
         end
-      when 'never' || '' || nil
+      else
         @scheduler.schedule_at event.message_rides_at do
           send_scheduled_message event
         end

@@ -3,10 +3,17 @@ require_relative 'components/master'
 class Login < Phlex::HTML
   include Components
 
+  def initialize(error: nil)
+    @error = error
+  end
+
   def view_template
     SkinnyLayout do
       div class: 'justify-self-center' do
         h1(class: 'text-3xl dark:text-gray-400') { 'Login' }
+        if @error
+          p(role: 'alert', class: 'mb-4 text-sm text-red-600 dark:text-red-400') { @error }
+        end
         Form action: '/login' do |f|
           div class: 'mb-5 col-span-6' do
             f.labeled_input name: 'username' do

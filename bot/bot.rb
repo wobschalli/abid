@@ -5,24 +5,26 @@ require_relative 'hfile'
 class Bot
   attr_reader :scheduler, :messenger
 
-  #load bot information and test server
-  INFO = DiscordInfo.first
-  TEST = Server.find_by(name: 'Test')
+  # These used to be constants evaluated at class-definition time, which meant a
+  # DB that wasn't up yet surfaced as a NoMethodError on nil during `require`.
+  def self.info
+    DiscordInfo.first
+  end
 
-  def initialize(token)
-    @messenger = Messenger.new(INFO.token)
+  def self.test_server
+    Server.find_by(name: 'Test')
+  end
+
+  def initialize(token = Abid.discord_token)
+    @messenger = Messenger.new(token)
     @messenger.run
     Setup.new(bot)
-    @scheduler = Scheduler.new(bot)
+    @scheduler = Scheduler.new(bot, @messenger)
   end
 
   # @return running bot [Discordrb::Commands::CommandBot]
   def bot
     @messenger.bot
-  end
-
-  def debug
-    binding.irb
   end
 
   def bot_schedule(event)

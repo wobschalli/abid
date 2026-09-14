@@ -4,23 +4,23 @@ require_relative 'messenger'
 require_relative 'bot'
 
 class Runner < Bot
-  def initialize
-    super(INFO.token)
-  end
 end
 
+runner = nil
+
 begin
-  r = Runner.new
-  loop do
-    sleep(1.hour)
-  end
+  runner = Runner.new
+  loop { sleep(1.hour) }
 rescue Interrupt
-  r.bot.join
-  exit
+  puts 'shutting down'
 rescue => err
-  puts err
-  binding.irb
+  # This used to drop into `binding.irb`, which hangs a headless/daemonised bot
+  # forever instead of exiting and letting the supervisor restart it.
+  warn "bot crashed: #{err.class}: #{err.message}"
+  warn err.backtrace.join("\n") if err.backtrace
+  exit 1
 ensure
-  r.bot.join
-  exit
+  # `r.bot.join` unconditionally used to raise NoMethodError on nil whenever boot
+  # itself failed, masking the actual exception.
+  runner&.bot&.join
 end

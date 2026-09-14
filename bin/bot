@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
 
-cd "$(pwd)/bot"
-bundle exec ruby run.rb
+# No longer needs to cd into bot/ — paths are resolved relative to the source
+# files now rather than the working directory.
+exec bundle exec ruby "$(dirname "$0")/../bot/run.rb"
