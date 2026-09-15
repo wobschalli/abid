@@ -1,4 +1,18 @@
+module Discordrb::Events
+  class ReactionEvent
+    # discordrb stores @user_id but exposes only #user, which resolves through
+    # `server.member(id)`. On a reaction *remove* the gateway sends no member
+    # payload, so #user can cost an HTTP round trip — for an id we already have
+    # and only need to look up in our own database.
+    attr_reader :user_id
+  end
+end
+
 class Discordrb::Bot
+  # NOTE: this overrides Object#send on every bot instance. Any metaprogramming
+  # that reaches for `bot.send(:some_method)` will try to post a Discord message
+  # instead.
+  #
   # @param channel id [Discordrb::Channel, String, Integer]
   # @param message [String]
   # @param tts [true, false]

@@ -19,10 +19,14 @@ require_relative '../config/environment'
 Abid.establish_connection
 Abid.load_models
 
+#get the map class — services/ depends on it, so it has to come first
+require_relative '../map/map'
+
+# The web process loads these through config.ru's Unreloader globs; the bot had
+# no equivalent, so anything under services/ was a NameError in production only.
+Abid.load_services
+
 #include all patches to relevant classes because discordrb is lowk dumb
 Abid.load_patches
-
-#get the map class
-require_relative '../map/map'
 
 Chronic.time_class = Time.zone

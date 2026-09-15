@@ -23,7 +23,10 @@ class Emoji < ApplicationRecord
   end
 
   private
+  # `self.name.remove ':'` was a silent no-op: String#remove is non-mutating
+  # (remove! is the mutating one) and the result was discarded, so colons were
+  # never actually stripped on save.
   def ensure_not_alpha_code
-    self.name.remove ':'
+    self.name = name.to_s.delete(':')
   end
 end

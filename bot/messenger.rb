@@ -1,6 +1,12 @@
 class Messenger < Bot
   attr_reader :bot, :map, :token
 
+  # Messenger inherits from Bot but is *constructed by* Bot#initialize, so it
+  # deliberately never calls super — which left every Messenger with @scheduler
+  # nil while still inheriting Bot#bot_schedule. Bot#initialize assigns this
+  # once the scheduler exists.
+  attr_accessor :scheduler
+
   # @param bot token [String]
   def initialize(token)
     @token = token
@@ -334,7 +340,11 @@ class Messenger < Bot
       [ TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints, :success ]
     end
 
-    bot_schedule(evt) if evt.schedulable?
+    # `bot_schedule(evt)` here raised NoMethodError on nil at the end of every
+    # /event create — masked only because the 5-minute poll picked the event up
+    # anyway. The safe navigation matters: Setup and Scheduler are built after
+    # @messenger.run, so a command firing during boot still sees nil.
+    scheduler&.schedule(evt) if evt.schedulable?
 
     event.update_message content: event.message.content do |_, view|
       view.row do |row|

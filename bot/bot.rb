@@ -20,6 +20,9 @@ class Bot
     @messenger.run
     Setup.new(bot)
     @scheduler = Scheduler.new(bot, @messenger)
+    # Messenger handlers need the scheduler but cannot construct it — Bot builds
+    # both, and Messenger is built first.
+    @messenger.scheduler = @scheduler
   end
 
   # @return running bot [Discordrb::Commands::CommandBot]
