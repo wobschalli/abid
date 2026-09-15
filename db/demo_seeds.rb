@@ -162,11 +162,17 @@ retreat = Event.find_or_create_by(name: 'Fall Retreat', start_time: retreat_star
   e.message = 'React if you need a ride to the retreat. Leaving 7am sharp.'
 end
 
-# A finished occurrence two weeks back, so the Past tab and the read-only
-# roster have something real in them.
-past_sunday = sunday - 14
-past_event = school_series.ensure_occurrence(past_sunday)
-past_event&.update!(collected_at: past_sunday.to_time + 8.hours, rides_message_id: nil)
+# Finished occurrences going back two months, so the Past tab has history and
+# the driving-load column on /users has a window worth measuring. The rota is
+# deliberately lopsided — caleb drives almost every week — so the "carrying
+# more than their share" flag has something real to catch.
+past_sundays = (1..8).map { |weeks_ago| sunday - (weeks_ago * 7) }
+past_events = past_sundays.filter_map do |date|
+  event = school_series.ensure_occurrence(date)
+  event&.update!(collected_at: date.to_time + 8.hours, rides_message_id: nil)
+  event
+end
+past_event = past_events.first
 
 # --- rides ------------------------------------------------------------------
 
@@ -231,18 +237,38 @@ retreat_driver = seat(retreat, by_name['tobin'], role: 'driver')
   seat(retreat, by_name[n], role: 'rider', driver: retreat_driver)
 end
 
-# A completed past occurrence — everyone seated, nobody left waiting.
-if past_event
-  past_event.rides.destroy_all
-  past_drivers = %w[ian caleb].to_h { |n| [n, seat(past_event, by_name[n], role: 'driver')] }
-  {
-    'ian' => ['caitlin', 'jalen', 'kenzo'],
-    'caleb' => ['kylan r', 'juno wa', 'maribel']
-  }.each do |driver_name, riders|
-    riders.each { |r| seat(past_event, by_name[r], role: 'rider', driver: past_drivers[driver_name]) }
+# Completed occurrences. The rota is deliberately uneven — caleb drives seven
+# of the last eight, ian three, tobin and christina once each — so the members
+# page has a real "carrying more than their share" case to show rather than a
+# flat, uninformative history.
+ROTA = [
+  %w[caleb ian],
+  %w[caleb],
+  %w[caleb tobin],
+  %w[caleb ian],
+  %w[caleb],
+  %w[caleb christina],
+  %w[ian],
+  %w[caleb]
+].freeze
+
+RIDER_POOL = ['caitlin', 'jalen', 'kenzo', 'kylan r', 'juno wa', 'maribel',
+              'luna cheng', 'renata', 'dalton', 'irene'].freeze
+
+past_events.each_with_index do |event, index|
+  event.rides.destroy_all
+  driver_names = ROTA[index % ROTA.size]
+  drivers_here = driver_names.to_h { |n| [n, seat(event, by_name[n], role: 'driver')] }
+
+  # Rotate who rides so the roster differs week to week.
+  riders = RIDER_POOL.rotate(index * 3).first(driver_names.size * 3)
+  riders.each_with_index do |rider_name, i|
+    driver = drivers_here[driver_names[i % driver_names.size]]
+    seat(event, by_name[rider_name], role: 'rider', driver: driver)
   end
-  # One person who said yes and then didn't turn up.
-  seat(past_event, by_name['tim'], role: 'rider').update!(status: 'no_show')
+
+  # One person who said yes and then didn't turn up, on the most recent one.
+  seat(event, by_name['tim'], role: 'rider').update!(status: 'no_show') if index.zero?
 end
 
 # --- sign-up posts ----------------------------------------------------------

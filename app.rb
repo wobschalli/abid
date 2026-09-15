@@ -125,6 +125,39 @@ class App < Sinatra::Base
     redirect to("/events/#{event.id}")
   end
 
+  # --- members --------------------------------------------------------------
+
+  get '/users' do
+    filter = %w[all drivers leaders missing].include?(params[:filter]) ? params[:filter] : 'all'
+    users = users_for(filter, params[:q])
+
+    phlex UsersIndex.new(
+      users: users,
+      load: DriverLoad.new,
+      filter: filter,
+      query: params[:q],
+      counts: user_counts,
+      leader: leader?
+    )
+  end
+
+  get '/users/:id' do
+    user = User.find_by(id: params[:id]) or halt 404, 'No such member'
+    phlex user_page(user)
+  end
+
+  patch '/users/:id' do
+    require_leader!
+    user = User.find_by(id: params[:id]) or halt 404, 'No such member'
+
+    if user.update(user_params)
+      redirect to("/users/#{user.id}")
+    else
+      status 422
+      phlex user_page(user, error: user.errors.full_messages.to_sentence)
+    end
+  end
+
   # --- locations ------------------------------------------------------------
 
   # Read-only. The list is real geography maintained in db/locations.rb, not
@@ -521,6 +554,48 @@ class App < Sinatra::Base
          .chronological
          .limit(40)
          .to_a
+  end
+
+  def users_for(filter, query)
+    scope = User.includes(:location).by_name
+    scope = scope.search(query) if query.present?
+
+    case filter
+    when 'drivers' then scope.drivers
+    when 'leaders' then scope.leaders
+    when 'missing' then scope.missing_details
+    else scope
+    end.to_a
+  end
+
+  # Counts ignore the search box: the tabs should say how many drivers exist,
+  # not how many match what is currently typed.
+  def user_counts
+    {
+      'all' => User.count,
+      'drivers' => User.drivers.count,
+      'leaders' => User.leaders.count,
+      'missing' => User.missing_details.count
+    }
+  end
+
+  USER_FIELDS = %w[name phone location_id capacity grad_year].freeze
+
+  def user_params
+    permitted(USER_FIELDS).merge('leader' => params[:leader] == '1')
+  end
+
+  def user_page(user, error: nil)
+    UserShow.new(
+      user: user,
+      locations: Location.order(:name).to_a,
+      load: DriverLoad.new,
+      history: user.rides.includes(:event).joins(:event)
+                   .where.not(events: { start_time: nil })
+                   .order('events.start_time DESC').limit(12).to_a,
+      leader: leader?,
+      error: error
+    )
   end
 
   # Two grouped counts rather than N per-row queries.
