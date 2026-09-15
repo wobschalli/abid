@@ -77,6 +77,16 @@ class RideBoard
     @clash_map ||= Clash.map_for(rides.map(&:user_id))
   end
 
+  # Memoised: the dispatch bar and every car badge read these, and both cost a
+  # query.
+  def readiness
+    @readiness ||= DispatchReadiness.new(self)
+  end
+
+  def dispatch_status
+    @dispatch_status ||= DispatchStatus.new(self)
+  end
+
   def clashes_for(ride)
     clash_map[ride.user_id] || []
   end

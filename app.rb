@@ -399,6 +399,29 @@ class App < Sinatra::Base
     end
   end
 
+  # Queue DMs to drivers. The roster is snapshotted here, in this request, so
+  # what goes out is what the coordinator was looking at — the bot only renders
+  # and delivers.
+  post '/board/:event_id/dispatch' do
+    require_leader!
+    event = find_event(params[:event_id]) or halt 404, 'No such event'
+
+    dispatch = DispatchPlanner.new(
+      RideBoard.new(event),
+      requested_by: current_user,
+      scope: params[:scope].to_s
+    ).call
+
+    halt 422, 'Nobody to send to.' if dispatch.nil?
+    render_board(event)
+  end
+
+  get '/events/:event_id/dispatches' do
+    event = find_event(params[:event_id]) or halt 404, 'No such event'
+    dispatches = event.dispatches.includes(:requested_by, messages: :user).recent.to_a
+    phlex DispatchLog.new(event: event, dispatches: dispatches, leader: leader?)
+  end
+
   get '/board/:event_id.csv' do
     event = find_event(params[:event_id]) or halt 404
     content_type 'text/csv'

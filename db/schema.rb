@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2400) do
+ActiveRecord::Schema[8.0].define(version: 2500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -39,6 +39,49 @@ ActiveRecord::Schema[8.0].define(version: 2400) do
     t.string "token", null: false
     t.string "app_id", null: false
     t.string "public_key", null: false
+  end
+
+  create_table "dispatch_messages", force: :cascade do |t|
+    t.bigint "dispatch_id", null: false
+    t.bigint "driver_ride_id"
+    t.bigint "user_id"
+    t.bigint "discord_id", null: false
+    t.string "driver_name", null: false
+    t.string "status", default: "pending", null: false
+    t.text "body"
+    t.string "route_url"
+    t.jsonb "roster", default: {}, null: false
+    t.string "roster_digest", null: false
+    t.bigint "discord_message_id"
+    t.string "error_class"
+    t.text "error_message"
+    t.datetime "sent_at"
+    t.integer "attempts", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["dispatch_id", "driver_ride_id"], name: "index_dispatch_messages_on_dispatch_id_and_driver_ride_id", unique: true
+    t.index ["dispatch_id"], name: "index_dispatch_messages_on_dispatch_id"
+    t.index ["driver_ride_id", "status"], name: "index_dispatch_messages_on_driver_ride_id_and_status"
+    t.index ["driver_ride_id"], name: "index_dispatch_messages_on_driver_ride_id"
+    t.index ["user_id"], name: "index_dispatch_messages_on_user_id"
+  end
+
+  create_table "dispatches", force: :cascade do |t|
+    t.bigint "event_id", null: false
+    t.bigint "requested_by_id"
+    t.string "status", default: "queued", null: false
+    t.string "scope", default: "changed", null: false
+    t.integer "attempt", default: 1, null: false
+    t.jsonb "board_snapshot", default: {}, null: false
+    t.datetime "requested_at", null: false
+    t.datetime "started_at"
+    t.datetime "finished_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_id", "attempt"], name: "index_dispatches_on_event_id_and_attempt", unique: true
+    t.index ["event_id"], name: "index_dispatches_on_event_id"
+    t.index ["requested_by_id"], name: "index_dispatches_on_requested_by_id"
+    t.index ["status", "requested_at"], name: "index_dispatches_on_status_and_requested_at"
   end
 
   create_table "emojis", force: :cascade do |t|
@@ -259,6 +302,11 @@ ActiveRecord::Schema[8.0].define(version: 2400) do
   add_foreign_key "channels", "servers"
   add_foreign_key "clashes", "users"
   add_foreign_key "clashes", "users", column: "other_user_id"
+  add_foreign_key "dispatch_messages", "dispatches"
+  add_foreign_key "dispatch_messages", "rides", column: "driver_ride_id", on_delete: :nullify
+  add_foreign_key "dispatch_messages", "users", on_delete: :nullify
+  add_foreign_key "dispatches", "events"
+  add_foreign_key "dispatches", "users", column: "requested_by_id"
   add_foreign_key "emojis", "servers"
   add_foreign_key "event_series", "channels"
   add_foreign_key "event_series", "locations"

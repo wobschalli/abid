@@ -55,6 +55,7 @@ class Components::BoardCar < Phlex::HTML
         div(class: 'flex items-baseline gap-[7px] flex-wrap') do
           seat_link
           span(class: fit_pill_class(@fit)) { BoardHelpers::FIT_LABELS[@fit] } if @fit
+          dispatch_badge
         end
         span(class: 'board-meta') { "#{@car.zone || 'no zone'} · #{@car.seat_text}" }
       end
@@ -74,6 +75,22 @@ class Components::BoardCar < Phlex::HTML
       end
     else
       a(href: board_url(focus: @car.id), class: 'font-bold text-sm capitalize text-ink no-underline hover:text-accent') { @car.name }
+    end
+  end
+
+  # Whether this driver has been told, and whether anything has changed since.
+  DISPATCH_BADGES = {
+    sent: ['bg-accent-tint text-accent', 'sent'],
+    changed: ['bg-warn-tint text-warn-ink', 'changed'],
+    failed: ['bg-danger-tint text-danger', 'dm failed']
+  }.freeze
+
+  def dispatch_badge
+    style, label = DISPATCH_BADGES[@board.dispatch_status.state_for(@car.ride)]
+    return if style.nil? # :never — no badge until something has been sent
+
+    span(class: "font-mono text-[9.5px] font-semibold tracking-[.06em] px-[7px] py-[3px] rounded-[5px] #{style}") do
+      label
     end
   end
 

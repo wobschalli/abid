@@ -9,9 +9,6 @@ class Map
     tippecanoe: %w( -87.0955 40.2143 -86.6948 40.5630 ),
     indiana: %w( -88.102 37.760 -84.798 41.761 )
   }
-  OSRM_TRIP_URL = "http://router.project-osrm.org/trip/v1/driving"
-  OSRM_ROUTE_URL = "http://router.project-osrm.org/route/v1/driving"
-
   # This used to go through the open_street_map gem, whose only real job here
   # was two JSON GETs. That gem depends on libxml-ruby, a native extension that
   # needs libxml2 headers and breaks outright when a conda xml2-config shadows
@@ -21,7 +18,7 @@ class Map
   # Nominatim's usage policy requires an identifying User-Agent.
   USER_AGENT = "abid-rides (https://github.com/wobschalli/abid)"
 
-  private_constant :OSRM_TRIP_URL, :OSRM_ROUTE_URL, :NOMINATIM_URL, :USER_AGENT
+  private_constant :NOMINATIM_URL, :USER_AGENT
 
   # @param box [Symbol] binding box for OSM lookups, either indiana or tippecanoe
   def initialize(box=BOXES[:tippecanoe])
@@ -49,36 +46,15 @@ class Map
     response.is_a?(Hash) ? response['display_name'] : nil
   end
 
-  # @param places [Array<Hash>] hash with lon and lat
-  # @return ordered array of locations for a pickup path [Array<String>]
-  def create_trip(places)
-    opts = { source: 'first', destination: 'last', roundtrip: 'false' }
-    q_string = "#{OSRM_TRIP_URL}/"
-    q_string += places.map(&:sort).map(&:reverse).map{ |place| place.flatten.keep_if{ |e| e.is_a? String }.join(',') }.join(';')
-    q_string += '?'
-    q_string += opts.map{ |k, v| "#{k}=#{v}"}.join('&')
-    response = JSON.parse HTTP.get(q_string)
-    response['waypoints'].sort_by{ |place| place['waypoint_index'] }.map{ |place| place['location'] }
-  end
-
-  # @param stops [Array<Array>]
-  def create_route(stops)
-    opts = { alternatives: 'true', steps: 'true' }
-    q_string = "#{OSRM_ROUTE_URL}/"
-    q_string += stops.map{ |stop| stop.join(',') }.join(';')
-    q_string += '?'
-    q_string += opts.map{ |k, v| "#{k}=#{v}"}.join('&')
-    response = JSON.parse HTTP.get(q_string)
-    response['waypoints'].map { |stop| stop.to_h['location'] }.pop(response['waypoints'].length - 1)
-  end
-
-  def suggest_path(nodes)
-    trip = create_trip nodes
-    path = create_route trip
-    path.map do |stop|
-      coord_to_addr({ lon: stop[0], lat: stop[1] })
-    end
-  end
+  # `create_trip`, `create_route` and `suggest_path` lived here. All three were
+  # called by nothing, and create_trip was broken for real data anyway: its
+  # `places.map(&:sort).map(&:reverse).map { |p| p.flatten.keep_if { String } }`
+  # kept the hash KEYS and dropped the BigDecimal values, producing a URL like
+  # ".../driving/;;". create_route's `.pop(n - 1)` silently discarded the
+  # origin. They also used bare HTTP.get with no timeout or error handling.
+  #
+  # Pickup ordering and the maps link now live in services/route_planner.rb,
+  # which needs no route optimiser at all.
 
   # @param location data, either a hash with lon, lat or a string [Hash, String]
   # @return [Location, nil]

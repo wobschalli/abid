@@ -1,0 +1,112 @@
+require 'uri'
+
+# Builds a driver's pickup order and a Google Maps link.
+#
+# Deliberately has no route optimiser. Drivers navigate with their own phone
+# regardless, Google geocodes free-text addresses client-side (better than
+# Nominatim, and free), and the alternative was OSRM's public demo server —
+# rate-limited, unsupported, and explicitly not for production. A sensible
+# order plus a working link beats an optimal order that 429s on a Sunday
+# morning.
+class RoutePlanner
+  # Google's directions URL API caps intermediate waypoints.
+  MAX_WAYPOINTS = 9
+
+  Stop = Struct.new(:kind, :ride_id, :name, :label, :lat, :lon, keyword_init: true) do
+    def coords?
+      lat.present? && lon.present?
+    end
+
+    # Coordinates when we have them — they are unambiguous — otherwise the
+    # address text, which Google will geocode.
+    def maps_token
+      return format('%.6f,%.6f', lat.to_f, lon.to_f) if coords?
+
+      label.to_s
+    end
+  end
+
+  Plan = Struct.new(:stops, :maps_url, :truncated, keyword_init: true) do
+    def pickups
+      stops.select { |s| s.kind == :pickup }
+    end
+
+    def destination
+      stops.find { |s| s.kind == :destination }
+    end
+  end
+
+  def initialize(car, event:)
+    @car = car
+    @event = event
+  end
+
+  def call
+    stops = pickup_stops
+    destination = destination_stop
+    all = destination ? stops + [destination] : stops
+
+    Plan.new(
+      stops: all,
+      maps_url: maps_url(all),
+      truncated: stops.size > MAX_WAYPOINTS
+    )
+  end
+
+  private
+
+  # Zone first, then name. Deterministic on purpose: the same board must
+  # produce the same order every time, or the dispatch digest flaps and every
+  # driver is permanently marked "changed since sent".
+  def pickup_stops
+    @car.passengers
+        .sort_by { |p| [Location::ZONES.index(p.zone.to_s) || 99, p.display_name.to_s.downcase] }
+        .map do |passenger|
+          Stop.new(
+            kind: :pickup,
+            ride_id: passenger.id,
+            name: passenger.display_name,
+            label: passenger.address.presence || passenger.display_name,
+            lat: passenger.pickup&.lat,
+            lon: passenger.pickup&.lon
+          )
+        end
+  end
+
+  def destination_stop
+    location = @event.location
+    return nil if location.nil?
+
+    Stop.new(kind: :destination, ride_id: nil, name: location.name,
+             label: location.name, lat: location.lat, lon: location.lon)
+  end
+
+  # origin = first pickup, destination = the venue, everything else a waypoint.
+  # The driver's own start is deliberately not included: most drivers have no
+  # address on file, and their phone already knows where they are.
+  def maps_url(stops)
+    return nil if stops.size < 2
+
+    # Two riders at the same address is one stop for the driver, not two — but
+    # only the pickups may be collapsed. Deduping the whole list drops the
+    # destination whenever someone is collected from the venue itself, which
+    # silently reroutes the driver to a rider's flat.
+    destination = stops.last
+    pickups = stops[0..-2].uniq(&:maps_token)
+    return nil if pickups.empty?
+
+    origin = pickups.first
+    waypoints = pickups[1..].to_a.first(MAX_WAYPOINTS)
+
+    query = {
+      api: 1,
+      origin: origin.maps_token,
+      destination: destination.maps_token,
+      travelmode: 'driving'
+    }
+    query[:waypoints] = waypoints.map(&:maps_token).join('|') if waypoints.any?
+
+    URI::HTTPS.build(host: 'www.google.com', path: '/maps/dir/',
+                     query: URI.encode_www_form(query)).to_s
+  end
+end

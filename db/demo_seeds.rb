@@ -87,7 +87,9 @@ users = PEOPLE.each_with_index.map do |(name, seats, zone), index|
     u.update(
       capacity: seats,
       location: by_zone[zone].sample,
-      leader: %w[alan ian].include?(name)
+      leader: %w[alan ian].include?(name),
+      # Drivers need a way to reach a rider waiting outside an apartment block.
+      phone: format('(765) 555-%04d', 100 + index)
     )
   end
 end

@@ -58,8 +58,17 @@ class Bot
     def tick
       generate_occurrences
       publish_signups
+      send_dispatches
       Event.message_due.find_each { |event| safely(event) { post_rides_message(event) } }
       Event.collection_due.find_each { |event| safely(event) { collect_reactions(event) } }
+    end
+
+    # Drains the dispatch outbox. If the bot was down when a coordinator pressed
+    # send, the row waited and goes out now.
+    def send_dispatches
+      DispatchSender.new(@bot, @messenger).pump
+    rescue StandardError => e
+      warn "dispatch pump failed: #{e.class}: #{e.message}"
     end
 
     # Sends any sign-up post whose scheduled time has arrived. Worst-case
@@ -120,7 +129,7 @@ class Bot
 
       sync_rides(event, signed_up)
 
-      @messenger&.dm_ian "reaction details for event: #{event}\n#{summary}"
+      @messenger&.dm_leaders "reaction details for event: #{event}\n#{summary}"
     end
 
     def known_users(reaction_users)

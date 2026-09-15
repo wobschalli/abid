@@ -35,6 +35,8 @@ class Components::BoardShell < Phlex::HTML
         car_grid
         render Components::BoardRail.new(board: @board, leader: @leader, tab: @tab)
       end
+      render Components::DispatchBar.new(board: @board, readiness: @board.readiness,
+                                         status: @board.dispatch_status, leader: @leader, tab: @tab)
       render Components::BoardFooter.new(board: @board)
     end
   end

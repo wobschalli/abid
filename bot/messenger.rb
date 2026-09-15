@@ -31,16 +31,29 @@ class Messenger < Bot
     end
   end
 
+  # DM any user. Returns false rather than raising when Discord refuses —
+  # "cannot send messages to this user" (code 50007) is a normal outcome when
+  # someone has DMs closed, not an error worth taking a job down for.
+  #
+  # @param user [User]
   # @param message [String]
-  # @return message sent [Discordrb::Message]
-  def dm_ian(message) #mostly for testing purposes, but also just for the trolls
-    @bot.user(User.find_by(name: 'ian').discord_id).dm(message)
+  # @return [Boolean] whether it was delivered
+  def dm_user(user, message)
+    return false if user&.discord_id.blank?
+
+    @bot.user(user.discord_id).dm(message)
+    true
+  rescue StandardError => e
+    warn "DM to #{user.display_name} failed: #{e.class}: #{e.message}"
+    false
   end
 
+  # Replaces the old hardcoded dm_ian/dm_alan, which looked up a user by the
+  # literal name 'ian' and raised NoMethodError on nil if no such row existed.
+  #
   # @param message [String]
-  # @return message sent [Discordrb::Message]
-  def dm_alan(message) #mostly for testing purposes, but also just for the trolls
-    @bot.user(User.find_by(name: 'alan').discord_id).dm(message)
+  def dm_leaders(message)
+    User.leaders.find_each { |leader| dm_user(leader, message) }
   end
 
   # @param server id [Integer]

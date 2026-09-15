@@ -10,6 +10,9 @@ class Event < ApplicationRecord
   has_many :signup_posts, through: :signup_options
 
   has_many :rides, dependent: :destroy
+  # restrict_with_error, not destroy: once drivers have been told who they are
+  # collecting, that record outlives the board.
+  has_many :dispatches, dependent: :restrict_with_error
   has_many :participants, through: :rides, source: :user
 
   # `belongs_to :driver` pointed at an events.driver_id column that does not
