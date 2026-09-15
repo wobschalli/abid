@@ -3,8 +3,8 @@ require_relative 'test_helper'
 class AutoFillerTest < AbidTest
   def test_seats_waiting_riders
     event = make_event
-    driver = make_driver(event, 'ian', seats: 4, zone: 'Campus')
-    riders = 3.times.map { |i| make_rider(event, "rider #{i}", zone: 'Campus') }
+    driver = make_driver(event, 'ian', seats: 4, zone: ZONE_1)
+    riders = 3.times.map { |i| make_rider(event, "rider #{i}", zone: ZONE_1) }
 
     seated = AutoFiller.new(event).call
 
@@ -15,8 +15,8 @@ class AutoFillerTest < AbidTest
 
   def test_never_exceeds_capacity
     event = make_event
-    make_driver(event, 'caleb', seats: 2, zone: 'North')
-    4.times { |i| make_rider(event, "rider #{i}", zone: 'North') }
+    make_driver(event, 'caleb', seats: 2, zone: ZONE_3)
+    4.times { |i| make_rider(event, "rider #{i}", zone: ZONE_3) }
 
     AutoFiller.new(event).call
 
@@ -26,10 +26,10 @@ class AutoFillerTest < AbidTest
 
   def test_counts_already_seated_riders_against_capacity
     event = make_event
-    driver = make_driver(event, 'tobin', seats: 2, zone: 'East')
-    make_rider(event, 'already here', zone: 'East', driver: driver)
-    make_rider(event, 'waiting a', zone: 'East')
-    make_rider(event, 'waiting b', zone: 'East')
+    driver = make_driver(event, 'tobin', seats: 2, zone: ZONE_5)
+    make_rider(event, 'already here', zone: ZONE_5, driver: driver)
+    make_rider(event, 'waiting a', zone: ZONE_5)
+    make_rider(event, 'waiting b', zone: ZONE_5)
 
     AutoFiller.new(event).call
 
@@ -39,9 +39,9 @@ class AutoFillerTest < AbidTest
 
   def test_does_not_move_a_seated_rider
     event = make_event
-    full = make_driver(event, 'christina', seats: 4, zone: 'Downtown')
-    _empty = make_driver(event, 'ranbir', seats: 4, zone: 'Downtown')
-    seated = make_rider(event, 'dalton', zone: 'Downtown', driver: full)
+    full = make_driver(event, 'christina', seats: 4, zone: ZONE_2)
+    _empty = make_driver(event, 'ranbir', seats: 4, zone: ZONE_2)
+    seated = make_rider(event, 'dalton', zone: ZONE_2, driver: full)
 
     AutoFiller.new(event).call
 
@@ -50,10 +50,10 @@ class AutoFillerTest < AbidTest
 
   def test_keeps_clashing_riders_apart
     event = make_event
-    a = make_driver(event, 'ian', seats: 4, zone: 'Campus')
-    b = make_driver(event, 'caleb', seats: 4, zone: 'Campus')
-    one = make_rider(event, 'kenzo', zone: 'Campus')
-    two = make_rider(event, 'ronin', zone: 'Campus')
+    a = make_driver(event, 'ian', seats: 4, zone: ZONE_1)
+    b = make_driver(event, 'caleb', seats: 4, zone: ZONE_1)
+    one = make_rider(event, 'kenzo', zone: ZONE_1)
+    two = make_rider(event, 'ronin', zone: ZONE_1)
     Clash.add(one.user_id, two.user_id)
 
     AutoFiller.new(event).call
@@ -66,9 +66,9 @@ class AutoFillerTest < AbidTest
 
   def test_leaves_rider_waiting_rather_than_breaking_a_clash
     event = make_event
-    only = make_driver(event, 'ian', seats: 4, zone: 'Campus')
-    seated = make_rider(event, 'kenzo', zone: 'Campus', driver: only)
-    waiting = make_rider(event, 'ronin', zone: 'Campus')
+    only = make_driver(event, 'ian', seats: 4, zone: ZONE_1)
+    seated = make_rider(event, 'kenzo', zone: ZONE_1, driver: only)
+    waiting = make_rider(event, 'ronin', zone: ZONE_1)
     Clash.add(seated.user_id, waiting.user_id)
 
     AutoFiller.new(event).call
@@ -78,10 +78,10 @@ class AutoFillerTest < AbidTest
 
   def test_closest_zone_strategy_prefers_matching_zone
     event = make_event
-    far = make_driver(event, 'far', seats: 4, zone: 'North')
-    near = make_driver(event, 'near', seats: 4, zone: 'East')
+    far = make_driver(event, 'far', seats: 4, zone: ZONE_3)
+    near = make_driver(event, 'near', seats: 4, zone: ZONE_5)
     # `far` is emptier only if we ignore zone; both are empty here, so zone decides.
-    rider = make_rider(event, 'renata', zone: 'East')
+    rider = make_rider(event, 'renata', zone: ZONE_5)
 
     AutoFiller.new(event, strategy: 'closest').call
 
@@ -91,10 +91,10 @@ class AutoFillerTest < AbidTest
 
   def test_spread_strategy_balances_across_cars
     event = make_event
-    busy = make_driver(event, 'busy', seats: 4, zone: 'East')
-    quiet = make_driver(event, 'quiet', seats: 4, zone: 'North')
-    3.times { |i| make_rider(event, "seated #{i}", zone: 'East', driver: busy) }
-    rider = make_rider(event, 'newcomer', zone: 'East')
+    busy = make_driver(event, 'busy', seats: 4, zone: ZONE_5)
+    quiet = make_driver(event, 'quiet', seats: 4, zone: ZONE_3)
+    3.times { |i| make_rider(event, "seated #{i}", zone: ZONE_5, driver: busy) }
+    rider = make_rider(event, 'newcomer', zone: ZONE_5)
 
     AutoFiller.new(event, strategy: 'spread').call
 
@@ -103,9 +103,9 @@ class AutoFillerTest < AbidTest
 
   def test_ignores_drivers_who_are_not_driving_today
     event = make_event
-    off = make_driver(event, 'eugene', seats: 4, zone: 'Campus')
+    off = make_driver(event, 'eugene', seats: 4, zone: ZONE_1)
     off.update!(status: 'cancelled')
-    rider = make_rider(event, 'caitlin', zone: 'Campus')
+    rider = make_rider(event, 'caitlin', zone: ZONE_1)
 
     assert_equal 0, AutoFiller.new(event).call
     assert_nil rider.reload.driver_ride_id
@@ -113,8 +113,8 @@ class AutoFillerTest < AbidTest
 
   def test_ignores_riders_who_are_not_coming
     event = make_event
-    make_driver(event, 'ian', seats: 4, zone: 'Campus')
-    away = make_rider(event, 'gone', zone: 'Campus', status: 'no_show')
+    make_driver(event, 'ian', seats: 4, zone: ZONE_1)
+    away = make_rider(event, 'gone', zone: ZONE_1, status: 'no_show')
 
     assert_equal 0, AutoFiller.new(event).call
     assert_nil away.reload.driver_ride_id
@@ -122,8 +122,8 @@ class AutoFillerTest < AbidTest
 
   def test_unknown_strategy_falls_back_to_closest
     event = make_event
-    make_driver(event, 'ian', seats: 4, zone: 'Campus')
-    rider = make_rider(event, 'caitlin', zone: 'Campus')
+    make_driver(event, 'ian', seats: 4, zone: ZONE_1)
+    rider = make_rider(event, 'caitlin', zone: ZONE_1)
 
     AutoFiller.new(event, strategy: 'nonsense').call
 

@@ -15,8 +15,8 @@ class DispatchReadinessTest < AbidTest
   end
 
   def test_a_clean_board_is_ready
-    driver = make_driver(@event, 'ian', seats: 4, zone: 'Campus')
-    rider = make_rider(@event, 'caitlin', zone: 'Campus', driver: driver)
+    driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    rider = make_rider(@event, 'caitlin', zone: ZONE_1, driver: driver)
     rider.update!(pickup_address: 'Harker Hall lot')
 
     assert readiness.ready?
@@ -24,7 +24,7 @@ class DispatchReadinessTest < AbidTest
   end
 
   def test_no_drivers_blocks
-    make_rider(@event, 'caitlin', zone: 'Campus')
+    make_rider(@event, 'caitlin', zone: ZONE_1)
 
     assert_includes keys, :no_drivers
     refute readiness.ready?
@@ -33,18 +33,18 @@ class DispatchReadinessTest < AbidTest
   # Waiting riders are worth saying, but should not stop a coordinator sending
   # what they have already worked out.
   def test_unseated_riders_warn_but_do_not_block
-    driver = make_driver(@event, 'ian', seats: 4, zone: 'Campus')
-    make_rider(@event, 'seated', zone: 'Campus', driver: driver).update!(pickup_address: 'x')
-    make_rider(@event, 'waiting', zone: 'Campus')
+    driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    make_rider(@event, 'seated', zone: ZONE_1, driver: driver).update!(pickup_address: 'x')
+    make_rider(@event, 'waiting', zone: ZONE_1)
 
     assert_includes keys, :unseated
     assert readiness.ready?, 'unseated riders should not block the send'
   end
 
   def test_a_clash_in_one_car_blocks
-    driver = make_driver(@event, 'ian', seats: 4, zone: 'Campus')
-    a = make_rider(@event, 'kenzo', zone: 'Campus', driver: driver)
-    b = make_rider(@event, 'ronin', zone: 'Campus', driver: driver)
+    driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    a = make_rider(@event, 'kenzo', zone: ZONE_1, driver: driver)
+    b = make_rider(@event, 'ronin', zone: ZONE_1, driver: driver)
     [a, b].each { |r| r.update!(pickup_address: 'x') }
     Clash.add(a.user_id, b.user_id)
 
@@ -53,8 +53,8 @@ class DispatchReadinessTest < AbidTest
   end
 
   def test_an_over_capacity_car_blocks
-    driver = make_driver(@event, 'caleb', seats: 1, zone: 'North')
-    2.times { |i| make_rider(@event, "over #{i}", zone: 'North', driver: driver).update!(pickup_address: 'x') }
+    driver = make_driver(@event, 'caleb', seats: 1, zone: ZONE_3)
+    2.times { |i| make_rider(@event, "over #{i}", zone: ZONE_3, driver: driver).update!(pickup_address: 'x') }
 
     assert_includes keys, :over_capacity
     refute readiness.ready?
@@ -64,8 +64,8 @@ class DispatchReadinessTest < AbidTest
   # driver_ride_id but leaves passengers pointing at them, so the riders sit in
   # a car that is not coming and nobody notices.
   def test_a_driver_marked_out_still_holding_passengers_blocks
-    driver = make_driver(@event, 'eugene', seats: 4, zone: 'Campus')
-    make_rider(@event, 'caitlin', zone: 'Campus', driver: driver).update!(pickup_address: 'x')
+    driver = make_driver(@event, 'eugene', seats: 4, zone: ZONE_1)
+    make_rider(@event, 'caitlin', zone: ZONE_1, driver: driver).update!(pickup_address: 'x')
     driver.update!(status: 'cancelled', driver_ride_id: nil)
 
     finding = readiness.findings.find { |f| f.key == :driver_out_with_passengers }
@@ -78,7 +78,7 @@ class DispatchReadinessTest < AbidTest
   # No zone means no location on the user either, so Ride#address resolves to
   # nothing — a driver cannot collect someone whose address nobody knows.
   def test_a_seated_rider_with_no_pickup_address_blocks
-    driver = make_driver(@event, 'ian', seats: 4, zone: 'Campus')
+    driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
     make_rider(@event, 'nowhere', driver: driver)
 
     assert_includes keys, :rider_no_pickup
@@ -87,8 +87,8 @@ class DispatchReadinessTest < AbidTest
 
   def test_a_rider_on_an_overlapping_other_event_warns
     other = make_event(name: 'Retreat departure', starts: (@event.start_time + 30.minutes))
-    driver = make_driver(@event, 'ian', seats: 4, zone: 'Campus')
-    rider = make_rider(@event, 'caitlin', zone: 'Campus', driver: driver)
+    driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    rider = make_rider(@event, 'caitlin', zone: ZONE_1, driver: driver)
     rider.update!(pickup_address: 'x')
     other.rides.create!(user: rider.user, role: 'rider', status: 'requested')
 
@@ -103,8 +103,8 @@ class DispatchReadinessTest < AbidTest
   # plenty of people attend both.
   def test_being_on_a_sibling_slot_the_same_day_is_not_a_double_booking
     sibling = make_event(name: 'Sunday Service', starts: (@event.start_time + 1.hour))
-    driver = make_driver(@event, 'ian', seats: 4, zone: 'Campus')
-    rider = make_rider(@event, 'caitlin', zone: 'Campus', driver: driver)
+    driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    rider = make_rider(@event, 'caitlin', zone: ZONE_1, driver: driver)
     rider.update!(pickup_address: 'x')
     sibling.rides.create!(user: rider.user, role: 'rider', status: 'requested')
 
@@ -112,9 +112,9 @@ class DispatchReadinessTest < AbidTest
   end
 
   def test_blocking_and_advisory_are_separated
-    driver = make_driver(@event, 'caleb', seats: 1, zone: 'North')
-    2.times { |i| make_rider(@event, "over #{i}", zone: 'North', driver: driver).update!(pickup_address: 'x') }
-    make_rider(@event, 'waiting', zone: 'North')
+    driver = make_driver(@event, 'caleb', seats: 1, zone: ZONE_3)
+    2.times { |i| make_rider(@event, "over #{i}", zone: ZONE_3, driver: driver).update!(pickup_address: 'x') }
+    make_rider(@event, 'waiting', zone: ZONE_3)
 
     r = readiness
     assert_equal [:over_capacity], r.blocking.map(&:key)

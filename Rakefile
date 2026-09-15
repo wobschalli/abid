@@ -10,6 +10,11 @@ namespace :db do
   task :demo do
     ruby 'db/demo_seeds.rb'
   end
+
+  desc 'Refine approximate location coordinates against OpenStreetMap'
+  task :geocode do
+    ruby 'db/geocode.rb'
+  end
 end
 
 Rake::TestTask.new(:test) do |t|

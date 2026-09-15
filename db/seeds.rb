@@ -12,6 +12,12 @@ require_relative '../models/role'
 require_relative '../models/server'
 require_relative '../models/user'
 
+# Real geography first: everything below this point needs config.yml and bails
+# without it, but the locations do not and are needed on every machine.
+require_relative 'locations'
+Abid::Locations.seed!
+puts "seeded #{Abid::Locations.count} locations"
+
 begin
   config = YAML.load_file('config.yml')
 rescue Errno::ENOENT
@@ -34,8 +40,7 @@ Channel.find_or_create_by name: 'general', discord_id: config.dig('test', 'gener
 
 DiscordInfo.find_or_create_by token: config.dig('discord', 'token'), app_id: config.dig('discord', 'app_id'), public_key: config.dig('discord', 'public_key')
 
-Location.find_or_create_by name: 'lark', lon: -86.9467261, lat: 40.4729654, aliases: ['lark apartments', 'lark apts', 'lark west lafayette']
-Location.find_or_create_by name: 'greater lafayette chinese alliance church', lon: -86.9720287, lat: 40.4521281, aliases: ['glcac', 'chinese alliance church', 'church']
+# Locations moved to db/locations.rb, seeded above.
 
 #data privacy or something
 config['users'].each do |user, data|

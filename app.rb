@@ -125,6 +125,20 @@ class App < Sinatra::Base
     redirect to("/events/#{event.id}")
   end
 
+  # --- locations ------------------------------------------------------------
+
+  # Read-only. The list is real geography maintained in db/locations.rb, not
+  # per-event data, so there is deliberately no editing UI.
+  get '/locations' do
+    locations = Location.order(:name).to_a
+    phlex LocationsIndex.new(
+      by_zone: locations.select(&:zone).group_by(&:zone),
+      unzoned: locations.reject(&:zone),
+      usage: location_usage,
+      leader: leader?
+    )
+  end
+
   # --- recurring series -----------------------------------------------------
 
   get '/series' do
@@ -507,6 +521,16 @@ class App < Sinatra::Base
          .chronological
          .limit(40)
          .to_a
+  end
+
+  # Two grouped counts rather than N per-row queries.
+  def location_usage
+    users = User.where.not(location_id: nil).group(:location_id).count
+    rides = Ride.where.not(pickup_location_id: nil).group(:pickup_location_id).count
+
+    (users.keys | rides.keys).to_h do |id|
+      [id, { users: users[id].to_i, rides: rides[id].to_i }]
+    end
   end
 
   def form_collections

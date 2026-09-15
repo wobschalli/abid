@@ -4,9 +4,9 @@ require 'csv'
 class RideBoardCsvTest < AbidTest
   def test_one_column_per_car_with_riders_beneath
     event = make_event
-    ian = make_driver(event, 'ian', seats: 4, zone: 'Campus')
-    make_driver(event, 'caleb', seats: 3, zone: 'North')
-    make_rider(event, 'caitlin', zone: 'Campus', driver: ian)
+    ian = make_driver(event, 'ian', seats: 4, zone: ZONE_1)
+    make_driver(event, 'caleb', seats: 3, zone: ZONE_3)
+    make_rider(event, 'caitlin', zone: ZONE_1, driver: ian)
 
     rows = CSV.parse(RideBoardCsv.new(RideBoard.new(event)).to_csv)
 
@@ -18,8 +18,8 @@ class RideBoardCsvTest < AbidTest
 
   def test_lists_people_still_waiting
     event = make_event
-    make_driver(event, 'ian', seats: 4, zone: 'Campus')
-    make_rider(event, 'stranded', zone: 'East')
+    make_driver(event, 'ian', seats: 4, zone: ZONE_1)
+    make_rider(event, 'stranded', zone: ZONE_5)
 
     csv = RideBoardCsv.new(RideBoard.new(event)).to_csv
 
@@ -29,7 +29,7 @@ class RideBoardCsvTest < AbidTest
 
   def test_handles_an_event_with_no_drivers
     event = make_event
-    make_rider(event, 'stranded', zone: 'East')
+    make_rider(event, 'stranded', zone: ZONE_5)
 
     csv = RideBoardCsv.new(RideBoard.new(event)).to_csv
 
@@ -39,8 +39,8 @@ class RideBoardCsvTest < AbidTest
 
   def test_omits_the_waiting_block_when_everyone_is_seated
     event = make_event
-    ian = make_driver(event, 'ian', seats: 4, zone: 'Campus')
-    make_rider(event, 'caitlin', zone: 'Campus', driver: ian)
+    ian = make_driver(event, 'ian', seats: 4, zone: ZONE_1)
+    make_rider(event, 'caitlin', zone: ZONE_1, driver: ian)
 
     refute_includes RideBoardCsv.new(RideBoard.new(event)).to_csv, 'Still waiting'
   end

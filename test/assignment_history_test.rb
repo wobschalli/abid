@@ -3,9 +3,9 @@ require_relative 'test_helper'
 class AssignmentHistoryTest < AbidTest
   def test_undo_puts_a_rider_back_where_they_were
     event = make_event
-    a = make_driver(event, 'ian', seats: 4, zone: 'Campus')
-    b = make_driver(event, 'caleb', seats: 4, zone: 'North')
-    rider = make_rider(event, 'caitlin', zone: 'Campus', driver: a)
+    a = make_driver(event, 'ian', seats: 4, zone: ZONE_1)
+    b = make_driver(event, 'caleb', seats: 4, zone: ZONE_3)
+    rider = make_rider(event, 'caitlin', zone: ZONE_1, driver: a)
 
     session = {}
     history = AssignmentHistory.new(session, event)
@@ -19,8 +19,8 @@ class AssignmentHistoryTest < AbidTest
 
   def test_undo_restores_status_too
     event = make_event
-    make_driver(event, 'ian', seats: 4, zone: 'Campus')
-    rider = make_rider(event, 'caitlin', zone: 'Campus')
+    make_driver(event, 'ian', seats: 4, zone: ZONE_1)
+    rider = make_rider(event, 'caitlin', zone: ZONE_1)
 
     session = {}
     history = AssignmentHistory.new(session, event)
@@ -34,8 +34,8 @@ class AssignmentHistoryTest < AbidTest
 
   def test_one_autofill_is_a_single_undo_step
     event = make_event
-    make_driver(event, 'ian', seats: 6, zone: 'Campus')
-    riders = 3.times.map { |i| make_rider(event, "rider #{i}", zone: 'Campus') }
+    make_driver(event, 'ian', seats: 6, zone: ZONE_1)
+    riders = 3.times.map { |i| make_rider(event, "rider #{i}", zone: ZONE_1) }
 
     session = {}
     history = AssignmentHistory.new(session, event)
@@ -56,7 +56,7 @@ class AssignmentHistoryTest < AbidTest
 
   def test_keeps_at_most_ten_steps
     event = make_event
-    rider = make_rider(event, 'caitlin', zone: 'Campus')
+    rider = make_rider(event, 'caitlin', zone: ZONE_1)
 
     session = {}
     12.times { AssignmentHistory.new(session, event).record([rider]) }
@@ -67,7 +67,7 @@ class AssignmentHistoryTest < AbidTest
   def test_history_is_scoped_per_event
     a = make_event(name: 'Early')
     b = make_event(name: 'Late')
-    rider = make_rider(a, 'caitlin', zone: 'Campus')
+    rider = make_rider(a, 'caitlin', zone: ZONE_1)
 
     session = {}
     AssignmentHistory.new(session, a).record([rider])
@@ -78,7 +78,7 @@ class AssignmentHistoryTest < AbidTest
 
   def test_undo_ignores_rides_deleted_since
     event = make_event
-    rider = make_rider(event, 'caitlin', zone: 'Campus')
+    rider = make_rider(event, 'caitlin', zone: ZONE_1)
 
     session = {}
     AssignmentHistory.new(session, event).record([rider])

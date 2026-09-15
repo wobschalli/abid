@@ -22,9 +22,15 @@ class Ride < ApplicationRecord
 
   has_many :signup_reactions, dependent: :nullify
 
+  before_validation :canonicalize_zone
+
   validates :role, inclusion: { in: ROLES }
   validates :status, inclusion: { in: STATUSES }
   validates :source, inclusion: { in: SOURCES }
+  # Same gate as Location: rides.zone wins over the location's zone, so a bad
+  # value here overrides good data — but an unconditional validation would let
+  # one legacy row roll back a whole AutoFiller transaction.
+  validates :zone, inclusion: { in: Location::ZONES }, allow_blank: true, if: :zone_changed?
   validates :user_id, uniqueness: { scope: :event_id }
   validate :driver_ride_must_be_a_driver
   validate :driver_ride_must_be_same_event
@@ -120,6 +126,13 @@ class Ride < ApplicationRecord
   end
 
   private
+
+  # `self[:zone]`, never `self.zone` — the reader below is overridden to fall
+  # through to the pickup location, so `self.zone = zone` would copy the
+  # location's zone onto the ride and destroy the "no override" state.
+  def canonicalize_zone
+    self[:zone] = Location.canonical_zone(self[:zone])
+  end
 
   def driver_ride_must_be_a_driver
     return if driver_ride.nil?

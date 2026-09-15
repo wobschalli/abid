@@ -17,64 +17,61 @@ puts "seeding demo data into #{Abid.env}…"
 
 # --- locations --------------------------------------------------------------
 
-LOCATIONS = {
-  'North' => [
-    ['1420 Ridgeway Ave', 40.4600, -86.9200],
-    ['88 Marlow Ct', 40.4650, -86.9300]
-  ],
-  'Campus' => [
-    ['Harker Hall lot', 40.4259, -86.9081],
-    ['Eastgate Apts, lot B', 40.4280, -86.9150]
-  ],
-  'Downtown' => [
-    ['4th & Pine', 40.4167, -86.8753],
-    ['901 Grand Ave', 40.4190, -86.8800]
-  ],
-  'East' => [
-    ['77 Lakeshore Dr', 40.4300, -86.8500],
-    ['1102 Oakvale', 40.4350, -86.8550]
-  ]
-}.freeze
+# Real West Lafayette places, shared with db/seeds.rb. This file used to invent
+# eight fictional streets; those are gone.
+require_relative 'locations'
+Abid::Locations.seed!
 
-locations = LOCATIONS.flat_map do |zone, entries|
-  entries.map do |name, lat, lon|
-    Location.find_or_create_by(name: name) do |l|
-      l.lat = lat
-      l.lon = lon
-      l.zone = zone
-    end.tap { |l| l.update(zone: zone) if l.zone != zone }
-  end
+# The eight invented streets earlier versions of this file created. They still
+# exist in any database seeded before the real list landed, and migration 2600
+# gave them real-looking zone names, so they are no longer distinguishable by
+# eye. References are nulled first — rides.pickup_location_id has a foreign key
+# and would otherwise refuse the delete.
+FICTIONAL = ['Harker Hall lot', 'Eastgate Apts, lot B', '4th & Pine', '901 Grand Ave',
+             '1420 Ridgeway Ave', '88 Marlow Ct', '77 Lakeshore Dr', '1102 Oakvale'].freeze
+
+stale_locations = Location.where(name: FICTIONAL)
+if stale_locations.any?
+  ids = stale_locations.pluck(:id)
+  puts "  removing #{ids.size} invented demo locations"
+  Ride.where(pickup_location_id: ids).update_all(pickup_location_id: nil)
+  User.where(location_id: ids).update_all(location_id: nil)
+  Event.where(location_id: ids).update_all(location_id: nil)
+  EventSeries.where(location_id: ids).update_all(location_id: nil)
+  Location.where(id: ids).delete_all
 end
 
-by_zone = locations.group_by(&:zone)
+by_zone = Location.zoned.group_by(&:zone)
+missing = Location::ZONES - by_zone.keys
+raise "no seeded locations in #{missing.join(', ')}" if missing.any?
 
 # --- people -----------------------------------------------------------------
 
 # name, seats (nil = rider), zone
 PEOPLE = [
-  ['alan', nil, 'Downtown'],
-  ['ian', 4, 'Campus'],
-  ['caleb', 3, 'North'],
-  ['tobin', 6, 'East'],
-  ['christina', 4, 'Downtown'],
-  ['ranbir', 4, 'North'],
-  ['caitlin', nil, 'Campus'],
-  ['jalen', nil, 'Campus'],
-  ['kenzo', nil, 'Campus'],
-  ['maribel', nil, 'North'],
-  ['kylan r', nil, 'North'],
-  ['juno wa', nil, 'North'],
-  ['renata', nil, 'East'],
-  ['emilio', nil, 'East'],
-  ['ronin', nil, 'East'],
-  ['dalton', nil, 'Downtown'],
-  ['irene', nil, 'Downtown'],
-  ['luna cheng', nil, 'Campus'],
-  ['tim', nil, 'East'],
-  ['flora', nil, 'East'],
-  ['justin', nil, 'North'],
-  ['lydia', nil, 'Downtown'],
-  ['nate', nil, 'Campus']
+  ['alan', nil, 'Chauncey'],
+  ['ian', 4, 'On-campus'],
+  ['caleb', 3, 'Northwestern'],
+  ['tobin', 6, 'Lafayette'],
+  ['christina', 4, 'Chauncey'],
+  ['ranbir', 4, 'Northwestern'],
+  ['caitlin', nil, 'On-campus'],
+  ['jalen', nil, 'On-campus'],
+  ['kenzo', nil, 'On-campus'],
+  ['maribel', nil, 'Northwestern'],
+  ['kylan r', nil, 'Northwestern'],
+  ['juno wa', nil, 'Northwestern'],
+  ['renata', nil, 'Lafayette'],
+  ['emilio', nil, 'Lafayette'],
+  ['ronin', nil, 'Lafayette'],
+  ['dalton', nil, 'Chauncey'],
+  ['irene', nil, 'Chauncey'],
+  ['luna cheng', nil, 'On-campus'],
+  ['tim', nil, 'Lafayette'],
+  ['flora', nil, 'Lafayette'],
+  ['justin', nil, 'Northwestern'],
+  ['lydia', nil, 'Chauncey'],
+  ['nate', nil, 'On-campus']
 ].freeze
 
 users = PEOPLE.each_with_index.map do |(name, seats, zone), index|
@@ -138,7 +135,11 @@ orphans = Event.one_off.where(name: RECURRING_NAMES)
 puts "  removing #{orphans.count} stale one-off demo events" if orphans.any?
 orphans.destroy_all
 
-church = Location.find_by(name: 'Harker Hall lot')
+# find_by! not find_by: a nil venue here is silent and total — every series and
+# the retreat get a nil location, RoutePlanner#destination_stop returns nil, and
+# no driver DM in the whole demo dataset gets a maps link, with no error
+# anywhere. Also a real place now, not an invented one.
+church = Location.find_by!(name: Abid::Locations::GLCAC)
 school_series  = demo_series('Sunday School', 'early', 0, 9, 30, church)
 service_series = demo_series('Sunday Service', 'late', 0, 10, 30, church)
 friday_early_series = demo_series('Friday Bible Study', 'early', 5, 18, 30, church)

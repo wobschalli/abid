@@ -45,12 +45,25 @@ class RideBoard
   end
 
   # Pool filtered by the search box, grouped by zone in ZONES order. Zones with
-  # nobody in them are dropped, and anyone with no zone set lands in "Unzoned" so
-  # they can't silently disappear from the queue.
+  # nobody in them are dropped.
+  #
+  # Every waiting rider must appear in exactly one group. This used to build
+  # `ZONES.map { [z, grouped[z]] } + [['Unzoned', grouped[nil]]]`, which silently
+  # DROPPED anyone holding a zone that was not in the list — not nil, so not
+  # Unzoned either. They vanished from the queue while pool_count still counted
+  # them, so the footer said "7 waiting" above a queue showing four. Consuming
+  # the hash with `delete` makes the partition total by construction.
   def queue_groups
     grouped = visible_pool.group_by { |r| r.zone.presence }
-    ordered = Location::ZONES.map { |z| [z, grouped[z]] } + [['Unzoned', grouped[nil]]]
-    ordered.filter_map do |zone, riders|
+
+    known = Location::ZONES.map { |zone| [zone, grouped.delete(zone)] }
+    # Whatever is left is a zone nobody recognises — a name from before a
+    # rename, or free text typed into the details rail. It gets its own labelled
+    # bucket rather than being folded into Unzoned: "we don't know where they
+    # live" and "this zone list is stale" need different fixes.
+    unknown = grouped.except(nil).sort.map { |zone, riders| ["#{zone} (unrecognised)", riders] }
+
+    (known + unknown + [['Unzoned', grouped[nil]]]).filter_map do |zone, riders|
       next if riders.blank?
       { zone: zone, count: riders.size, riders: riders }
     end

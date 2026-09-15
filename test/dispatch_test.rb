@@ -38,9 +38,9 @@ class DispatchTest < AbidTest
     @event = make_event(name: 'Sunday School')
     # A destination is what makes a directions link possible; without one the
     # planner correctly produces no URL.
-    @event.update!(location: location_in('Campus'))
-    @driver = make_driver(@event, 'ian', seats: 4, zone: 'Campus')
-    @rider = make_rider(@event, 'caitlin', zone: 'Campus', driver: @driver)
+    @event.update!(location: location_in(ZONE_1))
+    @driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    @rider = make_rider(@event, 'caitlin', zone: ZONE_1, driver: @driver)
     @rider.update!(pickup_address: 'Harker Hall lot')
     @rider.user.update!(phone: '(765) 555-0134')
   end
@@ -94,7 +94,7 @@ class DispatchTest < AbidTest
   def test_changed_scope_picks_up_a_driver_whose_car_changed
     deliver(plan(scope: 'all'))
 
-    make_rider(@event, 'jalen', zone: 'Campus', driver: @driver).update!(pickup_address: 'Eastgate')
+    make_rider(@event, 'jalen', zone: ZONE_1, driver: @driver).update!(pickup_address: 'Eastgate')
 
     dispatch = DispatchPlanner.new(board, scope: 'changed').call
     refute_nil dispatch
@@ -113,7 +113,7 @@ class DispatchTest < AbidTest
   end
 
   def test_the_digest_ignores_rider_order
-    other = make_rider(@event, 'jalen', zone: 'Campus', driver: @driver)
+    other = make_rider(@event, 'jalen', zone: ZONE_1, driver: @driver)
     a = DispatchDigest.for(@driver, [@rider, other], @event)
     b = DispatchDigest.for(@driver, [other, @rider], @event)
 
@@ -122,7 +122,7 @@ class DispatchTest < AbidTest
 
   def test_the_digest_changes_when_a_rider_is_added
     before = DispatchDigest.for(@driver, [@rider], @event)
-    other = make_rider(@event, 'jalen', zone: 'Campus', driver: @driver)
+    other = make_rider(@event, 'jalen', zone: ZONE_1, driver: @driver)
 
     refute_equal before, DispatchDigest.for(@driver, [@rider, other], @event)
   end
@@ -136,7 +136,7 @@ class DispatchTest < AbidTest
 
   # Moving one rider must mark BOTH the old and the new driver as changed.
   def test_moving_a_rider_changes_both_drivers
-    other_driver = make_driver(@event, 'caleb', seats: 4, zone: 'North')
+    other_driver = make_driver(@event, 'caleb', seats: 4, zone: ZONE_3)
     deliver(plan(scope: 'all'))
 
     @rider.update!(driver_ride_id: other_driver.id)
@@ -176,7 +176,7 @@ class DispatchTest < AbidTest
   end
 
   def test_a_partial_failure_is_marked_partial
-    make_driver(@event, 'caleb', seats: 4, zone: 'North')
+    make_driver(@event, 'caleb', seats: 4, zone: ZONE_3)
     dispatch = plan
     bot = FakeBot.new
     # One driver's DMs are closed.

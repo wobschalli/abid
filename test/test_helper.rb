@@ -14,6 +14,12 @@ require 'minitest/autorun'
 class AbidTest < Minitest::Test
   DISCORD_ID_BASE = 800_000_000
 
+  # Positional, not semantic. Almost every test needs "a zone" or "a different
+  # zone", and route_planner_test needs "a zone that sorts before another" —
+  # which by definition is ZONE_1 vs ZONE_2. Naming them by ordinal means the
+  # next time the zone vocabulary changes, no test needs touching.
+  ZONE_1, ZONE_2, ZONE_3, ZONE_4, ZONE_5 = Location::ZONES
+
   def setup
     ActiveRecord::Base.connection.begin_transaction(joinable: false)
     @discord_seq = 0
