@@ -4,7 +4,8 @@
 default: &default
   adapter: postgresql
   encoding: unicode
-  pool: 5
+  # Puma runs 5 threads; the bot's Rufus scheduler runs each job in its own.
+  pool: 10
   username: postgres
   password: password
   host: localhost

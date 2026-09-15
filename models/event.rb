@@ -19,15 +19,26 @@ class Event < ApplicationRecord
 
   SECTIONS = %w[early late].freeze
 
+  # How late the bot may still post a rides message it missed. Beyond this the
+  # occurrence is skipped rather than posted — a bot that has been down for a
+  # week should not wake up and dump ten stale sign-up posts into the channel.
+  POST_GRACE = 6.hours
+
+  # Legacy Rufus-cron bookkeeping. The poller replaced it; the columns are
+  # dropped a release later so a surviving old bot process does not crash in its
+  # at_exit block. See db/migrate/2200.
+  self.ignored_columns += %w[repeats_every scheduled send_schedule_id collect_schedule_id]
+
   scope :active, -> { where(disabled: false) }
   scope :current, -> { where("start_time <= :now AND end_time >= :now", now: Time.zone.now) }
   scope :inactive, -> { where(disabled: true) }
-  scope :past, -> { where("end_time <= ?", Time.zone.now) }
-  scope :not_scheduled, -> { where(scheduled: false) }
-  scope :scheduled, -> { where(scheduled: true) }
+  # Events created through the Discord modal often have no end_time, and would
+  # never appear under Past without the fallback.
+  scope :past, -> { where("coalesce(end_time, start_time + interval '2 hours') <= ?", Time.zone.now) }
   scope :upcoming, -> { where("start_time >= ?", Time.zone.now) }
-  scope :unscheduled, -> { where(scheduled: false) }
 
+  scope :recurring, -> { where.not(series_id: nil) }
+  scope :one_off, -> { where(series_id: nil) }
   scope :section, ->(section) { where(section: section) }
   scope :chronological, -> { order(:start_time) }
 
@@ -37,7 +48,10 @@ class Event < ApplicationRecord
   scope :message_due, lambda {
     active.where(rides_message_id: nil)
           .where.not(message_rides_at: nil)
-          .where('message_rides_at <= ?', Time.zone.now)
+          .where.not(channel_id: nil)
+          .where.not(message: nil)
+          .where(message_rides_at: POST_GRACE.ago..Time.zone.now)
+          .where('start_time > ?', Time.zone.now)
   }
 
   scope :collection_due, lambda {
@@ -65,8 +79,22 @@ class Event < ApplicationRecord
     !self.disabled
   end
 
-  def schedulable?
-    name && start_time && end_time && message_rides_at && collect_rides_at && channel && location
+  # Has everything the bot needs to post a rides message for this occurrence.
+  # Replaces `schedulable?`, which asked whether a Rufus job could be registered.
+  def postable?
+    name.present? && start_time && message_rides_at && channel_id && message.present?
+  end
+
+  def recurring?
+    series_id.present?
+  end
+
+  def one_off?
+    series_id.nil?
+  end
+
+  def posted?
+    rides_message_id.present?
   end
 
   def to_h #this allows for the object to be passed directly into Discordrb methods
@@ -98,10 +126,4 @@ class Event < ApplicationRecord
     rides.riders.unassigned
   end
 
-  def unschedule
-    self.scheduled = false
-    self.send_schedule_id = ''
-    self.collect_schedule_id = ''
-    self.save
-  end
 end

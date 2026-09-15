@@ -30,9 +30,8 @@ class Bot
     @messenger.bot
   end
 
-  def bot_schedule(event)
-    @scheduler.schedule(event)
-  end
+  # `bot_schedule` lived here. Scheduler no longer registers per-event jobs — it
+  # polls Event.message_due / Event.collection_due — so there is nothing to call.
 
   # @return pronouncable password [String]
   def passgen

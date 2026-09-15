@@ -267,7 +267,6 @@ class Messenger < Bot
       [ TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints, :success ]
     end
 
-    # bot_schedule(evt) if evt.schedulable?
 
     event.update_message content: event.message.content do |_, view|
       view.row do |row|
@@ -340,11 +339,9 @@ class Messenger < Bot
       [ TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints, :success ]
     end
 
-    # `bot_schedule(evt)` here raised NoMethodError on nil at the end of every
-    # /event create — masked only because the 5-minute poll picked the event up
-    # anyway. The safe navigation matters: Setup and Scheduler are built after
-    # @messenger.run, so a command firing during boot still sees nil.
-    scheduler&.schedule(evt) if evt.schedulable?
+    # Nothing to schedule: Scheduler polls Event.message_due every 30 seconds and
+    # picks this occurrence up on its own. The call that used to be here
+    # (`bot_schedule(evt)`) raised NoMethodError on a nil scheduler every time.
 
     event.update_message content: event.message.content do |_, view|
       view.row do |row|

@@ -2,35 +2,77 @@ require_relative 'hfile'
 require_relative 'bot'
 
 class Bot
+  # Drives everything time-based in the bot from a single poll.
+  #
+  # This replaced a Rufus cron-per-event design that was the direct cause of the
+  # "a weekly event posts exactly once, ever" bug: one Event row was reused for
+  # every week, `send_scheduled_message` bailed as soon as `rides_message_id` was
+  # set, and nothing ever cleared it. With one Event row per occurrence,
+  # "already posted" is a per-occurrence fact, and the two scopes below — which
+  # were written months ago and never called — become the whole engine.
+  #
+  # Polling also means no in-memory schedule to lose, so a restart costs nothing
+  # and a bot that was down catches up on its own.
   class Scheduler
-    def initialize(bot, messenger = nil)
-      @scheduler = Rufus::Scheduler.new(discard_past: false)
-      @bot = bot
-      # Was never assigned, so every collect job died on `@messenger.dm_ian`.
-      @messenger = messenger
-      schedule_existing_events
-      @task_thread = Thread.new { task_scheduler } #simplest way to ensure all events are scheduled
-      at_exit do
-        Event.scheduled.map(&:unschedule) #scheduler lives in memory only
-        @task_thread.join
-      end
-    end
+    TICK = '30s'.freeze
 
-    # @param event [Event]
-    # @return scheduled event [Event]
-    def schedule(event)
-      ssi = schedule_rides_message event
-      csi = schedule_rides_collect event
-      event.update(scheduled: true, send_schedule_id: ssi, collect_schedule_id: csi)
-      puts "scheduled #{event}"
+    def initialize(bot, messenger = nil)
+      @bot = bot
+      @messenger = messenger
+      @scheduler = Rufus::Scheduler.new
+
+      # overlap: false — a slow tick must not stack up behind itself and post
+      # the same message twice.
+      @scheduler.every TICK, overlap: false do
+        with_connection { tick }
+      end
+
+      at_exit { @scheduler.shutdown(:wait) }
     end
 
     private
-    def collect_scheduled_message(event)
-      event = Event.find(event.id)
-      return unless event && event.enabled? && event.rides_message_id
 
-      reaction_users = @bot.channel(event.channel.discord_id).load_message(event.rides_message_id).all_reaction_users
+    # Rufus runs every job in its own thread. Without this each tick checks out
+    # an ActiveRecord connection and never returns it, and the pool (5) is
+    # exhausted within minutes.
+    def with_connection(&block)
+      ActiveRecord::Base.connection_pool.with_connection(&block)
+    end
+
+    def tick
+      generate_occurrences
+      Event.message_due.find_each { |event| safely(event) { post_rides_message(event) } }
+      Event.collection_due.find_each { |event| safely(event) { collect_reactions(event) } }
+    end
+
+    # Materialise upcoming occurrences once a day rather than every 30 seconds.
+    def generate_occurrences
+      return if @generated_on == Time.zone.today
+
+      EventGenerator.call
+      @generated_on = Time.zone.today
+    rescue StandardError => e
+      warn "occurrence generation failed: #{e.class}: #{e.message}"
+    end
+
+    def post_rides_message(event)
+      message = @bot.send(event.channel.discord_id, event.message)
+
+      # Record the id *before* reacting. events.rides_message_id is UNIQUE, and a
+      # reaction failing partway through must not leave the occurrence looking
+      # unposted — that would repost the whole message on the next tick.
+      event.update_column(:rides_message_id, message.id)
+
+      event.emojis.each { |emoji| message.react(emoji) }
+    end
+
+    def collect_reactions(event)
+      event = Event.find(event.id)
+      return unless event&.enabled? && event.rides_message_id
+
+      reaction_users = @bot.channel(event.channel.discord_id)
+                           .load_message(event.rides_message_id)
+                           .all_reaction_users
 
       # `event.users = ...` used to run inside this loop, so each emoji replaced
       # the previous one's reactors and only the last emoji survived.
@@ -53,6 +95,7 @@ class Bot
     def known_users(reaction_users)
       reaction_users.filter_map do |reaction_user|
         next if reaction_user.bot_account?
+
         User.find_by(discord_id: reaction_user.id)
       end
     end
@@ -75,66 +118,11 @@ class Bot
       warn "could not sync rides for event #{event.id}: #{e.class}: #{e.message}"
     end
 
-    def schedule_existing_events
-      Event.upcoming.unscheduled.each do |event|
-        next unless event.schedulable?
-
-        #ensure the message actually exists in the server
-        begin
-          event.update(rides_message_id: nil) unless @bot.channel(event.channel.discord_id).load_message(event.rides_message_id)
-        rescue ArgumentError
-        end
-        schedule event
-      end
-    end
-
-    def schedule_rides_collect(event)
-      case event.repeats_every
-      when 'week'
-        collect = "#{event.collect_rides_at.min} #{event.collect_rides_at.hour} * * #{event.collect_rides_at.wday}"
-
-        @scheduler.schedule_cron collect do
-          collect_scheduled_message event
-        end
-      else
-        # `when 'never' || '' || nil` evaluated to just `when 'never'`, so a blank
-        # or nil repeats_every scheduled nothing at all.
-        @scheduler.schedule_at event.collect_rides_at do
-          collect_scheduled_message event
-        end
-      end
-    end
-
-    def schedule_rides_message(event)
-      case event.repeats_every
-      when 'week'
-        message = "#{event.message_rides_at.min} #{event.message_rides_at.hour} * * #{event.message_rides_at.wday}"
-
-        @scheduler.schedule_cron message do
-          send_scheduled_message event
-        end
-      else
-        @scheduler.schedule_at event.message_rides_at do
-          send_scheduled_message event
-        end
-      end
-    end
-
-    def send_scheduled_message(event)
-      event = Event.find(event.id) #update the event upon calling
-      if event && event.enabled? && !event.rides_message_id
-        rides_message = @bot.send(event.channel.discord_id, event.message)
-        event.emojis.each do |emoji|
-          rides_message.react emoji
-        end
-        event.update({ rides_message_id: rides_message.id })
-      end
-    end
-
-    def task_scheduler #proof of original sin
-      @scheduler.every '5 minutes' do
-        schedule_existing_events
-      end
+    # One bad occurrence must not stop the tick from servicing the others.
+    def safely(event)
+      yield
+    rescue StandardError => e
+      warn "event #{event.id}: #{e.class}: #{e.message}"
     end
   end
 end

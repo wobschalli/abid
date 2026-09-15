@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 1900) do
+ActiveRecord::Schema[8.0].define(version: 2100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -66,7 +66,14 @@ ActiveRecord::Schema[8.0].define(version: 1900) do
     t.bigint "location_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.date "starts_on"
+    t.date "ends_on"
+    t.integer "interval_weeks", default: 1, null: false
+    t.string "time_zone", default: "America/Indiana/Indianapolis", null: false
+    t.integer "horizon_weeks", default: 3, null: false
+    t.date "last_generated_on"
     t.index ["channel_id"], name: "index_event_series_on_channel_id"
+    t.index ["disabled", "weekday"], name: "index_event_series_on_disabled_and_weekday"
     t.index ["location_id"], name: "index_event_series_on_location_id"
   end
 
@@ -80,7 +87,7 @@ ActiveRecord::Schema[8.0].define(version: 1900) do
     t.bigint "channel_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.boolean "disabled", default: false
+    t.boolean "disabled", default: false, null: false
     t.bigint "location_id"
     t.string "repeats_every"
     t.string "message"
@@ -90,9 +97,11 @@ ActiveRecord::Schema[8.0].define(version: 1900) do
     t.bigint "series_id"
     t.string "section"
     t.datetime "collected_at"
+    t.date "occurrence_date"
     t.index ["channel_id"], name: "index_events_on_channel_id"
     t.index ["location_id"], name: "index_events_on_location_id"
-    t.index ["series_id", "start_time"], name: "index_events_on_series_id_and_start_time", unique: true
+    t.index ["occurrence_date"], name: "index_events_on_occurrence_date"
+    t.index ["series_id", "occurrence_date"], name: "index_events_on_series_id_and_occurrence_date", unique: true
     t.index ["series_id"], name: "index_events_on_series_id"
     t.unique_constraint ["rides_message_id"]
   end
