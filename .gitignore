@@ -7,3 +7,10 @@ config.yml
 
 #ignore temporary files
 /tmp
+#ignore locally installed gems
+/vendor/bundle
+/.bundle
+
+#ignore test/demo artifacts
+/tmp
+/package-lock.json

@@ -11,7 +11,11 @@ have() { command -v "$1" >/dev/null 2>&1; }
 missing=""
 have ruby || missing="$missing ruby"
 have bundle || missing="$missing bundler"
-[ -f /usr/include/libpq-fe.h ] || missing="$missing libpq-dev"
+# Debian puts this under /usr/include/postgresql, so ask pg_config rather than
+# guessing a path.
+if ! have pg_config || [ ! -f "$(pg_config --includedir 2>/dev/null)/libpq-fe.h" ]; then
+  missing="$missing libpq-dev"
+fi
 
 if [ -n "$missing" ]; then
   cat >&2 <<EOF

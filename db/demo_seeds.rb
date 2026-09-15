@@ -115,8 +115,8 @@ sunday_school = demo_event('Sunday School', 'early', sunday, 9, 30)
 service = demo_event('Sunday Service', 'late', sunday, 10, 30)
 
 friday = sunday - 2
-demo_event('Friday Bible Study', 'early', friday, 18, 30)
-demo_event('Friday Bible Study', 'late', friday, 20, 0)
+friday_early = demo_event('Friday Bible Study', 'early', friday, 18, 30)
+friday_late = demo_event('Friday Bible Study', 'late', friday, 20, 0)
 
 # --- rides ------------------------------------------------------------------
 
@@ -161,6 +161,18 @@ seat(service, by_name['ranbir'], role: 'driver')
 ['caitlin', 'luna cheng', 'nate', 'irene'].each do |name|
   seat(service, by_name[name], role: 'rider')
 end
+
+# Friday too, so that whichever occurrence is next when you open /board has
+# something on it rather than an empty grid.
+[friday_early, friday_late].each { |event| event.rides.destroy_all }
+
+friday_driver = seat(friday_early, by_name['ian'], role: 'driver')
+seat(friday_early, by_name['caleb'], role: 'driver')
+['caitlin', 'jalen'].each { |n| seat(friday_early, by_name[n], role: 'rider', driver: friday_driver) }
+['tim', 'flora', 'justin', 'lydia'].each { |n| seat(friday_early, by_name[n], role: 'rider') }
+
+seat(friday_late, by_name['tobin'], role: 'driver')
+['renata', 'emilio'].each { |n| seat(friday_late, by_name[n], role: 'rider') }
 
 # --- clashes ----------------------------------------------------------------
 

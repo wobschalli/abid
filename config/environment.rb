@@ -15,6 +15,8 @@ module Abid
   TIME_ZONE = ENV.fetch('ABID_TZ', 'America/Indiana/Indianapolis')
 
   class << self
+    attr_accessor :time_zone
+
     def env
       ENV['ABID_ENV'] || ENV['RACK_ENV'] || ENV['BOT_ENV'] || 'development'
     end
@@ -79,5 +81,18 @@ module Abid
   end
 end
 
-Time.zone = TZInfo::Timezone.get(Abid::TIME_ZONE)
-ActiveRecord::Base.default_timezone = :utc
+# `Time.zone=` only sets a thread-local, so setting it at boot leaves Time.zone
+# nil inside every Puma request thread. `Time.zone_default=` is the process-wide
+# default that new threads inherit; set both so this process is correct too.
+Abid.time_zone = ActiveSupport::TimeZone[Abid::TIME_ZONE] ||
+                 raise("unknown timezone #{Abid::TIME_ZONE.inspect}")
+Time.zone_default = Abid.time_zone
+Time.zone = Abid.time_zone
+
+# Moved off ActiveRecord::Base in Rails 7.
+ActiveRecord.default_timezone = :utc
+
+# Rails turns this on through its railtie; plain ActiveRecord does not, so
+# datetime columns came back as bare UTC Times and every time on the board
+# rendered four hours late (9:30 AM service showing as 1:30 PM).
+ActiveRecord::Base.time_zone_aware_attributes = true
