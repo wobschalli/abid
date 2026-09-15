@@ -57,6 +57,48 @@
   --color-danger-tint: rgba(224, 133, 133, 0.16);
 }
 
+@layer base {
+  /* One type and colour baseline for the whole app. The shell used to sit on
+     Flowbite's gray scale while everything inside used the palette above,
+     which read as two applications bolted together. */
+  html {
+    background: var(--color-surface-board);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+  }
+
+  /* Native controls default to the OS light theme and glow blue on focus,
+     which is the other half of the mismatch. */
+  :root {
+    color-scheme: light;
+    accent-color: var(--color-accent);
+  }
+  .dark {
+    color-scheme: dark;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--color-accent-tint-strong);
+  }
+
+  /* Chrome paints autofilled inputs with its own pale blue and ignores
+     background-color outright. The inset shadow is the only way to override
+     it; the absurd transition delay stops it flashing back on focus. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--color-ink);
+    -webkit-box-shadow: 0 0 0 1000px var(--color-surface) inset;
+    caret-color: var(--color-ink);
+    transition: background-color 9999s ease-in-out 0s;
+  }
+}
+
 @layer components {
   /* Board primitives — the design repeats these three inline style blocks on
      nearly every element. */
@@ -128,98 +170,4 @@
     opacity: 0.45;
   }
 
-  .btn-primary {
-    border-radius: calc(infinity * 1px);
-    background-color: #c00050;
-    padding-inline: --spacing(4);
-    padding-block: --spacing(2);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-white);
-    box-shadow: var(--shadow-md);
-    &:hover {
-      @media (hover: hover) {
-        background-color: #d6065f;
-      }
-    }
-  }
-
-  .btn-secondary {
-    border-radius: calc(infinity * 1px);
-    background-color: var(--color-zinc-500);
-    padding-inline: --spacing(4);
-    padding-block: --spacing(2);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-white);
-    box-shadow: var(--shadow-md);
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-zinc-700);
-      }
-    }
-  }
-
-  .btn-info {
-    border-radius: calc(infinity * 1px);
-    background-color: var(--color-sky-500);
-    padding-inline: --spacing(4);
-    padding-block: --spacing(2);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-white);
-    box-shadow: var(--shadow-md);
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-sky-700);
-      }
-    }
-  }
-
-  .btn-success {
-    border-radius: calc(infinity * 1px);
-    background-color: var(--color-emerald-500);
-    padding-inline: --spacing(4);
-    padding-block: --spacing(2);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-white);
-    box-shadow: var(--shadow-md);
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-emerald-700);
-      }
-    }
-  }
-
-  .btn-warning {
-    border-radius: calc(infinity * 1px);
-    background-color: var(--color-amber-500);
-    padding-inline: --spacing(4);
-    padding-block: --spacing(2);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-white);
-    box-shadow: var(--shadow-md);
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-amber-700);
-      }
-    }
-  }
-
-  .btn-danger {
-    border-radius: calc(infinity * 1px);
-    background-color: var(--color-rose-500);
-    padding-inline: --spacing(4);
-    padding-block: --spacing(2);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-white);
-    box-shadow: var(--shadow-md);
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-rose-700);
-      }
-    }
-  }
-
-  .disabled {
-    opacity: 0.5;
-    pointer-events: none;
-  }
 }

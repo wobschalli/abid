@@ -29,11 +29,23 @@ class App < Sinatra::Base
   set :session_secret, Abid.session_secret
 
   before do
+    # Lets Layout highlight the active nav entry without every page view
+    # threading the path through its constructor.
+    Abid.current_path = request.path_info
     ensure_logged_in
   end
 
   get '/' do
-    phlex Home.new
+    upcoming = Event.active.upcoming.includes(:location, :series, rides: :user).chronological.limit(6).to_a
+    next_event = upcoming.first
+
+    phlex Home.new(
+      next_event: next_event,
+      board: next_event && RideBoard.new(next_event),
+      upcoming: upcoming.drop(1),
+      needs_setup: User.missing_details.limit(50).to_a,
+      leader: leader?
+    )
   end
 
   get '/login' do

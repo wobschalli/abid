@@ -17,6 +17,17 @@ module Abid
   class << self
     attr_accessor :time_zone
 
+    # The path being rendered, so Layout can mark the active nav entry without
+    # every page view having to thread it through its constructor. Thread-local
+    # because Puma is threaded — same reason Time.zone is.
+    def current_path
+      Thread.current[:abid_current_path]
+    end
+
+    def current_path=(path)
+      Thread.current[:abid_current_path] = path
+    end
+
     def env
       ENV['ABID_ENV'] || ENV['RACK_ENV'] || ENV['BOT_ENV'] || 'development'
     end
