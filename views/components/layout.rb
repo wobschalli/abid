@@ -53,6 +53,7 @@ class Components::Layout < Phlex::HTML
           ul class: 'space-y-2 font-medium' do
             sidenav text: 'Ride board', href: url('/board')
             sidenav text: 'Events', href: url('/events')
+            sidenav text: 'Series', href: url('/series')
             sidenav text: 'Locations', href: url('/locations')
             sidenav text: 'Users', href: url('/users')
           end

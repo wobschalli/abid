@@ -61,6 +61,133 @@ class App < Sinatra::Base
     redirect to('/login')
   end
 
+  # --- events ---------------------------------------------------------------
+
+  get '/events' do
+    filter = %w[upcoming past all].include?(params[:when]) ? params[:when] : 'upcoming'
+    phlex EventsIndex.new(events: events_for(filter), filter: filter, leader: leader?)
+  end
+
+  # Must precede '/events/:id', which would otherwise match "new".
+  get '/events/new' do
+    require_leader!
+    phlex EventForm.new(event: Event.new, **form_collections, leader: leader?)
+  end
+
+  post '/events' do
+    require_leader!
+    event = Event.new(event_params)
+    if event.save
+      redirect to("/events/#{event.id}")
+    else
+      status 422
+      phlex EventForm.new(event: event, **form_collections, leader: leader?,
+                          error: event.errors.full_messages.to_sentence)
+    end
+  end
+
+  get '/events/:id.csv' do
+    event = find_event(params[:id]) or halt 404, 'No such event'
+    content_type 'text/csv'
+    attachment "rides-#{event.start_time&.strftime('%Y-%m-%d') || event.id}.csv"
+    RideBoardCsv.new(RideBoard.new(event)).to_csv
+  end
+
+  get '/events/:id' do
+    event = find_event(params[:id]) or halt 404, 'No such event'
+    phlex EventShow.new(event: event, board: RideBoard.new(event), leader: leader?)
+  end
+
+  get '/events/:id/edit' do
+    require_leader!
+    event = find_event(params[:id]) or halt 404, 'No such event'
+    phlex EventForm.new(event: event, **form_collections, leader: leader?)
+  end
+
+  patch '/events/:id' do
+    require_leader!
+    event = find_event(params[:id]) or halt 404, 'No such event'
+    if event.update(event_params)
+      redirect to("/events/#{event.id}")
+    else
+      status 422
+      phlex EventForm.new(event: event, **form_collections, leader: leader?,
+                          error: event.errors.full_messages.to_sentence)
+    end
+  end
+
+  # Disable, never destroy — a past occurrence is the only record of who rode
+  # with whom.
+  post '/events/:id/disable' do
+    require_leader!
+    event = find_event(params[:id]) or halt 404, 'No such event'
+    event.update(disabled: !event.disabled)
+    redirect to("/events/#{event.id}")
+  end
+
+  # --- recurring series -----------------------------------------------------
+
+  get '/series' do
+    series = EventSeries.order(:name).to_a
+    phlex SeriesIndex.new(series: series, upcoming: upcoming_by_series(series), leader: leader?)
+  end
+
+  get '/series/new' do
+    require_leader!
+    phlex SeriesForm.new(series: EventSeries.new(interval_weeks: 1, horizon_weeks: 3,
+                                                 message_lead_hours: 24, collect_lead_hours: 2),
+                         **form_collections, leader: leader?)
+  end
+
+  post '/series' do
+    require_leader!
+    series = EventSeries.new(series_params)
+    if series.save
+      EventGenerator.call(only: series)
+      redirect to("/series/#{series.id}")
+    else
+      status 422
+      phlex SeriesForm.new(series: series, **form_collections, leader: leader?,
+                           error: series.errors.full_messages.to_sentence)
+    end
+  end
+
+  get '/series/:id' do
+    series = EventSeries.find_by(id: params[:id]) or halt 404, 'No such series'
+    phlex SeriesShow.new(
+      series: series,
+      upcoming: series.events.upcoming.chronological.to_a,
+      past: series.events.past.order(start_time: :desc).limit(25).to_a,
+      leader: leader?
+    )
+  end
+
+  get '/series/:id/edit' do
+    require_leader!
+    series = EventSeries.find_by(id: params[:id]) or halt 404, 'No such series'
+    phlex SeriesForm.new(series: series, **form_collections, leader: leader?)
+  end
+
+  patch '/series/:id' do
+    require_leader!
+    series = EventSeries.find_by(id: params[:id]) or halt 404, 'No such series'
+    if series.update(series_params)
+      EventGenerator.call(only: series) unless series.disabled
+      redirect to("/series/#{series.id}")
+    else
+      status 422
+      phlex SeriesForm.new(series: series, **form_collections, leader: leader?,
+                           error: series.errors.full_messages.to_sentence)
+    end
+  end
+
+  post '/series/:id/generate' do
+    require_leader!
+    series = EventSeries.find_by(id: params[:id]) or halt 404, 'No such series'
+    EventGenerator.call(only: series)
+    redirect to("/series/#{series.id}")
+  end
+
   # --- ride board ----------------------------------------------------------
 
   # The board for one occurrence. Without an id we pick the next upcoming one so
@@ -190,6 +317,51 @@ class App < Sinatra::Base
   def find_event(id)
     return nil if id.blank?
     Event.find_by(id: id)
+  end
+
+  # Rides are preloaded because EventTable counts riders and drivers per row.
+  def events_for(filter)
+    scope = Event.includes(:location, :series, rides: :user)
+    case filter
+    when 'past' then scope.past.order(start_time: :desc).limit(200)
+    when 'all' then scope.order(start_time: :desc).limit(200)
+    else scope.upcoming.chronological
+    end.to_a
+  end
+
+  def upcoming_by_series(series)
+    return {} if series.empty?
+
+    Event.upcoming.chronological
+         .where(series_id: series.map(&:id))
+         .group_by(&:series_id)
+         .transform_values { |events| events.first(4) }
+  end
+
+  def form_collections
+    { channels: Channel.order(:name).to_a, locations: Location.order(:name).to_a }
+  end
+
+  EVENT_FIELDS = %w[name section start_time end_time message_rides_at collect_rides_at
+                    channel_id location_id message].freeze
+
+  SERIES_FIELDS = %w[name section weekday interval_weeks start_time_of_day end_time_of_day
+                     message_lead_hours collect_lead_hours channel_id location_id message
+                     starts_on ends_on horizon_weeks].freeze
+
+  def event_params
+    permitted(EVENT_FIELDS).merge('disabled' => params[:disabled] == '1')
+  end
+
+  def series_params
+    permitted(SERIES_FIELDS).merge('disabled' => params[:disabled] == '1')
+  end
+
+  # Blank strings from an HTML form must become NULL, not "", or a blank
+  # datetime-local field would fail to cast and a blank select would write an
+  # empty foreign key.
+  def permitted(fields)
+    params.slice(*fields).to_h.transform_values { |value| value.is_a?(String) ? value.presence : value }
   end
 
   def default_event

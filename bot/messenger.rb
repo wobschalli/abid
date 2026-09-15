@@ -402,7 +402,15 @@ class Messenger < Bot
   # @return delete message for event [Discordrb::Events::InteractionCreateEvent]
   def event_delete(event, id)
     evt = Event.find(id)
-    evt.destroy
+
+    # A past occurrence is the only record of who rode with whom, and
+    # `has_many :rides, dependent: :destroy` would take the roster with it. Only
+    # an occurrence nobody ever signed up for is safe to actually delete.
+    if evt.rides.any?
+      evt.update(disabled: true)
+    else
+      evt.destroy
+    end
 
     event.delete_response
   end

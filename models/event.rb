@@ -97,6 +97,17 @@ class Event < ApplicationRecord
     rides_message_id.present?
   end
 
+  # Mirrors the coalesce in `scope :past`, so Ruby and SQL agree on when an
+  # occurrence is over. Events created through the Discord modal often have no
+  # end_time.
+  def end_time_or_estimate
+    end_time || (start_time && start_time + 2.hours) || Time.zone.now
+  end
+
+  def past?
+    end_time_or_estimate <= Time.zone.now
+  end
+
   def to_h #this allows for the object to be passed directly into Discordrb methods
     { name: name, id: discord_id }
   end

@@ -8,6 +8,7 @@ require_relative '../config/environment'
 
 Abid.establish_connection
 Abid.load_models
+Abid.load_services # EventGenerator
 
 DEMO_ID_BASE = 900_000_000
 DEMO_PASSWORD = 'ridedemo'.freeze
@@ -98,25 +99,59 @@ by_name = users.index_by(&:name)
 # Next Sunday, so /board's "next upcoming" lookup finds it.
 sunday = Time.zone.today + ((7 - Time.zone.today.wday) % 7)
 sunday += 7 if sunday == Time.zone.today
+friday = sunday - 2
 
-def demo_event(name, section, day, hour, minute)
-  starts = Time.zone.local(day.year, day.month, day.day, hour, minute)
-  Event.find_or_create_by(name: name, start_time: starts) do |e|
-    e.section = section
-    e.end_time = starts + 90.minutes
-    e.message_rides_at = starts - 24.hours
-    e.collect_rides_at = starts - 2.hours
-    e.message = "React if you need a ride to #{name}."
-    e.disabled = false
+# Recurring slots. Occurrences are generated from these, one Event row per week.
+def demo_series(name, section, weekday, hour, minute, location)
+  EventSeries.find_or_create_by(name: name, section: section) do |s|
+    s.weekday = weekday
+    s.start_time_of_day = Time.zone.parse(format('%02d:%02d', hour, minute))
+    s.end_time_of_day = Time.zone.parse(format('%02d:%02d', hour + 1, minute))
+    s.message_lead_hours = 24
+    s.collect_lead_hours = 2
+    s.horizon_weeks = 3
+    s.location = location
+    s.message = "React if you need a ride to #{name}."
   end
 end
 
-sunday_school = demo_event('Sunday School', 'early', sunday, 9, 30)
-service = demo_event('Sunday Service', 'late', sunday, 10, 30)
+RECURRING_NAMES = ['Sunday School', 'Sunday Service', 'Friday Bible Study'].freeze
 
-friday = sunday - 2
-friday_early = demo_event('Friday Bible Study', 'early', friday, 18, 30)
-friday_late = demo_event('Friday Bible Study', 'late', friday, 20, 0)
+# Earlier versions of this seed created these as one-off events. They are now
+# generated from a series, so drop the orphans — otherwise every slot shows up
+# twice in /events, once WEEKLY and once ONE-OFF. db:demo owns these names.
+orphans = Event.one_off.where(name: RECURRING_NAMES)
+puts "  removing #{orphans.count} stale one-off demo events" if orphans.any?
+orphans.destroy_all
+
+church = Location.find_by(name: 'Harker Hall lot')
+school_series  = demo_series('Sunday School', 'early', 0, 9, 30, church)
+service_series = demo_series('Sunday Service', 'late', 0, 10, 30, church)
+friday_early_series = demo_series('Friday Bible Study', 'early', 5, 18, 30, church)
+friday_late_series  = demo_series('Friday Bible Study', 'late', 5, 20, 0, church)
+
+EventGenerator.call(from: Time.zone.today)
+
+sunday_school = school_series.ensure_occurrence(sunday)
+service       = service_series.ensure_occurrence(sunday)
+friday_early  = friday_early_series.ensure_occurrence(friday)
+friday_late   = friday_late_series.ensure_occurrence(friday)
+
+# A one-off, to show the other badge and prove non-recurring events still work.
+retreat_start = Time.zone.local(sunday.year, sunday.month, sunday.day, 7, 0) + 21.days
+retreat = Event.find_or_create_by(name: 'Fall Retreat', start_time: retreat_start) do |e|
+  e.end_time = retreat_start + 10.hours
+  e.message_rides_at = retreat_start - 72.hours
+  e.collect_rides_at = retreat_start - 12.hours
+  e.location = church
+  e.message = 'React if you need a ride to the retreat. Leaving 7am sharp.'
+end
+
+# A finished occurrence two weeks back, so the Past tab and the read-only
+# roster have something real in them.
+past_sunday = sunday - 14
+past_event = school_series.ensure_occurrence(past_sunday)
+past_event&.update!(collected_at: past_sunday.to_time + 8.hours, rides_message_id: nil)
 
 # --- rides ------------------------------------------------------------------
 
@@ -173,6 +208,27 @@ seat(friday_early, by_name['caleb'], role: 'driver')
 
 seat(friday_late, by_name['tobin'], role: 'driver')
 ['renata', 'emilio'].each { |n| seat(friday_late, by_name[n], role: 'rider') }
+
+# The retreat: a one-off with a full car.
+retreat.rides.destroy_all
+retreat_driver = seat(retreat, by_name['tobin'], role: 'driver')
+['renata', 'emilio', 'ronin', 'flora'].each do |n|
+  seat(retreat, by_name[n], role: 'rider', driver: retreat_driver)
+end
+
+# A completed past occurrence — everyone seated, nobody left waiting.
+if past_event
+  past_event.rides.destroy_all
+  past_drivers = %w[ian caleb].to_h { |n| [n, seat(past_event, by_name[n], role: 'driver')] }
+  {
+    'ian' => ['caitlin', 'jalen', 'kenzo'],
+    'caleb' => ['kylan r', 'juno wa', 'maribel']
+  }.each do |driver_name, riders|
+    riders.each { |r| seat(past_event, by_name[r], role: 'rider', driver: past_drivers[driver_name]) }
+  end
+  # One person who said yes and then didn't turn up.
+  seat(past_event, by_name['tim'], role: 'rider').update!(status: 'no_show')
+end
 
 # --- clashes ----------------------------------------------------------------
 
