@@ -7,21 +7,25 @@ class SeriesIndex < Phlex::HTML
 
   # @param series [Array<EventSeries>]
   # @param upcoming [Hash{Integer => Array<Event>}] next few occurrences per series
-  def initialize(series:, upcoming:, leader: false)
+  def initialize(series:, upcoming:, breaks: [], leader: false, error: nil)
     @series = series
     @upcoming = upcoming
+    @breaks = breaks
     @leader = leader
+    @error = error
   end
 
   def view_template
     Layout(title: 'Recurring series', leader: @leader) do
       div(class: 'max-w-4xl flex flex-col gap-5 font-sans text-ink') do
         header
+        p(role: 'alert', class: 'text-sm text-danger') { @error } if @error
         if @series.empty?
           empty_note
         else
           div(class: 'flex flex-col gap-3') { @series.each { |s| card(s) } }
         end
+        breaks_section
       end
     end
   end
@@ -87,6 +91,62 @@ class SeriesIndex < Phlex::HTML
   def generate_button(series)
     form(method: 'post', action: "/series/#{series.id}/generate", class: 'contents') do
       button(type: 'submit', class: 'board-btn') { 'Generate now' }
+    end
+  end
+
+  # --- academic breaks ------------------------------------------------------
+
+  def breaks_section
+    div(class: 'flex flex-col gap-2.5 pt-2 border-t border-line') do
+      div(class: 'flex items-baseline gap-2 pt-2') do
+        span(class: 'board-label') { 'Academic breaks' }
+        span(class: 'text-[11.5px] text-ink/60') { 'no occurrences are generated on these dates' }
+      end
+
+      if @breaks.empty?
+        div(class: 'px-1 py-3 text-[13px] text-ink/65') do
+          'None set. Without these the bot keeps posting sign-ups through winter break.'
+        end
+      else
+        div(class: 'flex flex-col gap-1.5') { @breaks.each { |b| break_row(b) } }
+      end
+
+      add_break_form if @leader
+    end
+  end
+
+  def break_row(academic_break)
+    div(class: "flex items-center gap-3 px-3 py-2 rounded-lg border border-line bg-surface #{academic_break.past? ? 'opacity-55' : ''}") do
+      span(class: 'flex-1 min-w-0 text-[12.5px] font-medium') { academic_break.name }
+      span(class: 'board-meta whitespace-nowrap') { "#{academic_break.range_label} · #{academic_break.days} days" }
+      next unless @leader
+
+      form(method: 'post', action: "/breaks/#{academic_break.id}", class: 'contents') do
+        input(type: 'hidden', name: '_method', value: 'delete')
+        button(type: 'submit', title: 'Remove',
+               class: 'border-0 bg-transparent text-ink/55 hover:text-danger font-mono text-xs font-semibold cursor-pointer px-1') do
+          '✕'
+        end
+      end
+    end
+  end
+
+  def add_break_form
+    form(method: 'post', action: '/breaks', class: 'flex gap-2 items-end flex-wrap pt-1') do
+      div(class: 'flex flex-col gap-[5px] flex-1 min-w-[180px]') do
+        span(class: 'board-label') { 'Name' }
+        input(type: 'text', name: 'name', required: true, placeholder: 'Spring break',
+              class: 'board-input text-[12.5px] py-2')
+      end
+      div(class: 'flex flex-col gap-[5px]') do
+        span(class: 'board-label') { 'From' }
+        input(type: 'date', name: 'starts_on', required: true, class: 'board-input text-[12.5px] py-2')
+      end
+      div(class: 'flex flex-col gap-[5px]') do
+        span(class: 'board-label') { 'To' }
+        input(type: 'date', name: 'ends_on', required: true, class: 'board-input text-[12.5px] py-2')
+      end
+      button(type: 'submit', class: 'board-btn') { 'Add break' }
     end
   end
 end

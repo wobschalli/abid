@@ -33,7 +33,10 @@ class EventSeries < ApplicationRecord
   #
   # Date arithmetic only. `time + 7.days` is 167 or 169 hours across a DST
   # boundary, which walks the whole schedule an hour off for eight months.
-  def occurrence_dates(from: Time.zone.today, to: nil)
+  # Dates inside an AcademicBreak are skipped, not shifted: nobody is in West
+  # Lafayette over winter break, so there is no ride to arrange. The cadence
+  # keeps counting through the gap and picks up on the far side.
+  def occurrence_dates(from: Time.zone.today, to: nil, skip_breaks: true)
     return [] unless recurring?
 
     to ||= from + horizon_weeks.weeks
@@ -42,9 +45,12 @@ class EventSeries < ApplicationRecord
     day = first_occurrence_on_or_after([from, starts_on].compact.max)
     return [] if day.nil?
 
+    # Loaded once for the whole span rather than queried per candidate date.
+    breaks = skip_breaks ? AcademicBreak.ranges(from: day, to: to) : []
+
     dates = []
     while day <= to
-      dates << day
+      dates << day unless breaks.any? { |range| range.cover?(day) }
       day += interval_weeks.weeks
     end
     dates

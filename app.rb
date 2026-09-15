@@ -175,8 +175,31 @@ class App < Sinatra::Base
   # --- recurring series -----------------------------------------------------
 
   get '/series' do
-    series = EventSeries.order(:name).to_a
-    phlex SeriesIndex.new(series: series, upcoming: upcoming_by_series(series), leader: leader?)
+    phlex series_page
+  end
+
+  # Academic breaks live on the series page because that is the only thing they
+  # affect. Shared across every series — the calendar belongs to the university.
+  post '/breaks' do
+    require_leader!
+    academic_break = AcademicBreak.new(permitted(%w[name starts_on ends_on]))
+
+    if academic_break.save
+      # Occurrences generated before the break existed are now wrong; switch
+      # off the upcoming ones rather than deleting anyone's roster.
+      academic_break.disable_future_occurrences!
+      redirect to('/series')
+    else
+      status 422
+      phlex series_page(error: academic_break.errors.full_messages.to_sentence)
+    end
+  end
+
+  delete '/breaks/:id' do
+    require_leader!
+    AcademicBreak.find_by(id: params[:id])&.destroy
+    EventGenerator.call
+    redirect to('/series')
   end
 
   get '/series/new' do
@@ -519,6 +542,17 @@ class App < Sinatra::Base
     when 'all' then scope.order(start_time: :desc).limit(200)
     else scope.upcoming.chronological
     end.to_a
+  end
+
+  def series_page(error: nil)
+    series = EventSeries.order(:name).to_a
+    SeriesIndex.new(
+      series: series,
+      upcoming: upcoming_by_series(series),
+      breaks: AcademicBreak.chronological.to_a,
+      leader: leader?,
+      error: error
+    )
   end
 
   def upcoming_by_series(series)

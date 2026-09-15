@@ -69,8 +69,14 @@ module Abid
       Passgen.generate(pronouncable: true, uppercase: false)
     end
 
+    # ApplicationRecord first, explicitly. Sorting alone only worked by luck —
+    # every model happened to sort after "application_record" until one did
+    # not, and `class AcademicBreak < ApplicationRecord` then failed on an
+    # uninitialized constant.
     def load_models
-      Dir.glob(root('models', '*.rb')).sort.each { |model| require model }
+      base = root('models', 'application_record.rb')
+      require base
+      (Dir.glob(root('models', '*.rb')).sort - [base]).each { |model| require model }
     end
 
     # Nested so services/signup/*.rb is picked up too. Sorted so a namespace's

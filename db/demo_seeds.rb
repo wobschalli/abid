@@ -145,6 +145,21 @@ service_series = demo_series('Sunday Service', 'late', 0, 10, 30, church)
 friday_early_series = demo_series('Friday Bible Study', 'early', 5, 18, 30, church)
 friday_late_series  = demo_series('Friday Bible Study', 'late', 5, 20, 0, church)
 
+# Purdue's calendar. Approximate windows — correct them on /series. Without
+# these the bot posts sign-ups into an empty server every week of December.
+year = sunday.year
+[
+  ['Thanksgiving break', Date.new(year, 11, 25), Date.new(year, 11, 29)],
+  ['Winter break', Date.new(year, 12, 13), Date.new(year + 1, 1, 11)],
+  ['Spring break', Date.new(year + 1, 3, 14), Date.new(year + 1, 3, 22)],
+  ['Summer', Date.new(year + 1, 5, 9), Date.new(year + 1, 8, 16)]
+].each do |name, starts_on, ends_on|
+  AcademicBreak.find_or_create_by(name: name) do |b|
+    b.starts_on = starts_on
+    b.ends_on = ends_on
+  end
+end
+
 EventGenerator.call(from: Time.zone.today)
 
 sunday_school = school_series.ensure_occurrence(sunday)

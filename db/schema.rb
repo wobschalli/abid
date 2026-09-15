@@ -10,9 +10,18 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2600) do
+ActiveRecord::Schema[8.0].define(version: 2700) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "academic_breaks", force: :cascade do |t|
+    t.string "name", null: false
+    t.date "starts_on", null: false
+    t.date "ends_on", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["starts_on", "ends_on"], name: "index_academic_breaks_on_starts_on_and_ends_on"
+  end
 
   create_table "channels", force: :cascade do |t|
     t.string "name"
@@ -288,13 +297,11 @@ ActiveRecord::Schema[8.0].define(version: 2600) do
     t.integer "grad_year"
     t.integer "capacity"
     t.boolean "leader", default: false
-    t.bigint "driver_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.bigint "location_id"
     t.string "password_digest"
     t.string "phone"
-    t.index ["driver_id"], name: "index_users_on_driver_id"
     t.index ["location_id"], name: "index_users_on_location_id"
     t.unique_constraint ["discord_id"]
   end
@@ -325,5 +332,4 @@ ActiveRecord::Schema[8.0].define(version: 2600) do
   add_foreign_key "signup_reactions", "signup_options"
   add_foreign_key "signup_reactions", "users"
   add_foreign_key "users", "locations"
-  add_foreign_key "users", "users", column: "driver_id"
 end

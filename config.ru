@@ -19,6 +19,10 @@ wd = File.dirname(__FILE__)
 #watch the app file
 Unreloader.require File.join(wd, 'app.rb')
 
+# ApplicationRecord before any model that subclasses it. Alphabetical order
+# only worked by luck until a model sorted ahead of "application_record".
+Unreloader.require File.join(wd, 'models', 'application_record.rb')
+
 [
   File.join(wd, 'models', '*.rb'),
   # '**' already covers the top level, so listing both loads every top-level

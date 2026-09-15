@@ -524,10 +524,27 @@ class Messenger < Bot
     end
   end
 
+  # Deliberately does not delete anything.
+  #
+  # This used to be `User.find_by(discord_id: …).destroy`, and with
+  # `User has_many :rides, dependent: :destroy` that took every historical ride
+  # with it — so every graduating senior wiped themselves out of every past
+  # roster each May, along with their clash pairs. It also raised NoMethodError
+  # on nil for anyone the bot had never recorded.
+  #
+  # Keeping the row costs one stale name in a picker; deleting it costs the
+  # history the whole dashboard is built on.
+  #
   # @param event [Discordrb::Events::ServerMemberDeleteEvent]
   def handle_member_leave(event)
-    return unless Server.find_by(name: 'Abide').discord_id == event.server.id
-    User.find_by(discord_id: event.member.id).destroy
+    return unless Server.find_by(name: 'Abide')&.discord_id == event.server.id
+
+    user = User.find_by(discord_id: event.member.id)
+    return if user.nil?
+
+    warn "#{user.display_name} left the server; keeping their record and ride history"
+  rescue StandardError => e
+    warn "member_leave handler failed: #{e.class}: #{e.message}"
   end
 end
 
