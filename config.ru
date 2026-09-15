@@ -21,7 +21,9 @@ Unreloader.require File.join(wd, 'app.rb')
 
 [
   File.join(wd, 'models', '*.rb'),
-  File.join(wd, 'services', '*.rb'),
+  # '**' already covers the top level, so listing both loads every top-level
+  # service twice and Ruby warns about re-initialised constants.
+  File.join(wd, 'services', '**', '*.rb'),
   File.join(wd, 'views', '*.rb'),
   File.join(wd, 'views', 'components', '*.rb')
 ].each do |pattern|

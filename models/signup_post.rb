@@ -1,0 +1,115 @@
+class SignupPost < ApplicationRecord
+  # A sign-up message the bot composes and posts to Discord at a scheduled
+  # time, then watches the reactions on.
+  #
+  # Each option is an emoji bound to one occurrence: "react 1️⃣ for the 9:00am
+  # ride, 2️⃣ for the 10:30am". Discord can tell us which emoji are on the
+  # message and how many people used each; only signup_options records what any
+  # of them mean.
+  STATUSES = %w[draft scheduled posting posted closed failed].freeze
+
+  # A post left in `posting` this long lost its process mid-send.
+  STALE_POSTING_AFTER = 2.minutes
+
+  belongs_to :channel
+  belongs_to :created_by, class_name: 'User', optional: true
+
+  has_many :options, -> { order(:position) },
+           class_name: 'SignupOption', dependent: :destroy, inverse_of: :signup_post
+  has_many :events, through: :options
+
+  validates :status, inclusion: { in: STATUSES }
+  validates :discord_message_id, uniqueness: true, allow_nil: true
+  validate :post_at_required_when_scheduled
+
+  scope :recent, -> { order(Arel.sql('COALESCE(post_at, created_at) DESC')) }
+  scope :tracking, -> { where(status: 'posted', closed_at: nil) }
+  scope :editable, -> { where(status: %w[draft failed]) }
+  # The bot's work queue.
+  scope :due, -> { where(status: 'scheduled').where(post_at: ..Time.zone.now).order(:post_at) }
+  scope :stale_posting, -> { where(status: 'posting').where(updated_at: ...STALE_POSTING_AFTER.ago) }
+  scope :reconcile_requested, lambda {
+    tracking.where('reconcile_requested_at > COALESCE(reconciled_at, to_timestamp(0))')
+  }
+
+  def draft?      = status == 'draft'
+  def scheduled?  = status == 'scheduled'
+  def posted?     = status == 'posted'
+  def failed?     = status == 'failed'
+  def editable?   = %w[draft failed].include?(status)
+  def open?       = posted? && closed_at.nil?
+
+  # Every emoji knows which occurrence it books.
+  def bound?
+    opts = options.loaded? ? options : options.reload
+    opts.any? && opts.all? { |o| o.event_id.present? }
+  end
+
+  def schedulable?
+    editable? && bound? && post_at.present? && channel_id.present?
+  end
+
+  def body
+    Signup::MessageRenderer.new(self).to_s
+  end
+
+  def schedule!
+    return false unless schedulable?
+
+    update!(status: 'scheduled', last_error: nil)
+  end
+
+  def unschedule!
+    return false unless scheduled?
+
+    update!(status: 'draft')
+  end
+
+  # Called by the bot once Discord has accepted the message.
+  def mark_posted!(message_id, body:)
+    transaction do
+      update!(status: 'posted', discord_message_id: message_id, rendered_body: body,
+              posted_at: Time.zone.now, last_error: nil)
+      # Stamped here so a reaction lookup is one indexed hit with no join.
+      options.update_all(discord_message_id: message_id, updated_at: Time.zone.now)
+    end
+  end
+
+  def mark_failed!(error)
+    update!(status: 'failed', last_error: error.to_s.first(255))
+  end
+
+  def close!
+    update!(status: 'closed', closed_at: Time.zone.now)
+  end
+
+  def reopen!
+    return false unless status == 'closed'
+
+    update!(status: 'posted', closed_at: nil)
+  end
+
+  def message_link
+    return nil if discord_message_id.nil? || channel&.server.nil?
+
+    "https://discord.com/channels/#{channel.server.discord_id}/#{channel.discord_id}/#{discord_message_id}"
+  end
+
+  def reaction_count
+    options.sum(&:live_reaction_count)
+  end
+
+  def summary
+    return 'No options yet' if options.empty?
+
+    "#{options.size} #{'option'.pluralize(options.size)}"
+  end
+
+  private
+
+  def post_at_required_when_scheduled
+    return unless status == 'scheduled' && post_at.blank?
+
+    errors.add(:post_at, 'is needed before a post can be scheduled')
+  end
+end

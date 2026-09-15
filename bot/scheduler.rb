@@ -15,6 +15,7 @@ class Bot
   # and a bot that was down catches up on its own.
   class Scheduler
     TICK = '30s'.freeze
+    RECONCILE_TICK = '5m'.freeze
 
     def initialize(bot, messenger = nil)
       @bot = bot
@@ -26,6 +27,21 @@ class Bot
       @scheduler.every TICK, overlap: false do
         with_connection { tick }
       end
+
+      # Sign-up sweeps are cheap (one request per post unless a count moved) but
+      # not free, so they run less often than the main tick. An on-demand sweep
+      # from the dashboard is picked up within 15 seconds.
+      @scheduler.every '15s', overlap: false do
+        with_connection { reconcile(SignupPost.reconcile_requested) }
+      end
+
+      @scheduler.every RECONCILE_TICK, overlap: false do
+        with_connection { reconcile(SignupPost.tracking) }
+      end
+
+      # The real answer to dropped gateway events: everything that happened
+      # while the bot was down or resuming gets picked up the moment it starts.
+      Thread.new { with_connection { reconcile(SignupPost.tracking) } }
 
       at_exit { @scheduler.shutdown(:wait) }
     end
@@ -41,8 +57,23 @@ class Bot
 
     def tick
       generate_occurrences
+      publish_signups
       Event.message_due.find_each { |event| safely(event) { post_rides_message(event) } }
       Event.collection_due.find_each { |event| safely(event) { collect_reactions(event) } }
+    end
+
+    # Sends any sign-up post whose scheduled time has arrived. Worst-case
+    # latency is one tick, which is fine for "post this on Thursday evening".
+    def publish_signups
+      Signup::Publisher.new(@bot).run_once
+    rescue StandardError => e
+      warn "signup publish failed: #{e.class}: #{e.message}"
+    end
+
+    def reconcile(scope)
+      Signup::Reconciler.new(@bot).run_all(scope)
+    rescue StandardError => e
+      warn "signup reconcile failed: #{e.class}: #{e.message}"
     end
 
     # Materialise upcoming occurrences once a day rather than every 30 seconds.

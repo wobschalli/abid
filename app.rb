@@ -188,6 +188,128 @@ class App < Sinatra::Base
     redirect to("/series/#{series.id}")
   end
 
+  # --- sign-up posts --------------------------------------------------------
+
+  get '/signups' do
+    posts = SignupPost.includes(:channel, :options).recent.limit(50)
+    phlex SignupsIndex.new(posts: posts, channels: Channel.order(:name).to_a, leader: leader?)
+  end
+
+  post '/signups' do
+    require_leader!
+    post = SignupPost.new(
+      channel_id: params[:channel_id],
+      service_date: params[:service_date].presence,
+      created_by: current_user
+    )
+    halt 422, post.errors.full_messages.to_sentence unless post.save
+    redirect to("/signups/#{post.id}")
+  end
+
+  get '/signups/:id' do
+    phlex signup_page(find_signup(params[:id]))
+  end
+
+  patch '/signups/:id' do
+    require_leader!
+    post = find_signup(params[:id])
+    halt 409, 'This post has already been sent.' unless post.editable?
+
+    attrs = permitted(%w[channel_id service_date post_at intro outro])
+    if post.update(attrs)
+      redirect to("/signups/#{post.id}")
+    else
+      status 422
+      phlex signup_page(post, error: post.errors.full_messages.to_sentence)
+    end
+  end
+
+  delete '/signups/:id' do
+    require_leader!
+    post = find_signup(params[:id])
+    halt 409, 'This post has already been sent.' unless post.editable?
+
+    post.destroy
+    redirect to('/signups')
+  end
+
+  post '/signups/:id/options' do
+    require_leader!
+    post = find_signup(params[:id])
+    halt 409, 'This post has already been sent.' unless post.editable?
+
+    attrs = Signup::EmojiKey.parse(params[:emoji])
+    halt 422, "Could not read #{params[:emoji].inspect} as an emoji." if attrs.nil?
+
+    option = post.options.build(
+      attrs.merge(
+        event_id: params[:event_id].presence,
+        label: params[:label].presence,
+        position: post.options.size
+      )
+    )
+    halt 422, option.errors.full_messages.to_sentence.presence || 'Could not add that option.' unless option.save
+    redirect to("/signups/#{post.id}")
+  end
+
+  patch '/signups/:id/options/:option_id' do
+    require_leader!
+    post = find_signup(params[:id])
+    halt 409, 'This post has already been sent.' unless post.editable?
+
+    option = post.options.find(params[:option_id])
+    option.event_id = params[:event_id].presence
+    option.label = params[:label].presence
+    if option.save
+      redirect to("/signups/#{post.id}")
+    else
+      status 422
+      phlex signup_page(post, error: option.errors.full_messages.to_sentence)
+    end
+  end
+
+  delete '/signups/:id/options/:option_id' do
+    require_leader!
+    post = find_signup(params[:id])
+    halt 409, 'This post has already been sent.' unless post.editable?
+
+    post.options.find(params[:option_id]).destroy
+    redirect to("/signups/#{post.id}")
+  end
+
+  # Hand the post to the bot. It polls SignupPost.due every 30 seconds.
+  post '/signups/:id/schedule' do
+    require_leader!
+    post = find_signup(params[:id])
+    halt 422, 'Every option needs a ride, and the post needs a send time.' unless post.schedule!
+    redirect to("/signups/#{post.id}")
+  end
+
+  post '/signups/:id/unschedule' do
+    require_leader!
+    find_signup(params[:id]).unschedule!
+    redirect to("/signups/#{params[:id]}")
+  end
+
+  post '/signups/:id/close' do
+    require_leader!
+    find_signup(params[:id]).close!
+    redirect to("/signups/#{params[:id]}")
+  end
+
+  post '/signups/:id/reopen' do
+    require_leader!
+    find_signup(params[:id]).reopen!
+    redirect to("/signups/#{params[:id]}")
+  end
+
+  # Ask the bot for a sweep. It polls for this every 15 seconds.
+  post '/signups/:id/resync' do
+    require_leader!
+    find_signup(params[:id]).update!(reconcile_requested_at: Time.zone.now)
+    redirect to("/signups/#{params[:id]}")
+  end
+
   # --- ride board ----------------------------------------------------------
 
   # The board for one occurrence. Without an id we pick the next upcoming one so
@@ -336,6 +458,32 @@ class App < Sinatra::Base
          .where(series_id: series.map(&:id))
          .group_by(&:series_id)
          .transform_values { |events| events.first(4) }
+  end
+
+  def find_signup(id)
+    SignupPost.includes(:channel, options: :event).find_by(id: id) or halt 404, 'No such sign-up post'
+  end
+
+  def signup_page(post, error: nil)
+    SignupShow.new(
+      post: post,
+      candidates: signup_candidates(post),
+      channels: Channel.order(:name).to_a,
+      leader: leader?,
+      error: error
+    )
+  end
+
+  # Occurrences a sign-up post could plausibly be about: anything still upcoming,
+  # nearest first. Deliberately not filtered to the post's own date — a
+  # coordinator often posts on Thursday for Sunday.
+  def signup_candidates(post)
+    from = post.service_date ? post.service_date.beginning_of_day : Time.zone.now
+    Event.active
+         .where('start_time >= ?', [from, Time.zone.now - 1.day].min)
+         .chronological
+         .limit(40)
+         .to_a
   end
 
   def form_collections

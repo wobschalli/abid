@@ -3,7 +3,12 @@ class Event < ApplicationRecord
   belongs_to :location, optional: true
   belongs_to :series, class_name: 'EventSeries', optional: true
 
-  has_many :emojis
+  # `has_many :emojis` lived here over a single emojis.event_id column, so
+  # binding an emoji to one event stole it from another. Sign-up emoji are
+  # SignupOption rows now, and one emoji can mean a different ride every week.
+  has_many :signup_options
+  has_many :signup_posts, through: :signup_options
+
   has_many :rides, dependent: :destroy
   has_many :participants, through: :rides, source: :user
 
@@ -52,6 +57,10 @@ class Event < ApplicationRecord
           .where.not(message: nil)
           .where(message_rides_at: POST_GRACE.ago..Time.zone.now)
           .where('start_time > ?', Time.zone.now)
+          # A coordinator has already written a sign-up post covering this
+          # occurrence; posting our own would split the roster across two
+          # messages.
+          .where.not(id: SignupOption.published.select(:event_id))
   }
 
   scope :collection_due, lambda {

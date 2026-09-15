@@ -115,6 +115,18 @@ def demo_series(name, section, weekday, hour, minute, location)
   end
 end
 
+# --- discord scaffolding ----------------------------------------------------
+
+# Stand-ins so channel-bound features have something to point at without a real
+# Discord server. Real ids arrive via db/seeds.rb + the bot's Setup sync.
+demo_server = Server.find_or_create_by(name: 'Abide (demo)') do |s|
+  s.discord_id = DEMO_ID_BASE + 1
+end
+rides_channel = Channel.find_or_create_by(discord_id: DEMO_ID_BASE + 2) do |c|
+  c.name = 'rides'
+  c.server = demo_server
+end
+
 RECURRING_NAMES = ['Sunday School', 'Sunday Service', 'Friday Bible Study'].freeze
 
 # Earlier versions of this seed created these as one-off events. They are now
@@ -229,6 +241,49 @@ if past_event
   # One person who said yes and then didn't turn up.
   seat(past_event, by_name['tim'], role: 'rider').update!(status: 'no_show')
 end
+
+# --- sign-up posts ----------------------------------------------------------
+
+SignupPost.where(channel: rides_channel).destroy_all
+
+def build_signup(channel, date, author, options, **attrs)
+  post = SignupPost.create!({ channel: channel, service_date: date, created_by: author }.merge(attrs))
+  options.each_with_index do |(emoji, event, label), index|
+    post.options.create!(
+      Signup::EmojiKey.parse(emoji).merge(event: event, label: label, position: index)
+    )
+  end
+  post.reload
+end
+
+# One already sent and collecting reactions.
+live = build_signup(
+  rides_channel, sunday, by_name['alan'],
+  [['1️⃣', sunday_school, '9:00am — Sunday School'],
+   ['2️⃣', service, '10:30am — Sunday Service']],
+  post_at: Time.zone.now - 2.hours
+)
+live.mark_posted!(DEMO_ID_BASE + 1000, body: live.body)
+
+# Reactions arriving, as the gateway would deliver them.
+sink = Signup::ReactionSink.new
+['luna cheng', 'tim', 'flora'].each do |name|
+  sink.add(message_id: live.discord_message_id, emoji_key: 'u:one',
+           discord_user_id: by_name[name].discord_id, username: name)
+end
+sink.add(message_id: live.discord_message_id, emoji_key: 'u:two',
+         discord_user_id: by_name['nate'].discord_id, username: 'nate')
+
+# One queued to go out later, so the scheduled state has an example.
+build_signup(
+  rides_channel, friday, by_name['ian'],
+  [['1️⃣', friday_early, '6:30pm — early'],
+   ['2️⃣', friday_late, '8:00pm — late']],
+  post_at: Time.zone.now + 1.day, status: 'scheduled'
+)
+
+# And a half-built draft.
+build_signup(rides_channel, sunday + 7, by_name['alan'], [['1️⃣', nil, nil]])
 
 # --- clashes ----------------------------------------------------------------
 

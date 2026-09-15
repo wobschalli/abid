@@ -2,6 +2,10 @@ class Ride < ApplicationRecord
   ROLES = %w[rider driver].freeze
   STATUSES = %w[requested assigned confirmed cancelled no_show].freeze
 
+  # Who created this row. Reaction handling only ever touches 'discord' rides,
+  # so a rider a coordinator added by hand cannot be removed by Discord traffic.
+  SOURCES = %w[manual discord].freeze
+
   # Statuses that take someone off the board for the day. The design calls this
   # "not coming" for riders and "not driving today" for drivers.
   OUT_STATUSES = %w[cancelled no_show].freeze
@@ -16,8 +20,11 @@ class Ride < ApplicationRecord
   belongs_to :driver_ride, class_name: 'Ride', optional: true
   has_many :passengers, class_name: 'Ride', foreign_key: :driver_ride_id, dependent: :nullify
 
+  has_many :signup_reactions, dependent: :nullify
+
   validates :role, inclusion: { in: ROLES }
   validates :status, inclusion: { in: STATUSES }
+  validates :source, inclusion: { in: SOURCES }
   validates :user_id, uniqueness: { scope: :event_id }
   validate :driver_ride_must_be_a_driver
   validate :driver_ride_must_be_same_event
@@ -29,6 +36,8 @@ class Ride < ApplicationRecord
   scope :assigned, -> { where.not(driver_ride_id: nil) }
   scope :unassigned, -> { riders.active.where(driver_ride_id: nil) }
   scope :in_zone, ->(zone) { where(zone: zone) }
+  scope :from_discord, -> { where(source: 'discord') }
+  scope :dropped, -> { where.not(dropped_at: nil) }
 
   def rider?
     role == 'rider'
@@ -81,6 +90,16 @@ class Ride < ApplicationRecord
 
   def out?
     OUT_STATUSES.include?(status)
+  end
+
+  def from_discord?
+    source == 'discord'
+  end
+
+  # Un-reacted after a coordinator had already seated them. The seat is freed
+  # but the row stays on the board rather than silently vanishing.
+  def dropped?
+    dropped_at.present?
   end
 
   def active?

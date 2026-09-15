@@ -60,12 +60,23 @@ module Abid
         raise 'no session secret: set ABID_SESSION_SECRET or create .session_secret'
     end
 
+    # Pronounceable password. Users are created without anyone choosing a
+    # password (Discord join, or a reaction from someone we have never seen),
+    # and has_secure_password requires one. Duplicated in Bot and Bot::Setup
+    # before this.
+    def passgen
+      require 'passgen'
+      Passgen.generate(pronouncable: true, uppercase: false)
+    end
+
     def load_models
       Dir.glob(root('models', '*.rb')).sort.each { |model| require model }
     end
 
+    # Nested so services/signup/*.rb is picked up too. Sorted so a namespace's
+    # own file loads before the classes inside it.
     def load_services
-      Dir.glob(root('services', '*.rb')).sort.each { |service| require service }
+      Dir.glob(root('services', '**', '*.rb')).sort.each { |service| require service }
     end
 
     def load_patches

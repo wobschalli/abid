@@ -11,7 +11,15 @@ class Messenger < Bot
   def initialize(token)
     @token = token
     @map = Map.new
-    @bot = Discordrb::Commands::CommandBot.new token: @token, prefix: "!", intents: [:server_messages, :server_members], ignore_bots: true
+    # server_message_reactions (1 << 10) is required for reaction_add /
+    # reaction_remove to fire at all — without it the handlers register and
+    # silently never run. It is unprivileged, so no developer-portal change.
+    #
+    # No message-content intent is needed: the bot composes and sends the
+    # sign-up posts itself, so it never has to read anyone else's message.
+    @bot = Discordrb::Commands::CommandBot.new token: @token, prefix: "!",
+                                               intents: [:server_messages, :server_members, :server_message_reactions],
+                                               ignore_bots: true
     @bot.init_cache
     register_commands
     set_button_handlers
@@ -152,6 +160,62 @@ class Messenger < Bot
     @bot.member_leave do |event|
       handle_member_leave event
     end
+
+    # No :message filter — discordrb fixes handler attributes at registration
+    # time, and the set of messages we watch changes while the bot runs. The
+    # filtering is one indexed lookup in SignupOption.for_reaction.
+    @bot.reaction_add do |event|
+      handle_reaction_add event
+    end
+
+    @bot.reaction_remove do |event|
+      handle_reaction_remove event
+    end
+
+    @bot.reaction_remove_all do |event|
+      handle_reaction_remove_all event
+    end
+  end
+
+  # Every handler swallows its exceptions. discordrb logs and carries on, but a
+  # typo in a service would otherwise be invisible until someone noticed the
+  # board was wrong.
+  def handle_reaction_add(event)
+    Signup::ReactionSink.new.add(
+      message_id: event.message_id,
+      emoji_key: Signup::EmojiKey.from_reaction_event(event),
+      discord_user_id: event.user_id,
+      username: event.user&.username,
+      display_name: safe_display_name(event),
+      bot: event.user&.bot_account?
+    )
+  rescue StandardError => e
+    warn "reaction_add failed: #{e.class}: #{e.message}"
+  end
+
+  def handle_reaction_remove(event)
+    # Uses event.user_id (patched in), not event.user — on a remove there is no
+    # member payload, so #user can cost an HTTP round trip for an id we already
+    # have and only need to look up locally.
+    Signup::ReactionSink.new.remove(
+      message_id: event.message_id,
+      emoji_key: Signup::EmojiKey.from_reaction_event(event),
+      discord_user_id: event.user_id
+    )
+  rescue StandardError => e
+    warn "reaction_remove failed: #{e.class}: #{e.message}"
+  end
+
+  def handle_reaction_remove_all(event)
+    Signup::ReactionSink.new.remove_all(message_id: event.message_id)
+  rescue StandardError => e
+    warn "reaction_remove_all failed: #{e.class}: #{e.message}"
+  end
+
+  def safe_display_name(event)
+    event.user&.display_name
+  rescue StandardError
+    nil
   end
 
   # @param event [Discordrb::Events::ButtonEvent]

@@ -54,6 +54,7 @@ class Components::Layout < Phlex::HTML
             sidenav text: 'Ride board', href: url('/board')
             sidenav text: 'Events', href: url('/events')
             sidenav text: 'Series', href: url('/series')
+            sidenav text: 'Sign-ups', href: url('/signups')
             sidenav text: 'Locations', href: url('/locations')
             sidenav text: 'Users', href: url('/users')
           end

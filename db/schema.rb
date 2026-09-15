@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2100) do
+ActiveRecord::Schema[8.0].define(version: 2400) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -45,10 +45,9 @@ ActiveRecord::Schema[8.0].define(version: 2100) do
     t.string "name"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "event_id"
-    t.bigint "discord_id"
+    t.bigint "discord_id", null: false
     t.bigint "server_id"
-    t.index ["event_id"], name: "index_emojis_on_event_id"
+    t.index ["discord_id"], name: "index_emojis_on_discord_id", unique: true
     t.index ["server_id"], name: "index_emojis_on_server_id"
   end
 
@@ -138,8 +137,11 @@ ActiveRecord::Schema[8.0].define(version: 2100) do
     t.datetime "updated_at", null: false
     t.string "zone"
     t.string "pickup_address"
+    t.string "source", default: "manual", null: false
+    t.datetime "dropped_at"
     t.index ["driver_ride_id"], name: "index_rides_on_driver_ride_id"
     t.index ["event_id", "role"], name: "index_rides_on_event_id_and_role"
+    t.index ["event_id", "source"], name: "index_rides_on_event_id_and_source"
     t.index ["event_id", "user_id"], name: "index_rides_on_event_id_and_user_id", unique: true
     t.index ["event_id"], name: "index_rides_on_event_id"
     t.index ["pickup_location_id"], name: "index_rides_on_pickup_location_id"
@@ -173,6 +175,69 @@ ActiveRecord::Schema[8.0].define(version: 2100) do
     t.unique_constraint ["discord_id"]
   end
 
+  create_table "signup_options", force: :cascade do |t|
+    t.bigint "signup_post_id", null: false
+    t.bigint "event_id"
+    t.string "label"
+    t.integer "position", default: 0, null: false
+    t.string "emoji_key", null: false
+    t.string "emoji_unicode"
+    t.string "emoji_name"
+    t.bigint "emoji_discord_id"
+    t.boolean "emoji_animated", default: false, null: false
+    t.bigint "discord_message_id"
+    t.datetime "synced_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["discord_message_id", "emoji_key"], name: "index_signup_options_on_message_and_emoji", unique: true, where: "(discord_message_id IS NOT NULL)"
+    t.index ["event_id"], name: "index_signup_options_on_event_id"
+    t.index ["signup_post_id", "emoji_key"], name: "index_signup_options_on_signup_post_id_and_emoji_key", unique: true
+    t.index ["signup_post_id", "position"], name: "index_signup_options_on_signup_post_id_and_position"
+    t.index ["signup_post_id"], name: "index_signup_options_on_signup_post_id"
+  end
+
+  create_table "signup_posts", force: :cascade do |t|
+    t.bigint "channel_id", null: false
+    t.bigint "created_by_id"
+    t.date "service_date"
+    t.text "intro"
+    t.text "outro"
+    t.string "status", default: "draft", null: false
+    t.datetime "post_at"
+    t.bigint "discord_message_id"
+    t.text "rendered_body"
+    t.integer "publish_attempts", default: 0, null: false
+    t.string "last_error"
+    t.datetime "posted_at"
+    t.datetime "closed_at"
+    t.datetime "reconciled_at"
+    t.datetime "reconcile_requested_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["channel_id"], name: "index_signup_posts_on_channel_id"
+    t.index ["created_by_id"], name: "index_signup_posts_on_created_by_id"
+    t.index ["discord_message_id"], name: "index_signup_posts_on_discord_message_id", unique: true
+    t.index ["status", "post_at"], name: "index_signup_posts_on_status_and_post_at"
+    t.index ["status", "service_date"], name: "index_signup_posts_on_status_and_service_date"
+  end
+
+  create_table "signup_reactions", force: :cascade do |t|
+    t.bigint "signup_option_id", null: false
+    t.bigint "discord_user_id", null: false
+    t.bigint "user_id"
+    t.bigint "ride_id"
+    t.datetime "reacted_at", null: false
+    t.datetime "removed_at"
+    t.string "source", default: "gateway", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["ride_id"], name: "index_signup_reactions_on_ride_id"
+    t.index ["signup_option_id", "discord_user_id"], name: "index_signup_reactions_on_signup_option_id_and_discord_user_id", unique: true
+    t.index ["signup_option_id", "removed_at"], name: "index_signup_reactions_on_signup_option_id_and_removed_at"
+    t.index ["signup_option_id"], name: "index_signup_reactions_on_signup_option_id"
+    t.index ["user_id"], name: "index_signup_reactions_on_user_id"
+  end
+
   create_table "users", force: :cascade do |t|
     t.string "name"
     t.string "username"
@@ -204,6 +269,13 @@ ActiveRecord::Schema[8.0].define(version: 2100) do
   add_foreign_key "rides", "locations", column: "pickup_location_id"
   add_foreign_key "rides", "rides", column: "driver_ride_id"
   add_foreign_key "rides", "users"
+  add_foreign_key "signup_options", "events"
+  add_foreign_key "signup_options", "signup_posts"
+  add_foreign_key "signup_posts", "channels"
+  add_foreign_key "signup_posts", "users", column: "created_by_id"
+  add_foreign_key "signup_reactions", "rides"
+  add_foreign_key "signup_reactions", "signup_options"
+  add_foreign_key "signup_reactions", "users"
   add_foreign_key "users", "locations"
   add_foreign_key "users", "users", column: "driver_id"
 end
