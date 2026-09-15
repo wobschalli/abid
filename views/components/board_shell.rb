@@ -68,7 +68,7 @@ class Components::BoardShell < Phlex::HTML
 
     div(class: 'flex gap-1 p-[3px] bg-ink/5 rounded-lg') do
       siblings.each { |sibling| slot_tab(sibling) }
-      new_slot_hint
+      new_slot_link if @leader
     end
   end
 
@@ -86,12 +86,18 @@ class Components::BoardShell < Phlex::HTML
     end
   end
 
-  # `addSlot` is a no-op in the design. Event creation already lives in Discord,
-  # so this points there rather than shipping a dead button.
-  def new_slot_hint
-    span(
-      class: 'text-ink/45 font-medium text-xs px-2.5 py-1.5 cursor-default',
-      title: 'Create events in Discord with /event create'
+  # Another ride time on the same day. `addSlot` was a no-op in the original
+  # design and this shipped as an inert span with a tooltip, back when events
+  # could only be made through the Discord modal — but it sat inside the tab
+  # group looking exactly like the tabs either side of it, so it read as a
+  # button and did nothing. /events/new exists now, so it goes there with the
+  # date already filled in.
+  def new_slot_link
+    a(
+      href: "/events/new?date=#{@board.date.strftime('%Y-%m-%d')}",
+      title: "Add another ride time on #{@board.date.strftime('%-d %b')}",
+      class: 'border-0 cursor-pointer font-semibold text-[11.5px] px-[11px] py-1.5 rounded-md ' \
+             'no-underline bg-transparent text-ink/60 hover:text-ink hover:bg-ink/5'
     ) { '+ slot' }
   end
 

@@ -83,7 +83,8 @@ class App < Sinatra::Base
   # Must precede '/events/:id', which would otherwise match "new".
   get '/events/new' do
     require_leader!
-    phlex EventForm.new(event: Event.new, **form_collections, leader: leader?)
+    phlex EventForm.new(event: Event.new(start_time: prefilled_start_time),
+                        **form_collections, leader: leader?)
   end
 
   post '/events' do
@@ -544,6 +545,18 @@ class App < Sinatra::Base
   def find_event(id)
     return nil if id.blank?
     Event.find_by(id: id)
+  end
+
+  # "+ slot" on the board links here with ?date=. Default to an hour after the
+  # last slot already on that day — adding a third Sunday service to a 9:30 and
+  # a 10:30 almost always means 11:30, and a bare date would otherwise land the
+  # datetime field on midnight.
+  def prefilled_start_time
+    date = Date.parse(params[:date].to_s)
+    last = Event.active.where(start_time: date.all_day).maximum(:start_time)
+    last ? last + 1.hour : Time.zone.local(date.year, date.month, date.day, 9, 0)
+  rescue Date::Error, TypeError
+    nil
   end
 
   # Rides are preloaded because EventTable counts riders and drivers per row.
