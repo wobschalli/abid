@@ -51,3 +51,12 @@ reverses the last ten steps.
 
 Everything on the board is a plain form POST, so it degrades to full page loads
 without JavaScript.
+
+## Tests
+The board logic — auto-fill, clashes, seat counting, undo, CSV — is covered by
+minitest. Each test runs in a transaction that is rolled back afterwards.
+
+    rake test_setup   # once: create and migrate abid_test
+    rake test
+
+The Discord side is not tested; mocking discordrb is not worth the effort.

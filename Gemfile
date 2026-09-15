@@ -20,3 +20,7 @@ gem "irb", "~> 1.15"
 gem "reline", "~> 0.6.2"
 gem "bcrypt", "~> 3.1"
 gem "passgen", "~> 1.2"
+
+group :test do
+  gem "minitest", "~> 5.25"
+end
