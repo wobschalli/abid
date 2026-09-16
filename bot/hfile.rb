@@ -2,6 +2,7 @@ require 'discordrb'
 require 'literal'
 require 'tanuki_emoji'
 require 'yaml'
+require 'erb'
 require 'active_record'
 require 'active_model'
 require 'active_support'
@@ -13,7 +14,7 @@ require 'http'
 
 base_dir = File.dirname(__dir__.to_s)
 db_config_path = File.join(base_dir, 'config', 'database.yml')
-db_config = YAML.safe_load_file(db_config_path, aliases: true)
+db_config = YAML.safe_load(ERB.new(File.read(db_config_path)).result, aliases: true)
 current_env = ENV.fetch('BOT_ENV', 'development')
 
 ActiveRecord::Base.establish_connection(db_config[current_env])

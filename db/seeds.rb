@@ -12,10 +12,14 @@ require_relative '../models/role'
 require_relative '../models/server'
 require_relative '../models/user'
 
+# CONFIG_FILE lets you seed a beta/dev database from an alternate config
+# (e.g. CONFIG_FILE=config2.yml rake db:seed).
+config_file = ENV.fetch('CONFIG_FILE', 'config.yml')
+
 begin
-  config = YAML.load_file('config.yml')
+  config = YAML.load_file(config_file)
 rescue Errno::ENOENT
-  puts "config.yml was not found"
+  puts "#{config_file} was not found"
   exit
 end
 

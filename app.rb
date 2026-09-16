@@ -2,7 +2,15 @@ require 'sinatra/activerecord'
 require 'phlex-sinatra'
 require 'phlex'
 
-SESSION_SECRET = File.read('.session_secret')
+# In production the secret comes from the SESSION_SECRET env var; locally it
+# falls back to the gitignored .session_secret file.
+SESSION_SECRET = ENV['SESSION_SECRET'] || begin
+  secret_file = File.expand_path('.session_secret', __dir__)
+  unless File.exist?(secret_file)
+    abort "No session secret: set the SESSION_SECRET env var or create #{secret_file}"
+  end
+  File.read(secret_file).strip
+end
 
 class App < Sinatra::Base
   helpers Phlex::Sinatra
