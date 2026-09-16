@@ -43,7 +43,11 @@ class Bot
       # while the bot was down or resuming gets picked up the moment it starts.
       Thread.new { with_connection { reconcile(SignupPost.tracking) } }
 
-      at_exit { @scheduler.shutdown(:wait) }
+      # Bounded. `shutdown(:wait)` waits for running jobs *forever*, so a tick
+      # wedged on a slow Discord call held the process open until SIGKILL. Every
+      # job here is an idempotent sweep that redoes itself on the next boot, so
+      # ten seconds then letting go loses nothing.
+      at_exit { @scheduler.shutdown(wait: 10) }
     end
 
     private

@@ -35,8 +35,16 @@ config['emojis'].each do |name, id|
   Emoji.find_or_create_by name: name, discord_id: id, server: ABIDE_SERVER
 end
 
-TEST_SERVER = Server.find_or_create_by name: 'Test', discord_id: config.dig('servers', 'test')
-Channel.find_or_create_by name: 'general', discord_id: config.dig('test', 'general'), server: TEST_SERVER
+# Optional. servers.discord_id is unique, so pointing `test` at the same server
+# as `abide` — which is what you do when you only have one — used to abort the
+# whole seed with a PG::UniqueViolation partway through, after the channels were
+# already created.
+test_server_id = config.dig('servers', 'test')
+if test_server_id.present? && test_server_id.to_s != config.dig('servers', 'abide').to_s
+  test_server = Server.find_or_create_by name: 'Test', discord_id: test_server_id
+  general_id = config.dig('test', 'general')
+  Channel.find_or_create_by(name: 'general', discord_id: general_id, server: test_server) if general_id.present?
+end
 
 DiscordInfo.find_or_create_by token: config.dig('discord', 'token'), app_id: config.dig('discord', 'app_id'), public_key: config.dig('discord', 'public_key')
 

@@ -24,6 +24,14 @@ class Bot
     private
     # @param server [Server]
     # @return array of channels [Array<Discordrb::Channel>]
+    # Refreshes the channels we already know about. Deliberately does NOT create
+    # a row for every channel it can see.
+    #
+    # It used to, which meant a bot invited to a 36-channel server got 36
+    # Channel rows, and the sign-up composer then offered every one of them as
+    # somewhere to post rides — #girlies-only included. Channels are declared in
+    # config.yml, so the set of places this bot may post is an explicit
+    # decision rather than a side effect of which server it was invited to.
     def setup_channels(server)
       #discordrb caching is dumb and needs to be done manually
       #after using this library, i can understand nietzsche more
@@ -33,11 +41,17 @@ class Bot
       end
 
       #now the cache is populated, so you can use it
-      @bot.server(server.discord_id).channels.each do |channel|
-        Channel.find_or_create_by(discord_id: channel.id) do |c|
-          c.name = channel.name
-          c.server = server
+      visible = @bot.server(server.discord_id).channels.index_by(&:id)
+
+      Channel.where(server: server).find_each do |channel|
+        live = visible[channel.discord_id]
+        if live.nil?
+          warn "channel ##{channel.name} (#{channel.discord_id}) is not visible to the bot"
+          next
         end
+
+        # Keep the name in step with Discord; the id is the identity.
+        channel.update(name: live.name) if channel.name != live.name
       end
     end
 
