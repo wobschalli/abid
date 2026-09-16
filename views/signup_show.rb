@@ -83,10 +83,37 @@ class SignupShow < Phlex::HTML
     span(class: "font-mono text-[9.5px] font-semibold tracking-[.06em] px-[7px] py-[3px] rounded-[5px] uppercase #{style}") { label }
   end
 
+  # Discord's own wording for the common failures says what went wrong but not
+  # what to do, and "The bot doesn't have the required permission to do this!"
+  # names neither the permission nor the channel. Translate the two that a
+  # coordinator can actually fix.
   def failure_note
-    div(class: 'p-3 rounded-lg border border-danger/30 bg-danger-tint text-[12.5px] text-danger') do
-      plain 'Sending failed: '
-      plain @post.last_error.to_s
+    channel = @post.channel&.name
+    error = @post.last_error.to_s
+
+    div(class: 'p-3 rounded-lg border border-danger/30 bg-danger-tint text-[12.5px] text-danger flex flex-col gap-1.5') do
+      case error
+      when /NoPermission/
+        span(class: 'font-semibold') { "The bot cannot post in ##{channel}." }
+        span do
+          plain 'In Discord: right-click the channel → Edit Channel → Permissions → add this bot ' \
+                '(or its role) and allow '
+          strong { 'View Channel' }
+          plain ', '
+          strong { 'Send Messages' }
+          plain ', '
+          strong { 'Add Reactions' }
+          plain ' and '
+          strong { 'Read Message History' }
+          plain '. Then press Post now again.'
+        end
+      when /UnknownChannel/
+        span(class: 'font-semibold') { "##{channel} no longer exists on Discord." }
+      else
+        span(class: 'font-semibold') { 'Sending failed.' }
+      end
+
+      span(class: 'font-mono text-[11px] opacity-70') { error } if error.present?
     end
   end
 

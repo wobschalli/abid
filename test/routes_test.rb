@@ -227,6 +227,21 @@ class RoutesTest < AbidTest
     assert_equal 409, last_response.status
   end
 
+  def test_a_permission_failure_says_what_to_fix
+    record = draft_post
+    as_leader
+    post "/signups/#{record.id}/options", emoji: '1️⃣', event_id: @event.id
+    record.update!(status: 'failed',
+                   last_error: "Discordrb::Errors::NoPermission: The bot doesn't have the required permission to do this!")
+
+    body = get_ok("/signups/#{record.id}").body
+
+    # Discord's own wording names neither the permission nor the channel.
+    assert_includes body, "cannot post in ##{channel.name}"
+    assert_includes body, 'Send Messages'
+    assert_includes body, 'View Channel'
+  end
+
   # --- one-click sign-ups --------------------------------------------------
 
   def test_creating_a_post_fills_in_that_days_rides
