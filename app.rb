@@ -274,8 +274,9 @@ class App < Sinatra::Base
   # --- sign-up posts --------------------------------------------------------
 
   get '/signups' do
-    posts = SignupPost.includes(:channel, :options).recent.limit(50)
-    phlex SignupsIndex.new(posts: posts, channels: Channel.order(:name).to_a, leader: leader?)
+    posts = SignupPost.includes(:channel, options: :event).recent.limit(50)
+    phlex SignupsIndex.new(posts: posts, channels: Channel.order(:name).to_a,
+                           needing_signup: dates_needing_signup, leader: leader?)
   end
 
   post '/signups' do
@@ -286,6 +287,19 @@ class App < Sinatra::Base
       created_by: current_user
     )
     halt 422, post.errors.full_messages.to_sentence unless post.save
+    # Every event that day is already known, so fill the emoji rows in rather
+    # than making someone pick each one out of a dropdown.
+    Signup::OptionSeeder.new(post).call
+    redirect to("/signups/#{post.id}")
+  end
+
+  # Re-fill after the ride date changes, or after an event is added to that day.
+  post '/signups/:id/fill' do
+    require_leader!
+    post = find_signup(params[:id])
+    halt 409, 'This post has already been sent.' unless post.editable?
+
+    Signup::OptionSeeder.new(post).call
     redirect to("/signups/#{post.id}")
   end
 
@@ -374,6 +388,31 @@ class App < Sinatra::Base
     # time", which is a confusing thing to be told about a time you just typed.
     post.update(post_at: params[:post_at]) if params[:post_at].present? && post.editable?
     halt 422, 'Every option needs a ride, and the post needs a send time.' unless post.schedule!
+    redirect to("/signups/#{post.id}")
+  end
+
+  # Send it on the next tick.
+  #
+  # Deliberately the same queue rather than a second path to Discord. The web
+  # process has no gateway connection and config.ru keeps it that way, so this
+  # can only ever be a row the bot picks up. `Publisher#claim` selects
+  # `status = 'scheduled' AND post_at <= now()` under FOR UPDATE SKIP LOCKED,
+  # so moving post_at to now makes it claimable while inheriting every existing
+  # protection: the `posting` lease, stale recovery, and the unique
+  # discord_message_id that is the last line of defence against a double post.
+  post '/signups/:id/post-now' do
+    require_leader!
+    post = find_signup(params[:id])
+    halt 409, 'This post has already been sent.' if post.posted? || post.status == 'posting'
+
+    post.update(post_at: Time.zone.now)
+
+    # A scheduled post cannot be scheduled again — `schedulable?` requires
+    # `editable?`, which 'scheduled' is not. Moving its post_at is enough.
+    if post.editable? && !post.schedule!
+      halt 422, 'Every option needs a ride, and the post needs a channel.'
+    end
+
     redirect to("/signups/#{post.id}")
   end
 
@@ -615,16 +654,46 @@ class App < Sinatra::Base
     )
   end
 
-  # Occurrences a sign-up post could plausibly be about: anything still upcoming,
-  # nearest first. Deliberately not filtered to the post's own date — a
-  # coordinator often posts on Thursday for Sunday.
+  # Upcoming ride dates with no sign-up post yet, grouped so one button can
+  # cover a whole Sunday. Limited to the next few weeks — the generator runs a
+  # rolling horizon, so listing everything it has produced would be a wall.
+  #
+  # "Has a post" is judged by service_date rather than by the options' events:
+  # a post someone made but has not filled in yet still counts, or the date
+  # would keep offering to make a second one.
+  def dates_needing_signup(weeks: 3)
+    events = Event.active.upcoming
+                  .where('start_time <= ?', weeks.weeks.from_now)
+                  .chronological.to_a
+    return [] if events.empty?
+
+    covered = SignupPost.where.not(status: 'failed')
+                        .where(service_date: events.filter_map { |e| e.start_time&.to_date })
+                        .pluck(:service_date).to_set
+
+    events.group_by { |event| event.start_time.to_date }
+          .reject { |date, _| covered.include?(date) }
+          .sort_by(&:first)
+  end
+
+  # The occurrences this post could be about — normally the one or two on its
+  # own ride date.
+  #
+  # It used to be "everything from yesterday onward, limit 40", which is how a
+  # two-service Sunday ended up offering seventeen choices. The `service_date`
+  # was in the query but had no effect: `[from, Time.zone.now - 1.day].min`
+  # discarded it whenever the date was today or later, which is every normal
+  # case, since the form defaults to the coming Sunday.
   def signup_candidates(post)
-    from = post.service_date ? post.service_date.beginning_of_day : Time.zone.now
-    Event.active
-         .where('start_time >= ?', [from, Time.zone.now - 1.day].min)
-         .chronological
-         .limit(40)
-         .to_a
+    dated = post.service_date &&
+            Event.active.where(start_time: post.service_date.all_day).chronological.to_a
+
+    scope = dated.presence || Event.active.upcoming.chronological.limit(20).to_a
+
+    # Anything an existing option already points at, even on another day. Drop
+    # this and that option's select renders with nothing selected, then silently
+    # rebinds the ride to something else on the next Save.
+    (scope | post.options.filter_map(&:event)).sort_by { |event| event.start_time || Time.zone.now }
   end
 
   def users_for(filter, query)

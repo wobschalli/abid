@@ -45,6 +45,7 @@ class Components::BoardShell < Phlex::HTML
 
   def board_header
     div(class: 'flex items-center gap-3.5 px-5 py-3.5 border-b border-line flex-none flex-wrap') do
+      event_nav
       div(class: 'font-display font-bold text-lg -tracking-[.015em]') { header_date }
       slot_tabs
       div(class: 'flex-1')
@@ -61,14 +62,46 @@ class Components::BoardShell < Phlex::HTML
     (@event.start_time || Time.zone.now).strftime('%A %-d %b')
   end
 
+  # Step to the occurrence either side of this one, in time order.
+  #
+  # Until this existed there was no way to reach another day's board from the
+  # board at all — you had to go back to Events and click. The control that sat
+  # here was "+ slot", which looked like navigation and actually created an
+  # event.
+  #
+  # Deliberately outside the tab group: `slot_tabs` returns early on a day with
+  # nothing to switch between, which would take these with it.
+  def event_nav
+    div(class: 'flex items-center gap-1 -ml-1') do
+      step_link(@board.previous_event, '‹', 'Previous ride')
+      step_link(@board.next_event, '›', 'Next ride')
+    end
+  end
+
+  # Rendered as a dead span rather than omitted when there is nowhere to go, so
+  # the header does not reflow at either end of the calendar.
+  def step_link(target, glyph, label)
+    shape = 'flex items-center justify-center w-8 h-8 rounded-md ' \
+            'text-[22px] leading-none pb-[3px] no-underline border border-transparent'
+    if target.nil?
+      span(class: "#{shape} text-ink/20", aria_hidden: 'true') { glyph }
+    else
+      a(href: "/board?event_id=#{target.id}",
+        class: "#{shape} text-ink/60 hover:text-ink hover:bg-ink/5 hover:border-line",
+        title: "#{label}: #{target.start_time&.strftime('%a %-d %b, %-l:%M %p')}",
+        aria_label: label) { glyph }
+    end
+  end
+
   # One tab per event on this date — "Sunday School 9:30 AM" in the design.
+  # Only when there is a choice to make: a single tab is just the page you are
+  # already looking at.
   def slot_tabs
     siblings = @board.sibling_events
-    return if siblings.empty?
+    return if siblings.size < 2
 
     div(class: 'flex gap-1 p-[3px] bg-ink/5 rounded-lg') do
       siblings.each { |sibling| slot_tab(sibling) }
-      new_slot_link if @leader
     end
   end
 
@@ -84,21 +117,6 @@ class Components::BoardShell < Phlex::HTML
       whitespace
       span(class: 'opacity-70') { sibling.start_time&.strftime('%-l:%M %p').to_s }
     end
-  end
-
-  # Another ride time on the same day. `addSlot` was a no-op in the original
-  # design and this shipped as an inert span with a tooltip, back when events
-  # could only be made through the Discord modal — but it sat inside the tab
-  # group looking exactly like the tabs either side of it, so it read as a
-  # button and did nothing. /events/new exists now, so it goes there with the
-  # date already filled in.
-  def new_slot_link
-    a(
-      href: "/events/new?date=#{@board.date.strftime('%Y-%m-%d')}",
-      title: "Add another ride time on #{@board.date.strftime('%-d %b')}",
-      class: 'border-0 cursor-pointer font-semibold text-[11.5px] px-[11px] py-1.5 rounded-md ' \
-             'no-underline bg-transparent text-ink/60 hover:text-ink hover:bg-ink/5'
-    ) { '+ slot' }
   end
 
   def undo_button

@@ -151,6 +151,25 @@ class RideBoard
                              .to_a
   end
 
+  # --- stepping to the occurrence either side --------------------------------
+  #
+  # Relative to the event on screen, NOT to `Time.zone.now`. `Event.upcoming` is
+  # keyed off now, so it answers the wrong question the moment you are looking
+  # at a board from last Sunday.
+
+  def next_event
+    return @next_event if defined?(@next_event)
+
+    @next_event = neighbour('start_time > ?', :asc)
+  end
+
+  def previous_event
+    return @previous_event if defined?(@previous_event)
+
+    @previous_event = neighbour('start_time < ?', :desc)
+  end
+
+
   # One car column: the driver's ride plus who's in it.
   class Car
     attr_reader :ride, :passengers
@@ -202,5 +221,17 @@ class RideBoard
 
   def passengers_for(driver_ride)
     rider_rides.select { |r| r.driver_ride_id == driver_ride.id && r.active? }
+  end
+
+  def neighbour(condition, direction)
+    # An event created through the Discord modal can have no start_time, and
+    # there is no sensible "the one after this" from a point that is not on the
+    # timeline at all.
+    return nil if event.start_time.nil?
+
+    Event.active
+         .where(condition, event.start_time)
+         .order(start_time: direction)
+         .first
   end
 end

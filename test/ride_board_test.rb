@@ -169,4 +169,53 @@ class RideBoardTest < AbidTest
 
     assert_equal [early.id, late.id], RideBoard.new(early).sibling_events.map(&:id)
   end
+
+  # The board's only navigation. These step relative to the event on screen,
+  # not to Time.zone.now — otherwise they answer the wrong question as soon as
+  # you are looking at a board from last Sunday.
+  def test_next_and_previous_step_through_events_in_time_order
+    starts = Time.zone.now.change(hour: 9, min: 30) + 1.day
+    early = make_event(name: 'Sunday School', starts: starts)
+    late = make_event(name: 'Sunday Service', starts: starts + 1.hour)
+    friday = make_event(name: 'Friday Study', starts: starts + 5.days)
+
+    assert_equal late.id, RideBoard.new(early).next_event.id
+    assert_equal friday.id, RideBoard.new(late).next_event.id
+    assert_equal late.id, RideBoard.new(friday).previous_event.id
+    assert_equal early.id, RideBoard.new(late).previous_event.id
+  end
+
+  def test_stepping_past_either_end_gives_nothing
+    only = make_event(name: 'Sunday Service', starts: Time.zone.now + 1.day)
+
+    assert_nil RideBoard.new(only).next_event
+    assert_nil RideBoard.new(only).previous_event
+  end
+
+  def test_stepping_works_backwards_from_a_past_event
+    past = make_event(name: 'Last Sunday', starts: Time.zone.now - 7.days)
+    soon = make_event(name: 'This Sunday', starts: Time.zone.now + 1.day)
+
+    assert_equal soon.id, RideBoard.new(past).next_event.id,
+                 'next must be relative to the event shown, not to now'
+  end
+
+  def test_an_event_with_no_start_time_has_no_neighbours
+    # Events made through the Discord modal can have no start_time, and there
+    # is no sensible "the one after this" from a point off the timeline.
+    make_event(name: 'Sunday Service', starts: Time.zone.now + 1.day)
+    undated = Event.create!(name: 'Someday')
+
+    assert_nil RideBoard.new(undated).next_event
+    assert_nil RideBoard.new(undated).previous_event
+  end
+
+  def test_a_disabled_event_is_never_stepped_to
+    starts = Time.zone.now + 1.day
+    first = make_event(name: 'Sunday School', starts: starts)
+    Event.create!(name: 'Cancelled', start_time: starts + 1.hour, disabled: true)
+    real = make_event(name: 'Sunday Service', starts: starts + 2.hours)
+
+    assert_equal real.id, RideBoard.new(first).next_event.id
+  end
 end

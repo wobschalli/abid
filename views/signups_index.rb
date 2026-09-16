@@ -3,9 +3,10 @@ require_relative 'components/master'
 class SignupsIndex < Phlex::HTML
   include Components
 
-  def initialize(posts:, channels:, leader: false)
+  def initialize(posts:, channels:, needing_signup: [], leader: false)
     @posts = posts
     @channels = channels
+    @needing_signup = needing_signup
     @leader = leader
   end
 
@@ -14,7 +15,10 @@ class SignupsIndex < Phlex::HTML
       div(class: 'max-w-3xl flex flex-col gap-5 font-sans text-ink') do
         header
         how_it_works
-        new_post_form if @leader
+        if @leader
+          dates_needing_signup
+          other_date_form
+        end
         @posts.empty? ? empty_note : list
       end
     end
@@ -35,21 +39,61 @@ class SignupsIndex < Phlex::HTML
     end
   end
 
-  def new_post_form
+  # One button per ride date that has no post yet. The old form asked for a
+  # channel and a date and then handed back an empty post to wire up by hand;
+  # every one of those answers is already known, so this just makes the post.
+  def dates_needing_signup
+    return if @needing_signup.empty?
+
+    div(class: 'flex flex-col gap-2') do
+      span(class: 'board-label') { 'Coming up, with no sign-up yet' }
+      @needing_signup.each { |date, events| needs_signup_row(date, events) }
+    end
+  end
+
+  def needs_signup_row(date, events)
     form(method: 'post', action: '/signups',
-         class: 'flex gap-2 items-end flex-wrap p-3 rounded-lg border border-line bg-surface') do
-      div(class: 'flex flex-col gap-[5px]') do
-        span(class: 'board-label') { 'Channel' }
-        select(name: 'channel_id', required: true, class: 'board-input') do
-          @channels.each { |c| option(value: c.id) { "##{c.name}" } }
-        end
+         class: 'flex items-center gap-3 px-3.5 py-3 rounded-lg border border-line bg-surface flex-wrap') do
+      input(type: 'hidden', name: 'service_date', value: date.strftime('%Y-%m-%d'))
+
+      div(class: 'flex-1 min-w-0 flex flex-col gap-0.5') do
+        span(class: 'font-semibold text-[13.5px]') { date.strftime('%A %-d %B') }
+        span(class: 'board-meta') { events.map { |e| ride_label(e) }.join(' · ') }
       end
-      div(class: 'flex flex-col gap-[5px]') do
-        span(class: 'board-label') { 'Ride date' }
+      channel_field
+      button(type: 'submit', class: 'board-btn-solid') { 'Create sign-up' }
+    end
+  end
+
+  def ride_label(event)
+    [event.start_time&.strftime('%-l:%M %p'), event.name].compact_blank.join(' ')
+  end
+
+  # With a single channel there is nothing to choose, and this install is
+  # deliberately scoped to one. Only ask when the answer is not already known.
+  def channel_field
+    if @channels.size == 1
+      input(type: 'hidden', name: 'channel_id', value: @channels.first.id)
+    else
+      # `board-input` is width:100%, which on a flex row makes the select eat
+      # the whole line and push everything else onto the next one.
+      select(name: 'channel_id', required: true, class: 'board-input w-auto shrink-0 py-1.5 text-[12px]') do
+        @channels.each { |c| option(value: c.id) { "##{c.name}" } }
+      end
+    end
+  end
+
+  # The escape hatch: a date the list above does not offer.
+  def other_date_form
+    details(class: 'text-[12.5px]') do
+      summary(class: 'cursor-pointer text-ink/65 hover:text-ink') { 'Another date' }
+      form(method: 'post', action: '/signups',
+           class: 'flex gap-2 items-end flex-wrap pt-2.5') do
+        channel_field
         input(type: 'date', name: 'service_date', class: 'board-input',
               value: default_date.strftime('%Y-%m-%d'))
+        button(type: 'submit', class: 'board-btn') { 'Create' }
       end
-      button(type: 'submit', class: 'board-btn-solid') { 'New post' }
     end
   end
 
@@ -82,12 +126,16 @@ class SignupsIndex < Phlex::HTML
     end
   end
 
+  # Name the rides rather than counting them. "2 options" never said which two,
+  # which is the one thing you want to know from a list.
   def meta(post)
+    rides = post.options.filter_map(&:event).map { |e| ride_label(e) }
+
     [
-      "##{post.channel&.name}",
-      post.summary,
+      post.service_date&.strftime('%a %-d %b'),
+      rides.presence&.join(' · ') || 'no rides yet',
       ("#{post.reaction_count} reactions" if post.posted?)
-    ].compact.join(' · ')
+    ].compact.join(' — ')
   end
 
   def timing(post)

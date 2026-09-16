@@ -71,8 +71,9 @@ class RoutesTest < AbidTest
     get_ok("/board/#{@event.id}.csv")
   end
 
-  # The '+ slot' button on the board links here with a date, and a bad or absent
-  # date must not 500 the page.
+  # /events/new takes an optional date. Nothing links to it with one any more
+  # (the board's '+ slot' did, and is now next/previous arrows), but the param
+  # is still supported and a bad one must not 500 the page.
   def test_new_event_accepts_and_survives_a_date_param
     get_ok('/events/new?date=2026-09-20')
     get_ok('/events/new?date=not-a-date')
@@ -167,6 +168,112 @@ class RoutesTest < AbidTest
     body = record.reload.body
     assert_includes body, '1️⃣'
     assert_includes body, 'Early ride'
+  end
+
+  # --- post now ------------------------------------------------------------
+  #
+  # The web process has no Discord connection, so "send" can only mean "make
+  # the row claimable by the bot". These assert exactly that and stop there —
+  # nothing is posted to a real server.
+
+  def test_post_now_makes_a_draft_claimable_by_the_bot
+    record = draft_post
+    as_leader
+    post "/signups/#{record.id}/options", emoji: '1️⃣', event_id: @event.id
+
+    as_leader
+    post "/signups/#{record.id}/post-now"
+
+    record.reload
+    assert_equal 'scheduled', record.status
+    refute_nil record.post_at
+    assert_operator record.post_at, :<=, Time.zone.now
+    assert_includes SignupPost.due, record, 'the bot must be able to claim it'
+  end
+
+  def test_post_now_brings_a_scheduled_post_forward
+    record = draft_post
+    as_leader
+    post "/signups/#{record.id}/options", emoji: '1️⃣', event_id: @event.id
+    record.update!(post_at: 3.days.from_now, status: 'scheduled')
+
+    as_leader
+    post "/signups/#{record.id}/post-now"
+
+    record.reload
+    assert_equal 'scheduled', record.status
+    assert_operator record.post_at, :<=, Time.zone.now
+    assert_includes SignupPost.due, record
+  end
+
+  def test_post_now_refuses_a_post_with_no_rides
+    record = draft_post
+
+    as_leader
+    post "/signups/#{record.id}/post-now"
+
+    assert_equal 422, last_response.status
+    refute_equal 'scheduled', record.reload.status
+    refute_includes SignupPost.due, record
+  end
+
+  def test_post_now_refuses_a_post_already_sent
+    record = draft_post
+    record.update!(status: 'posted', discord_message_id: next_discord_id)
+
+    as_leader
+    post "/signups/#{record.id}/post-now"
+
+    assert_equal 409, last_response.status
+  end
+
+  # --- one-click sign-ups --------------------------------------------------
+
+  def test_creating_a_post_fills_in_that_days_rides
+    day = @event.start_time.to_date
+    as_leader
+    post '/signups', channel_id: channel.id, service_date: day.to_s
+
+    record = SignupPost.order(:id).last
+    assert_equal 1, record.options.count, 'the post should arrive already filled in'
+    assert_equal @event, record.options.first.event
+    assert record.bound?
+  end
+
+  def test_the_ride_dropdown_is_scoped_to_the_posts_own_date
+    # A second event on another day must not be offered.
+    other = make_event(name: 'Friday Bible Study', starts: @event.start_time + 3.days)
+    as_leader
+    post '/signups', channel_id: channel.id, service_date: @event.start_time.to_date.to_s
+    record = SignupPost.order(:id).last
+
+    body = get_ok("/signups/#{record.id}").body
+
+    assert_includes body, "value=\"#{@event.id}\""
+    refute_includes body, "value=\"#{other.id}\"",
+                    'an event on another day must not clutter the picker'
+  end
+
+  def test_the_dropdown_still_offers_an_event_an_option_already_points_at
+    # Narrowing the list must not orphan an existing binding: if the selected
+    # event is missing from the options, the select renders blank and the next
+    # Save silently rebinds the ride to something else.
+    other = make_event(name: 'Friday Bible Study', starts: @event.start_time + 3.days)
+    as_leader
+    post '/signups', channel_id: channel.id, service_date: @event.start_time.to_date.to_s
+    record = SignupPost.order(:id).last
+    record.options.first.update!(event: other)
+
+    body = get_ok("/signups/#{record.id}").body
+
+    assert_includes body, "value=\"#{other.id}\""
+  end
+
+  def test_the_index_offers_to_create_a_signup_for_an_uncovered_date
+    body = get_ok('/signups').body
+
+    assert_includes body, 'Create sign-up'
+    assert_includes body, @event.start_time.strftime('%A %-d %B')
   end
 
   # --- the emoji picker ----------------------------------------------------

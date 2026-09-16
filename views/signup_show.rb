@@ -154,10 +154,16 @@ class SignupShow < Phlex::HTML
       div(class: 'flex items-baseline gap-2') do
         span(class: 'board-label') { 'Ride options' }
         span(class: 'text-[11.5px] text-ink/60') { @post.summary }
+        div(class: 'flex-1')
+        # For when the ride date is changed, or an event is added to that day
+        # after the post was made.
+        post_button('fill', 'Fill from this date', 'board-btn') if editable? && @leader
       end
 
       if @post.options.empty?
-        div(class: 'px-1 py-4 text-[13px] text-ink/65') { 'No options yet. Add one for each ride time.' }
+        div(class: 'px-1 py-4 text-[13px] text-ink/65') do
+          'No rides on this date yet. Change the ride date above, or add one below.'
+        end
       else
         @post.options.each { |option| option_row(option) }
       end
@@ -312,6 +318,26 @@ class SignupShow < Phlex::HTML
           "#{@post.posted? ? 'Posted' : 'Sends'} #{@post.post_at.strftime('%a %-d %b at %-l:%M %p')}"
         end
       end
+      send_status
+    end
+  end
+
+  # The bot polls every 30 seconds, so a post does not leave the moment you
+  # press the button — say so, rather than letting it look broken.
+  #
+  # And if its time came and went with nothing happening, nothing is draining
+  # the queue. Without this a stopped bot is indistinguishable from a slow one,
+  # and there is no bot heartbeat anywhere else in the UI.
+  def send_status
+    return unless @post.status == 'scheduled' && @post.post_at
+
+    overdue = @post.post_at < 2.minutes.ago
+    span(class: "text-[11.5px] #{overdue ? 'text-warn-ink' : 'text-ink/60'}") do
+      if overdue
+        'Still waiting on the bot — is it running?'
+      else
+        'The bot sends this within 30 seconds.'
+      end
     end
   end
 
@@ -323,12 +349,14 @@ class SignupShow < Phlex::HTML
     div(class: 'flex gap-2 pt-1 flex-wrap border-t border-line pt-4') do
       case @post.status
       when 'draft', 'failed'
-        if @post.schedulable?
-          post_button('schedule', 'Schedule this post', 'board-btn-solid')
+        if @post.ready_to_send?
+          post_button('post-now', 'Post now', 'board-btn-solid')
+          post_button('schedule', 'Schedule for later', 'board-btn') if @post.post_at.present?
         else
           span(class: 'text-[12.5px] text-ink/65 py-2') { blockers }
         end
       when 'scheduled'
+        post_button('post-now', 'Post now', 'board-btn-solid')
         post_button('unschedule', 'Back to draft', 'board-btn')
       when 'posted'
         if @post.closed_at
@@ -344,13 +372,15 @@ class SignupShow < Phlex::HTML
     end
   end
 
+  # What is still missing before it can go out at all. A send time is no longer
+  # on this list: "Post now" supplies one, so naming it here would describe a
+  # blocker that is not blocking anything.
   def blockers
     missing = []
-    missing << 'add at least one option' if @post.options.empty?
-    missing << 'every option needs a ride' unless @post.options.empty? || @post.bound?
-    missing << 'set a send time' if @post.post_at.blank?
+    missing << 'add at least one ride' if @post.options.empty?
+    missing << 'every emoji needs a ride' unless @post.options.empty? || @post.bound?
     missing << 'pick a channel' if @post.channel_id.blank?
-    "Before scheduling: #{missing.join(', ')}."
+    "Before sending: #{missing.join(', ')}."
   end
 
   def post_button(path, label, style)

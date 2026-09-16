@@ -45,8 +45,15 @@ class SignupPost < ApplicationRecord
     opts.any? && opts.all? { |o| o.event_id.present? }
   end
 
+  # Everything a post needs to go out at all. Separate from `schedulable?`
+  # because "Post now" supplies the send time itself, so demanding one up front
+  # would block the one action that does not need it.
+  def ready_to_send?
+    editable? && bound? && channel_id.present?
+  end
+
   def schedulable?
-    editable? && bound? && post_at.present? && channel_id.present?
+    ready_to_send? && post_at.present?
   end
 
   def body
