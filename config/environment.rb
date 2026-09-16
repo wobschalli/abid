@@ -100,6 +100,19 @@ module Abid
       Dir.glob(root('patches', '*.rb')).sort.each { |patch| require patch }
     end
 
+    # Components first: every view calls `include Components`, and views/*.rb
+    # reference the component classes at class-definition time.
+    #
+    # In development config.ru loads these through Rack::Unreloader instead, so
+    # they hot-reload. This exists for everything that is not the web server —
+    # tests and the console — which previously could not render a view at all.
+    def load_views
+      # app.rb pulls this in for the web process; nothing else does.
+      require 'phlex'
+      Dir.glob(root('views', 'components', '*.rb')).sort.each { |view| require view }
+      Dir.glob(root('views', '*.rb')).sort.each { |view| require view }
+    end
+
     private
 
     def read_secret_file

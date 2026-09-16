@@ -23,4 +23,5 @@ gem "csv", "~> 3.3"
 
 group :test do
   gem "minitest", "~> 5.25"
+  gem "rack-test", "~> 2.2"
 end

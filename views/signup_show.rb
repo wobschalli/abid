@@ -5,12 +5,18 @@ require_relative 'components/master'
 class SignupShow < Phlex::HTML
   include Components
 
-  SUGGESTED = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '🚗', '✅', '🙋'].freeze
+  # The palette offered by default. Anything at all can still be typed into the
+  # box next to it, and the server's own emoji are appended to this from the
+  # database, so this list is a starting point rather than a limit.
+  SUGGESTED = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟',
+               '🚗', '🚙', '🚐', '🕐', '🕕', '🙋', '✅', '❌', '🌅', '🌆',
+               '☀️', '🌙', '⛪', '🍽️', '📖', '🎒', '🙏', '💺'].freeze
 
-  def initialize(post:, candidates:, channels:, leader: false, error: nil)
+  def initialize(post:, candidates:, channels:, server_emojis: [], leader: false, error: nil)
     @post = post
     @candidates = candidates
     @channels = channels
+    @server_emojis = server_emojis
     @leader = leader
     @error = error
   end
@@ -163,7 +169,15 @@ class SignupShow < Phlex::HTML
          class: 'flex items-center gap-3 px-3 py-2.5 rounded-lg border border-line bg-surface flex-wrap') do
       input(type: 'hidden', name: '_method', value: 'patch')
 
-      span(class: 'text-[22px] leading-none w-8 text-center') { option.display }
+      span(class: 'text-[22px] leading-none w-8 flex items-center justify-center shrink-0') do
+        # A custom emoji has no character to print. `option.display` falls back
+        # to ":name:", which at 22px overflowed this box as raw text.
+        if option.emoji_discord_id.present?
+          custom_emoji_image(option.emoji_discord_id, option.emoji_name)
+        else
+          plain option.display
+        end
+      end
 
       div(class: 'flex-1 min-w-[220px] flex flex-col gap-1') do
         select(name: 'event_id', disabled: !editable?, class: 'board-input') do
@@ -195,6 +209,71 @@ class SignupShow < Phlex::HTML
     end
   end
 
+  # A grid of radio buttons rather than a JS widget. Picking an emoji is then a
+  # plain form field: it needs no build step, survives JS being off, and posts
+  # through the same route as the text box.
+  #
+  # The `peer-checked` styling is what makes a radio look like a pressed key —
+  # the input itself is visually hidden but still focusable, so keyboard and
+  # screen-reader users get a normal radio group.
+  def emoji_picker
+    div(class: 'flex flex-col gap-2') do
+      span(class: 'board-label') { 'Pick an emoji' }
+      div(class: 'flex flex-wrap gap-1') do
+        SUGGESTED.each { |char| emoji_choice(char) { plain char } }
+      end
+
+      next if @server_emojis.empty?
+
+      span(class: 'board-label pt-1') { "This server's emoji" }
+      div(class: 'flex flex-wrap gap-1 max-h-40 overflow-y-auto') do
+        @server_emojis.each do |emoji|
+          # `<:name:id>` is exactly what Discord puts in message content, and
+          # what EmojiKey.parse already understands.
+          emoji_choice("<:#{emoji.name}:#{emoji.discord_id}>", title: ":#{emoji.name}:") do
+            custom_emoji_image(emoji.discord_id, emoji.name)
+          end
+        end
+      end
+    end
+  end
+
+  # The body is the literal text Discord receives, so a custom emoji appears in
+  # it as `<:name:id>`. Printing that verbatim is accurate about the content but
+  # wrong about the appearance, and this panel is captioned "what the bot will
+  # post" — so swap each token for the image Discord itself would show.
+  def preview_body
+    body = @post.body.to_s
+    pos = 0
+
+    while (match = Signup::EmojiKey::CUSTOM_PATTERN.match(body, pos))
+      plain body[pos...match.begin(0)] if match.begin(0) > pos
+      custom_emoji_image(match[3], match[2])
+      pos = match.end(0)
+    end
+
+    plain body[pos..] if pos < body.length
+  end
+
+  def custom_emoji_image(discord_id, name)
+    # `inline-block` is load-bearing: Tailwind's preflight sets images to
+    # `display: block`, which in the preview put every custom emoji on a line of
+    # its own instead of beside the text it belongs to.
+    img(src: "https://cdn.discordapp.com/emojis/#{discord_id}.png?size=32",
+        alt: ":#{name}:", title: ":#{name}:", loading: 'lazy',
+        class: 'inline-block align-text-bottom w-[22px] h-[22px] object-contain')
+  end
+
+  def emoji_choice(value, title: nil, &block)
+    label(class: 'cursor-pointer', title: title || value) do
+      input(type: 'radio', name: 'emoji_pick', value: value, class: 'sr-only peer')
+      span(class: 'flex items-center justify-center w-9 h-9 text-[19px] leading-none rounded-lg ' \
+                  'border border-line bg-surface hover:bg-surface-sunk ' \
+                  'peer-checked:border-accent peer-checked:bg-accent-tint ' \
+                  'peer-focus-visible:ring-2 peer-focus-visible:ring-accent', &block)
+    end
+  end
+
   def candidate_label(event)
     "#{event.start_time.strftime('%a %-d %b %-l:%M %p')} — #{event.display_name}"
   end
@@ -203,12 +282,10 @@ class SignupShow < Phlex::HTML
     div(class: 'flex flex-col gap-2 p-3 rounded-lg border border-line bg-surface-sunk') do
       span(class: 'board-label') { 'Add an option' }
       form(method: 'post', action: "/signups/#{@post.id}/options", class: 'flex flex-col gap-2') do
+        emoji_picker
         div(class: 'flex gap-2 flex-wrap') do
-          input(type: 'text', name: 'emoji', required: true, placeholder: 'Emoji',
-                class: 'board-input w-28 text-center text-[18px]', list: 'emoji-suggestions')
-          datalist(id: 'emoji-suggestions') do
-            SUGGESTED.each { |e| option(value: e) }
-          end
+          input(type: 'text', name: 'emoji', placeholder: 'or type any emoji',
+                class: 'board-input w-40 text-center text-[16px]')
           select(name: 'event_id', required: true, class: 'board-input flex-1 min-w-[220px]') do
             option(value: '') { 'Pick the ride this books' }
             @candidates.each { |e| option(value: e.id) { candidate_label(e) } }
@@ -228,7 +305,7 @@ class SignupShow < Phlex::HTML
     div(class: 'flex flex-col gap-1.5 md:sticky md:top-4') do
       span(class: 'board-label') { 'What the bot will post' }
       div(class: 'p-3 rounded-lg border border-line bg-surface-sunk') do
-        pre(class: 'font-sans text-[12.5px] leading-[1.6] whitespace-pre-wrap') { @post.body }
+        pre(class: 'font-sans text-[12.5px] leading-[1.6] whitespace-pre-wrap') { preview_body }
       end
       if @post.post_at
         span(class: 'text-[11.5px] text-ink/60') do

@@ -22,6 +22,17 @@ class RiderImportTest < AbidTest
   # into its own field values.
   def import(rows, **opts) = RiderImport.new(rows.is_a?(Array) ? rows : [rows], **opts).call
 
+  # The Members page offers Drivers and Riders as tabs, so between them they
+  # have to account for everybody — nobody may be in neither or in both.
+  def test_riders_is_the_exact_complement_of_drivers
+    make_user(name: 'Has a car', username: 'driver1', capacity: 4)
+    make_user(name: 'No car', username: 'rider1')
+    make_user(name: 'Zero seats', username: 'rider2', capacity: 0)
+
+    assert_equal User.count, User.drivers.count + User.riders.count
+    assert_empty User.drivers.where(id: User.riders), 'nobody may be both'
+  end
+
   def test_matches_on_exact_discord_username
     user = make_user(name: 'Marcus Ito', username: 'marcusito23')
 

@@ -6,7 +6,7 @@ class UsersIndex < Phlex::HTML
   FILTERS = [
     ['all', 'Everyone'],
     ['drivers', 'Drivers'],
-    ['leaders', 'Leaders'],
+    ['riders', 'Riders'],
     ['missing', 'Missing details']
   ].freeze
 

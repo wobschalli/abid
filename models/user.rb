@@ -23,6 +23,9 @@ class User < ApplicationRecord
 
   scope :leaders, -> { where(leader: true) }
   scope :drivers, -> { where.not(capacity: nil).where('capacity > 0') }
+  # The exact complement of `drivers`: everyone who needs a seat rather than
+  # offering one. This is the roster a rides coordinator actually works from.
+  scope :riders, -> { where(capacity: nil).or(where(capacity: ..0)) }
   scope :by_name, -> { order(Arel.sql('lower(coalesce(name, username))')) }
   # Somebody the coordinator cannot fully plan around yet.
   scope :missing_details, -> { where(location_id: nil).or(where(phone: [nil, ''])) }

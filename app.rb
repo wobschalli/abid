@@ -141,7 +141,7 @@ class App < Sinatra::Base
   # --- members --------------------------------------------------------------
 
   get '/users' do
-    filter = %w[all drivers leaders missing].include?(params[:filter]) ? params[:filter] : 'all'
+    filter = %w[all drivers riders missing].include?(params[:filter]) ? params[:filter] : 'all'
     users = users_for(filter, params[:q])
 
     phlex UsersIndex.new(
@@ -321,8 +321,12 @@ class App < Sinatra::Base
     post = find_signup(params[:id])
     halt 409, 'This post has already been sent.' unless post.editable?
 
-    attrs = Signup::EmojiKey.parse(params[:emoji])
-    halt 422, "Could not read #{params[:emoji].inspect} as an emoji." if attrs.nil?
+    # The picker submits `emoji_pick`; the free-text box submits `emoji`. Typed
+    # text wins, so someone who picks one and then types another gets the one
+    # they typed last.
+    chosen = params[:emoji].presence || params[:emoji_pick].presence
+    attrs = Signup::EmojiKey.parse(chosen)
+    halt 422, "Could not read #{chosen.inspect} as an emoji." if attrs.nil?
 
     option = post.options.build(
       attrs.merge(
@@ -364,6 +368,11 @@ class App < Sinatra::Base
   post '/signups/:id/schedule' do
     require_leader!
     post = find_signup(params[:id])
+    # Accept a send time given here, rather than only the one already saved by
+    # the settings form. Typing a time and pressing Schedule without pressing
+    # Save first used to discard it silently and answer "the post needs a send
+    # time", which is a confusing thing to be told about a time you just typed.
+    post.update(post_at: params[:post_at]) if params[:post_at].present? && post.editable?
     halt 422, 'Every option needs a ride, and the post needs a send time.' unless post.schedule!
     redirect to("/signups/#{post.id}")
   end
@@ -598,6 +607,9 @@ class App < Sinatra::Base
       post: post,
       candidates: signup_candidates(post),
       channels: Channel.order(:name).to_a,
+      # The server's own emoji, synced by the bot. Previously reachable only by
+      # typing :name: and knowing it existed.
+      server_emojis: Emoji.order(:name).to_a,
       leader: leader?,
       error: error
     )
@@ -621,7 +633,7 @@ class App < Sinatra::Base
 
     case filter
     when 'drivers' then scope.drivers
-    when 'leaders' then scope.leaders
+    when 'riders' then scope.riders
     when 'missing' then scope.missing_details
     else scope
     end.to_a
@@ -633,7 +645,7 @@ class App < Sinatra::Base
     {
       'all' => User.count,
       'drivers' => User.drivers.count,
-      'leaders' => User.leaders.count,
+      'riders' => User.riders.count,
       'missing' => User.missing_details.count
     }
   end
