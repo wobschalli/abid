@@ -14,7 +14,12 @@ class DispatchStatus
     @states ||= @board.driver_rides.to_h do |ride|
       prior = last_messages[ride.id]
       state =
-        if prior.nil? then :never
+        # Queued beats everything: a row is sitting in the outbox and the bot
+        # will take it on the next tick. Without this a message waiting to go
+        # looked exactly like one never sent, so pressing send appeared to do
+        # nothing for up to thirty seconds.
+        if queued_ride_ids.include?(ride.id) then :queued
+        elsif prior.nil? then :never
         elsif prior.status == 'failed' then :failed
         elsif prior.roster_digest != digest_for(ride) then :changed
         else :sent
@@ -30,7 +35,11 @@ class DispatchStatus
   # Drivers who need a message: never sent, changed since, or last attempt
   # failed.
   def stale_driver_rides
-    @board.driver_rides.select { |r| r.active? && states[r.id] != :sent }
+    @board.driver_rides.select { |r| r.active? && !%i[sent queued].include?(states[r.id]) }
+  end
+
+  def queued_count
+    states.values.count(:queued)
   end
 
   def anything_sent?
@@ -50,6 +59,15 @@ class DispatchStatus
   end
 
   private
+
+  # Drivers with a message already in the outbox, waiting for the bot.
+  def queued_ride_ids
+    @queued_ride_ids ||= DispatchMessage
+                         .joins(:dispatch)
+                         .where(dispatches: { event_id: @board.event.id })
+                         .where(status: 'pending')
+                         .pluck(:driver_ride_id).compact.to_set
+  end
 
   def last_messages
     @last_messages ||= DispatchMessage

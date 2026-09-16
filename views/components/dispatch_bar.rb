@@ -47,6 +47,15 @@ class Components::DispatchBar < Phlex::HTML
   end
 
   def last_sent
+    # Say so the moment it is queued. The bot polls every 30 seconds, so
+    # otherwise the press produced no visible change at all and read as a
+    # button that does nothing.
+    if @status.queued_count.positive?
+      return span(class: 'font-mono text-[11px] text-accent') do
+        "queued for #{@status.queued_count} #{'driver'.pluralize(@status.queued_count)} — the bot sends within 30 seconds"
+      end
+    end
+
     return unless @status.anything_sent?
 
     bits = []

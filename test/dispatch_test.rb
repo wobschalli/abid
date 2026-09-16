@@ -218,10 +218,30 @@ class DispatchTest < AbidTest
     assert Event.exists?(@event.id), 'dispatch history was destroyed with the event'
   end
 
+  # Pressing send produced no visible change for up to thirty seconds, because
+  # a message waiting in the outbox was indistinguishable from one never sent.
+  def test_a_queued_message_reads_as_queued_not_unsent
+    event = make_event
+    driver = make_driver(event, 'caleb', seats: 4)
+    board = RideBoard.new(event)
+
+    assert_equal :never, DispatchStatus.new(board).state_for(driver)
+
+    DispatchPlanner.new(board, requested_by: nil, scope: 'all').call
+
+    status = DispatchStatus.new(RideBoard.new(event))
+    assert_equal :queued, status.state_for(driver)
+    assert_equal 1, status.queued_count
+    refute_includes status.stale_driver_rides, driver,
+                    'a driver already queued must not be counted as still needing a message'
+  end
+
   private
 
   def deliver(dispatch)
     DispatchSender.new(FakeBot.new).pump
     dispatch.reload
   end
+
+
 end
