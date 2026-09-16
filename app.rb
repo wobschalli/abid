@@ -610,6 +610,14 @@ class App < Sinatra::Base
     render_board(event)
   end
 
+  # The routes, drawn. Answers "does this look sane?", which the car columns
+  # cannot: auto-fill sorts by zone, a coarse proxy for geography.
+  get '/board/:event_id/map' do
+    event = find_event(params[:event_id]) or halt 404, 'No such event'
+    board = RideBoard.new(event)
+    phlex BoardMap.new(board: board, map: RouteMap.new(board), leader: leader?)
+  end
+
   get '/events/:event_id/dispatches' do
     event = find_event(params[:event_id]) or halt 404, 'No such event'
     dispatches = event.dispatches.includes(:requested_by, messages: :user).recent.to_a

@@ -51,6 +51,10 @@ class Components::BoardShell < Phlex::HTML
       div(class: 'flex-1')
       undo_button
       a(
+        href: "/board/#{@event.id}/map",
+        class: 'board-btn no-underline text-ink'
+      ) { 'Map' }
+      a(
         href: "/board/#{@event.id}.csv",
         class: 'board-btn no-underline text-ink'
       ) { 'Export .csv' }

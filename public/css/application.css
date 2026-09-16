@@ -22,6 +22,17 @@
   --color-line: rgba(23, 32, 28, 0.13);
   --color-line-soft: rgba(23, 32, 28, 0.055);
   --color-accent: #1e6b52;
+
+  /* Route-map series. Categorical identity, assigned in fixed order and never
+     cycled — a route's colour must not change because a driver was added.
+     Validated against this surface: lightness band, chroma floor, CVD
+     separation and normal-vision floor all pass. */
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+  --color-series-4: #eda100;
+  --color-series-5: #e87ba4;
+  --color-series-6: #008300;
   --color-accent-deep: #14513e;
   --color-accent-tint: #dff0e7;
   --color-accent-tint-strong: #c9e7d6;
@@ -46,6 +57,15 @@
   --color-line: rgba(231, 235, 232, 0.16);
   --color-line-soft: rgba(231, 235, 232, 0.07);
   --color-accent: #5fb894;
+
+  /* The same six hues re-stepped for the dark surface, not an automatic flip.
+     Validated separately; unlike the light set, all six clear 3:1 here. */
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+  --color-series-4: #c98500;
+  --color-series-5: #d55181;
+  --color-series-6: #008300;
   --color-accent-deep: #8ed2b3;
   --color-accent-tint: rgba(95, 184, 148, 0.16);
   --color-accent-tint-strong: rgba(95, 184, 148, 0.28);

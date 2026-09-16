@@ -234,6 +234,51 @@ class RoutesTest < AbidTest
     assert_equal 1, @event.rides.reload.count
   end
 
+  # --- the route map -------------------------------------------------------
+
+  def test_the_map_renders_with_a_seated_rider
+    here = Location.create!(name: 'Cary', zone: Location::ZONES.first, lat: 40.4278, lon: -86.9210)
+    there = Location.create!(name: 'Church', zone: Location::ZONES.first, lat: 40.4521, lon: -86.9720)
+    @event.update!(location: there)
+
+    driver = User.create!(name: 'Caleb', username: 'cbm', discord_id: next_discord_id,
+                          password: 'x' * 10, capacity: 4, location: here)
+    rider = User.create!(name: 'Nathan', username: 'nw', discord_id: next_discord_id,
+                         password: 'x' * 10, location: here)
+    d = @event.rides.create!(user: driver, role: 'driver', status: 'confirmed', seats: 4)
+    @event.rides.create!(user: rider, role: 'rider', status: 'confirmed', driver_ride: d,
+                         pickup_location: here)
+
+    body = get_ok("/board/#{@event.id}/map").body
+
+    assert_includes body, '<svg'
+    assert_includes body, 'polyline', 'a route with two stops should be drawn as a line'
+    assert_includes body, 'Caleb'
+  end
+
+  def test_the_map_survives_a_board_with_nothing_to_draw
+    # No drivers, no coordinates — it must explain itself rather than 500.
+    body = get_ok("/board/#{@event.id}/map").body
+
+    assert_includes body, 'Nothing to draw yet'
+  end
+
+  def test_a_stop_with_no_location_is_named_rather_than_dropped
+    there = Location.create!(name: 'Church', zone: Location::ZONES.first, lat: 40.4521, lon: -86.9720)
+    @event.update!(location: there)
+    driver = User.create!(name: 'Caleb', username: 'cbm2', discord_id: next_discord_id,
+                          password: 'x' * 10, capacity: 4, location: there)
+    rider = User.create!(name: 'Nowhere Person', username: 'np', discord_id: next_discord_id,
+                         password: 'x' * 10)
+    d = @event.rides.create!(user: driver, role: 'driver', status: 'confirmed', seats: 4)
+    @event.rides.create!(user: rider, role: 'rider', status: 'confirmed', driver_ride: d)
+
+    body = get_ok("/board/#{@event.id}/map").body
+
+    assert_includes body, 'Not on the map'
+    assert_includes body, 'Nowhere Person'
+  end
+
   # --- locations -----------------------------------------------------------
 
   def test_a_location_address_can_be_saved
