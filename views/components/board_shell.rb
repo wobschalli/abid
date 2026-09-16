@@ -178,9 +178,18 @@ class Components::BoardShell < Phlex::HTML
 
   # The app already knows who drives: an active member with a seat count. This
   # saves adding the same handful of people by hand on every board, every week.
+  # Confirmed, because it writes a row for every driver in one press. It fired
+  # twice on this board without a deliberate click and the cause was never
+  # pinned down — a bulk write should need a yes regardless.
   def add_drivers_button
+    count = @board.regular_driver_count
+    return if count.zero?
+
     action_form('drivers', class: 'contents') do
-      button(type: 'submit', class: 'board-btn-solid') { 'Add the regular drivers' }
+      button(type: 'submit', class: 'board-btn-solid',
+             data_confirm: "Add #{count} regular drivers to this board?") do
+        "Add the #{count} regular drivers"
+      end
     end
   end
 

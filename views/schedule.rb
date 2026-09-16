@@ -22,12 +22,21 @@ class Schedule < Phlex::HTML
 
   def view_template
     Layout(title: 'Schedule', leader: @leader) do
-      div(class: 'max-w-3xl flex flex-col gap-5 font-sans text-ink') do
+      div(class: 'max-w-5xl flex flex-col gap-5 font-sans text-ink') do
         header
         p(role: 'alert', class: 'text-sm text-danger') { @error } if @error
-        @dates.empty? ? empty_note : upcoming
-        recurring_section
-        past_section
+
+        # The calendar is the shape of the term at a glance; the list is the
+        # detail. Stacks on narrow screens with the list first, since that is
+        # the one you act on.
+        div(class: 'grid gap-5 lg:grid-cols-[1fr_248px] items-start') do
+          div(class: 'flex flex-col gap-5 min-w-0') do
+            @dates.empty? ? empty_note : upcoming
+            recurring_section
+            past_section
+          end
+          calendar
+        end
       end
     end
   end
@@ -59,6 +68,81 @@ class Schedule < Phlex::HTML
     end
   end
 
+  # --- calendar -------------------------------------------------------------
+  #
+  # Every month the upcoming dates span, so the term has a shape rather than
+  # being a list you scroll. A day with rides is filled and links to its card.
+
+  DAY_INITIALS = %w[S M T W T F S].freeze
+
+  def calendar
+    return if @dates.empty?
+
+    by_date = @dates.index_by(&:date)
+    div(class: 'flex flex-col gap-3 lg:sticky lg:top-4') do
+      months.each { |first| month_grid(first, by_date) }
+      legend
+    end
+  end
+
+  # First day of each month covered by the upcoming dates.
+  def months
+    first = Time.zone.today.beginning_of_month
+    last = @dates.last.date.beginning_of_month
+    out = []
+    while first <= last
+      out << first
+      first = first.next_month
+    end
+    out
+  end
+
+  def month_grid(first, by_date)
+    div(class: 'rounded-lg border border-line bg-surface p-3 flex flex-col gap-2') do
+      div(class: 'font-display font-bold text-[13px]') { first.strftime('%B %Y') }
+
+      div(class: 'grid grid-cols-7 gap-y-1 text-center') do
+        DAY_INITIALS.each_with_index do |letter, i|
+          span(class: 'font-mono text-[9.5px] text-ink/45 pb-1', key: i) { letter }
+        end
+
+        # Blank cells so the 1st lands under the right weekday.
+        first.wday.times { span }
+
+        (first..first.end_of_month).each { |date| day_cell(date, by_date[date]) }
+      end
+    end
+  end
+
+  def day_cell(date, day)
+    today = date == Time.zone.today
+    base = 'flex items-center justify-center h-7 text-[11.5px] rounded-md no-underline ' \
+           "#{today ? 'ring-1 ring-accent font-bold' : ''}"
+
+    if day.nil?
+      span(class: "#{base} #{date < Time.zone.today ? 'text-ink/25' : 'text-ink/55'}") { date.day.to_s }
+    else
+      a(href: "##{anchor(date)}", title: day_title(day),
+        class: "#{base} bg-accent-tint text-accent font-semibold hover:bg-accent-tint-strong") do
+        date.day.to_s
+      end
+    end
+  end
+
+  def day_title(day)
+    rides = day.events.map { |e| "#{e.start_time&.strftime('%-l:%M %p')} #{e.name}" }.join(', ')
+    "#{day.date.strftime('%a %-d %b')} — #{rides}"
+  end
+
+  def legend
+    div(class: 'flex items-center gap-2 px-1 text-[11px] text-ink/60') do
+      span(class: 'w-4 h-4 rounded bg-accent-tint border border-accent/30 shrink-0')
+      plain 'has rides'
+    end
+  end
+
+  def anchor(date) = "d-#{date.strftime('%Y-%m-%d')}"
+
   # --- what is coming up ----------------------------------------------------
 
   def upcoming
@@ -66,7 +150,8 @@ class Schedule < Phlex::HTML
   end
 
   def date_card(day)
-    div(class: 'flex flex-col rounded-lg border border-line bg-surface overflow-hidden') do
+    div(id: anchor(day.date),
+        class: 'flex flex-col rounded-lg border border-line bg-surface overflow-hidden scroll-mt-4') do
       div(class: 'flex items-baseline gap-2 px-3.5 pt-3 pb-1') do
         span(class: 'font-display font-bold text-[15px]') { day.date.strftime('%A %-d %B') }
         span(class: 'board-meta') { relative_label(day.date) }

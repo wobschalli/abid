@@ -151,6 +151,12 @@ class RideBoard
                              .to_a
   end
 
+  # Active members with a seat count who are not already on this board — what
+  # "add the regular drivers" would create.
+  def regular_driver_count
+    @regular_driver_count ||= User.active.drivers.where.not(id: rides.map(&:user_id)).count
+  end
+
   # --- stepping to the occurrence either side --------------------------------
   #
   # Relative to the event on screen, NOT to `Time.zone.now`. `Event.upcoming` is
