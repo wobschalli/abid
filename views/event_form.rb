@@ -62,6 +62,12 @@ class EventForm < Phlex::HTML
         field('Location') { belongs_to_select('location_id', @locations, @event.location_id) }
       end
 
+      # Sunday morning everyone is at home; Friday evening most people come
+      # straight from a lab, which is a different address entirely.
+      div(class: 'grid grid-cols-2 gap-3') do
+        field('Collect people from') { pickup_source_select }
+      end
+
       label(class: 'flex items-center gap-2 text-[13px]') do
         input(type: 'hidden', name: 'disabled', value: '0')
         input(type: 'checkbox', name: 'disabled', value: '1', checked: @event.disabled, class: 'accent-accent')
@@ -105,6 +111,14 @@ class EventForm < Phlex::HTML
       option(value: '', selected: @event.section.blank?) { '—' }
       Event::SECTIONS.each do |section|
         option(value: section, selected: @event.section == section) { section }
+      end
+    end
+  end
+
+  def pickup_source_select
+    select(name: 'pickup_source', class: 'board-input') do
+      Event::PICKUP_SOURCES.each do |value, label|
+        option(value: value, selected: @event.pickup_source == value) { label }
       end
     end
   end

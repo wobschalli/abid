@@ -10,6 +10,7 @@ class EventSeries < ApplicationRecord
   validates :name, presence: true
   validates :weekday, inclusion: { in: 0..6 }, allow_nil: true
   validates :section, inclusion: { in: Event::SECTIONS }, allow_blank: true
+  validates :pickup_source, inclusion: { in: Event::PICKUP_SOURCES.keys }
   validates :interval_weeks, numericality: { greater_than: 0 }
   validates :horizon_weeks, numericality: { greater_than: 0 }
   validate :time_zone_must_be_known
@@ -88,6 +89,7 @@ class EventSeries < ApplicationRecord
       section: section,
       channel: channel,
       location: location,
+      pickup_source: pickup_source,
       occurrence_date: day,
       start_time: starts,
       end_time: end_time_of_day ? combine(day, end_time_of_day) : nil,

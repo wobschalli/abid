@@ -16,12 +16,16 @@ module Abid
     SUNDAY = 0
     FRIDAY = 5
 
-    # name, weekday, start time, section, sign-up lead days, sign-up send time
+    # name, weekday, start time, section, sign-up lead days, send time, pickup
+    #
+    # Friday collects from the last class: people come straight from a lab, and
+    # 42 of the 63 who told us both say those are different places. Sunday
+    # morning everyone is at home.
     SERIES = [
-      ['Abide dinner',   FRIDAY, '17:30', 'early', 3, '20:00'],
-      ['Abide',          FRIDAY, '18:30', 'late',  3, '20:00'],
-      ['Sunday School',  SUNDAY, '09:30', 'early', 3, '20:00'],
-      ['Sunday Service', SUNDAY, '10:30', 'late',  3, '20:00']
+      ['Abide dinner',   FRIDAY, '17:30', 'early', 3, '20:00', 'class'],
+      ['Abide',          FRIDAY, '18:30', 'late',  3, '20:00', 'class'],
+      ['Sunday School',  SUNDAY, '09:30', 'early', 3, '20:00', 'home'],
+      ['Sunday Service', SUNDAY, '10:30', 'late',  3, '20:00', 'home']
     ].freeze
 
     module_function
@@ -75,11 +79,12 @@ module Abid
       end
     end
 
-    def upsert((name, weekday, start_at, section, lead_days, post_time))
+    def upsert((name, weekday, start_at, section, lead_days, post_time, pickup))
       series = EventSeries.find_or_initialize_by(name: name)
       series.assign_attributes(
         weekday: weekday, start_time_of_day: start_at, section: section,
         signup_lead_days: lead_days, signup_post_time: post_time,
+        pickup_source: pickup,
         interval_weeks: 1, horizon_weeks: 3, disabled: false,
         channel: series.channel || default_channel
       )
@@ -92,9 +97,10 @@ module Abid
 
     def report_plan(stale)
       puts 'keeping / creating:'
-      SERIES.each do |name, weekday, start_at, section, lead, at|
+      SERIES.each do |name, weekday, start_at, section, lead, at, pickup|
         day = Date::DAYNAMES[weekday]
-        puts "  #{day.ljust(9)} #{start_at}  #{name.ljust(16)} #{section.ljust(6)} sends #{lead}d ahead at #{at}"
+        puts "  #{day.ljust(9)} #{start_at}  #{name.ljust(16)} #{section.ljust(6)} " \
+             "sends #{lead}d ahead at #{at}, collect from #{pickup}"
       end
       return if stale.none?
 

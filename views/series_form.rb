@@ -67,6 +67,17 @@ class SeriesForm < Phlex::HTML
       end
 
       # The line that used to be retyped on every single post, or forgotten.
+      field('Collect people from') do
+        select(name: 'pickup_source', class: 'board-input') do
+          Event::PICKUP_SOURCES.each do |value, label|
+            option(value: value, selected: @series.pickup_source == value) { label }
+          end
+        end
+        span(class: 'text-[11.5px] text-ink/60') do
+          'Friday events usually collect from the last class; Sunday from home.'
+        end
+      end
+
       field('Sign-up footer (optional)') { outro_field }
 
       label(class: 'flex items-center gap-2 text-[13px]') do

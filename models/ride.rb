@@ -71,8 +71,18 @@ class Ride < ApplicationRecord
     driver? && seats_available.zero?
   end
 
+  # A per-occurrence override always wins; otherwise the event decides which of
+  # the person's two addresses to use, falling back to home when they never
+  # told us where their Friday class is.
   def pickup
-    pickup_location || user&.location
+    pickup_location || user_pickup
+  end
+
+  def user_pickup
+    return nil if user.nil?
+    return user.location if event&.pickup_source != 'class'
+
+    user.class_location || user.location
   end
 
   def coords

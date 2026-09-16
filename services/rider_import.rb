@@ -14,7 +14,8 @@
 # confidence, anything ambiguous is refused rather than guessed, and every
 # refusal is reported for a human to resolve.
 class RiderImport
-  Row = Struct.new(:name, :handle, :phone, :residence, :capacity, :grad_year, keyword_init: true)
+  Row = Struct.new(:name, :handle, :phone, :residence, :class_residence,
+                   :capacity, :grad_year, keyword_init: true)
 
   Result = Struct.new(:row, :user, :how, :changes, :residence_match, :problem,
                       keyword_init: true) do
@@ -70,8 +71,9 @@ class RiderImport
         Result.new(row: row, how: :unmatched, problem: :ambiguous_name)
       else
         location, residence_match = find_location(row)
+        class_location, = find_location(row, field: :class_residence)
         Result.new(row: row, user: user, how: how, residence_match: residence_match,
-                   changes: apply(user, row, location))
+                   changes: apply(user, row, location, class_location))
       end
     end
   end
@@ -156,8 +158,8 @@ class RiderImport
   # Returns [location, how]. `:none` means the text named nowhere we know, which
   # is reported rather than papered over — a location invented from a free-text
   # answer would land with no zone and quietly break the queue grouping.
-  def find_location(row)
-    text = row.residence.to_s.strip
+  def find_location(row, field: :residence)
+    text = row[field].to_s.strip
     return [nil, :blank] if text.empty?
 
     exact = Location.search_by_name(text).first
@@ -184,7 +186,7 @@ class RiderImport
   # Only ever fills a blank. Someone who has set their own home location in the
   # dashboard has said something more current than a spreadsheet row, and an
   # import must not overwrite it.
-  def apply(user, row, location)
+  def apply(user, row, location, class_location = nil)
     changes = {}
     # Not a blank-fill like the rest: filling out the census IS the statement,
     # so it sets the flag even on someone previously marked inactive. It never
@@ -192,6 +194,11 @@ class RiderImport
     changes[:active] = true if @mark_active && !user.active?
     changes[:phone] = row.phone if row.phone.present? && user.phone.blank?
     changes[:location_id] = location.id if location && user.location_id.blank?
+    # Where they are before a Friday event — a different question from where
+    # they live, and for most people a different answer.
+    if class_location && user.class_location_id.blank?
+      changes[:class_location_id] = class_location.id
+    end
     changes[:capacity] = row.capacity if row.capacity.present? && user.capacity.blank?
     changes[:grad_year] = row.grad_year if row.grad_year.present? && user.grad_year.blank?
     return changes if changes.empty? || @dry_run

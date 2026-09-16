@@ -21,6 +21,10 @@ module Abid
     COLUMNS = [
       [/phone/i,               :phone],
       [/discord|contact/i,     :handle],
+      # Before the residence pattern, and anchored on "where" so that
+      # "What TIME does your last class end" — which is a clock, not a place —
+      # does not land here.
+      [/where.*last class|before abide/i, :class_residence],
       [/where do you live|residence|dorm|apartment/i, :residence],
       [/capacity|seats/i,      :capacity],
       # Before the generic /name/i, or the census's "Last Name" is read as the
@@ -101,6 +105,7 @@ module Abid
         phone: clean_phone(values[:phone]),
         grad_year: grad_year_from(values[:year]),
         residence: values[:residence],
+        class_residence: values[:class_residence],
         capacity: values[:capacity].to_s[/\d+/]&.to_i
       )
     end
@@ -160,7 +165,7 @@ module Abid
       end
       puts "would update:     #{changed.size}" unless apply
       puts "updated:          #{changed.size}" if apply
-      %i[active phone location_id capacity grad_year].each do |field|
+      %i[active phone location_id class_location_id capacity grad_year].each do |field|
         count = changed.count { |r| r.changes.key?(field) }
         puts "    #{field}:".ljust(22) + count.to_s if count.positive?
       end

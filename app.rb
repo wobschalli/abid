@@ -778,7 +778,7 @@ class App < Sinatra::Base
     }
   end
 
-  USER_FIELDS = %w[name phone location_id capacity grad_year].freeze
+  USER_FIELDS = %w[name phone location_id class_location_id capacity grad_year].freeze
 
   # Checkboxes are absent from the params when unticked, so both booleans are
   # read positionally rather than through `permitted` — each has a hidden '0'
@@ -817,11 +817,11 @@ class App < Sinatra::Base
     { channels: Channel.order(:name).to_a, locations: Location.order(:name).to_a }
   end
 
-  EVENT_FIELDS = %w[name section start_time end_time
+  EVENT_FIELDS = %w[name section start_time end_time pickup_source
                     channel_id location_id].freeze
 
   SERIES_FIELDS = %w[name section weekday interval_weeks start_time_of_day end_time_of_day
-                     signup_lead_days signup_post_time signup_outro channel_id location_id
+                     signup_lead_days signup_post_time signup_outro pickup_source channel_id location_id
                      starts_on ends_on horizon_weeks].freeze
 
   def event_params

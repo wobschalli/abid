@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 3100) do
+ActiveRecord::Schema[8.0].define(version: 3200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -124,6 +124,7 @@ ActiveRecord::Schema[8.0].define(version: 3100) do
     t.integer "signup_lead_days", default: 3, null: false
     t.time "signup_post_time", default: "2000-01-01 20:00:00", null: false
     t.string "signup_outro"
+    t.string "pickup_source", default: "home", null: false
     t.index ["channel_id"], name: "index_event_series_on_channel_id"
     t.index ["disabled", "weekday"], name: "index_event_series_on_disabled_and_weekday"
     t.index ["location_id"], name: "index_event_series_on_location_id"
@@ -145,6 +146,7 @@ ActiveRecord::Schema[8.0].define(version: 3100) do
     t.bigint "series_id"
     t.string "section"
     t.date "occurrence_date"
+    t.string "pickup_source", default: "home", null: false
     t.index ["channel_id"], name: "index_events_on_channel_id"
     t.index ["location_id"], name: "index_events_on_location_id"
     t.index ["occurrence_date"], name: "index_events_on_occurrence_date"
@@ -292,7 +294,9 @@ ActiveRecord::Schema[8.0].define(version: 3100) do
     t.string "password_digest"
     t.string "phone"
     t.boolean "active", default: false, null: false
+    t.bigint "class_location_id"
     t.index ["active"], name: "index_users_on_active"
+    t.index ["class_location_id"], name: "index_users_on_class_location_id"
     t.index ["location_id"], name: "index_users_on_location_id"
     t.unique_constraint ["discord_id"]
   end
@@ -323,4 +327,5 @@ ActiveRecord::Schema[8.0].define(version: 3100) do
   add_foreign_key "signup_reactions", "signup_options"
   add_foreign_key "signup_reactions", "users"
   add_foreign_key "users", "locations"
+  add_foreign_key "users", "locations", column: "class_location_id"
 end

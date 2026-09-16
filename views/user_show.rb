@@ -68,9 +68,17 @@ class UserShow < Phlex::HTML
       field('Phone') { text_field('phone', @user.phone, mono: true, placeholder: '(765) 555-0100') }
 
       field('Home area') do
-        home_select
+        location_select('location_id', @user.location_id)
         span(class: 'text-[11.5px] text-ink/60') do
-          'Where they are picked up from. Sets their zone on the board unless a ride overrides it.'
+          'Where they live. Used by any event that collects from home, and sets their zone on the board.'
+        end
+      end
+
+      field('Friday class location') do
+        location_select('class_location_id', @user.class_location_id)
+        span(class: 'text-[11.5px] text-ink/60') do
+          'Where they are before a Friday event — usually their last class, rarely where they live. ' \
+          'Used only by events set to collect from class; falls back to home when blank.'
         end
       end
 
@@ -120,14 +128,15 @@ class UserShow < Phlex::HTML
           disabled: !@leader, class: 'board-input font-mono')
   end
 
-  # Grouped by zone so a 38-entry list stays navigable.
-  def home_select
-    select(name: 'location_id', disabled: !@leader, class: 'board-input') do
-      option(value: '', selected: @user.location_id.nil?) { 'Not set' }
+  # Grouped by zone so an 80-entry list stays navigable. Shared by both address
+  # fields — they draw from the same set of places; only the question differs.
+  def location_select(name, selected_id)
+    select(name: name, disabled: !@leader, class: 'board-input') do
+      option(value: '', selected: selected_id.nil?) { 'Not set' }
       @locations.group_by(&:zone).sort_by { |zone, _| Location::ZONES.index(zone) || 99 }.each do |zone, places|
         optgroup(label: zone || 'Unzoned') do
           places.each do |place|
-            option(value: place.id, selected: @user.location_id == place.id) { place.name.to_s }
+            option(value: place.id, selected: selected_id == place.id) { place.name.to_s }
           end
         end
       end

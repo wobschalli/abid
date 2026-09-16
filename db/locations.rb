@@ -124,6 +124,41 @@ module Abid
       ['Provenance',        'Klondike', nil, nil, ['provenance', 'provinence', 'provinance', 'provenance apt']]
     ].freeze
 
+    # Purdue academic buildings.
+    #
+    # These are where people are before a Friday event, not where they live —
+    # "BHEE", "WALC", "MSEE" are what the form answers actually say. Without
+    # them a Friday class location resolves to nothing and the rider falls back
+    # to their home address, which is the opposite of the point.
+    #
+    # Coordinates are left blank: Purdue buildings ARE map features, so
+    # `rake db:geocode` finds them by name. The abbreviations are the aliases
+    # because that is what people type.
+    BUILDINGS = [
+      ['Armstrong Hall',              ['armstrong', 'arms']],
+      ['Beering Hall',                ['beering', 'been']],
+      ['Brown Laboratory of Chemistry', ['brown lab', 'brwn']],
+      ['Class of 1950 Lecture Hall',  ['cl50', 'class of 1950']],
+      ['Chaney-Hale Hall of Science', ['chas', 'chaney hale']],
+      ['Electrical Engineering Building', ['bhee', 'ee', 'electrical engineering', 'meee']],
+      ['Forney Hall of Chemical Engineering', ['frny', 'forney', 'forny']],
+      ['France A. Córdova Recreational Sports Center', ['corec', 'co-rec', 'rec center']],
+      ['Grissom Hall',                ['grissom', 'gris']],
+      ['Hampton Hall of Civil Engineering', ['hampton', 'hamp', 'civil engineering']],
+      ['Knoy Hall of Technology',     ['knoy']],
+      ['Krannert Building',           ['krannert', 'krann']],
+      ['Lambertus Hall',              ['lambertus', 'lmbs']],
+      ['Lawson Computer Science Building', ['lawson', 'lwsn']],
+      ['Lilly Hall of Life Sciences', ['lilly', 'lily']],
+      ['Materials and Electrical Engineering Building', ['msee']],
+      ['Mechanical Engineering Building', ['me bldg', 'me building', 'mechanical engineering', 'mrgn']],
+      ['Physics Building',            ['phys', 'physics', 'physics building']],
+      ['Schleman Hall',               ['schm', 'schleman']],
+      ['Stanley Coulter Hall',        ['stanley coulter', 'scc']],
+      ['Wetherill Laboratory of Chemistry', ['wthr', 'wetherill']],
+      ['Wilmeth Active Learning Center', ['walc', 'wilmeth', 'active learning center']]
+    ].freeze
+
     # Street addresses, taken from each property's own listing and verified by
     # geocoding them — every one below resolves inside Tippecanoe County.
     #
@@ -173,7 +208,8 @@ module Abid
       'Windsor Halls' => ['windsor hall']
     }.freeze
 
-    ALL = (EXISTING + PLACES + FROM_SPREADSHEET).freeze
+    ALL = (EXISTING + PLACES + FROM_SPREADSHEET +
+           BUILDINGS.map { |name, aliases| [name, 'On-campus', nil, nil, aliases] }).freeze
 
     module_function
 

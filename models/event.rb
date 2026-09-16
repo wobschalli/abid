@@ -24,6 +24,12 @@ class Event < ApplicationRecord
 
   SECTIONS = %w[early late].freeze
 
+  # Which of a person's two addresses to collect them from. Sunday morning
+  # everyone is at home; Friday evening most people come straight from a lab.
+  PICKUP_SOURCES = { 'home' => 'Home address', 'class' => 'Friday class location' }.freeze
+
+  validates :pickup_source, inclusion: { in: PICKUP_SOURCES.keys }
+
   # Legacy Rufus-cron bookkeeping. The poller replaced it; the columns are
   # dropped a release later so a surviving old bot process does not crash in its
   # at_exit block. See db/migrate/2200.

@@ -6,7 +6,14 @@ class User < ApplicationRecord
   # NOTE: dependent: :destroy here is why Messenger#handle_member_leave must
   # never destroy a User — it would take every historical ride with it.
   has_many :rides, dependent: :destroy
-  has_and_belongs_to_many :events
+
+  # Where they are before a Friday event — usually their last class, which is
+  # rarely where they live. The census has people living at Lark and standing
+  # outside MSEE when they need collecting.
+  belongs_to :class_location, class_name: 'Location', optional: true
+  # `has_and_belongs_to_many :events` lived here over the events_users join,
+  # which the legacy rides-message path wrote and 2900 dropped. Rides are the
+  # record of who was on an occurrence.
   has_and_belongs_to_many :roles
 
   has_secure_password
