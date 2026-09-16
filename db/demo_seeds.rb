@@ -106,8 +106,6 @@ def demo_series(name, section, weekday, hour, minute, location)
     s.weekday = weekday
     s.start_time_of_day = Time.zone.parse(format('%02d:%02d', hour, minute))
     s.end_time_of_day = Time.zone.parse(format('%02d:%02d', hour + 1, minute))
-    s.message_lead_hours = 24
-    s.collect_lead_hours = 2
     s.horizon_weeks = 3
     s.location = location
     s.message = "React if you need a ride to #{name}."
@@ -171,8 +169,6 @@ friday_late   = friday_late_series.ensure_occurrence(friday)
 retreat_start = Time.zone.local(sunday.year, sunday.month, sunday.day, 7, 0) + 21.days
 retreat = Event.find_or_create_by(name: 'Fall Retreat', start_time: retreat_start) do |e|
   e.end_time = retreat_start + 10.hours
-  e.message_rides_at = retreat_start - 72.hours
-  e.collect_rides_at = retreat_start - 12.hours
   e.location = church
   e.message = 'React if you need a ride to the retreat. Leaving 7am sharp.'
 end
@@ -184,7 +180,6 @@ end
 past_sundays = (1..8).map { |weeks_ago| sunday - (weeks_ago * 7) }
 past_events = past_sundays.filter_map do |date|
   event = school_series.ensure_occurrence(date)
-  event&.update!(collected_at: date.to_time + 8.hours, rides_message_id: nil)
   event
 end
 past_event = past_events.first

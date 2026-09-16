@@ -232,7 +232,7 @@ class App < Sinatra::Base
   get '/series/new' do
     require_leader!
     phlex SeriesForm.new(series: EventSeries.new(interval_weeks: 1, horizon_weeks: 3,
-                                                 message_lead_hours: 24, collect_lead_hours: 2),
+                                                 signup_lead_days: 3),
                          **form_collections, leader: leader?)
   end
 
@@ -241,6 +241,7 @@ class App < Sinatra::Base
     series = EventSeries.new(series_params)
     if series.save
       EventGenerator.call(only: series)
+      Signup::AutoSchedule.new.call
       redirect to("/series/#{series.id}")
     else
       status 422
@@ -269,7 +270,10 @@ class App < Sinatra::Base
     require_leader!
     series = EventSeries.find_by(id: params[:id]) or halt 404, 'No such series'
     if series.update(series_params)
-      EventGenerator.call(only: series) unless series.disabled
+      unless series.disabled
+        EventGenerator.call(only: series)
+        Signup::AutoSchedule.new.call
+      end
       redirect to("/series/#{series.id}")
     else
       status 422
@@ -668,26 +672,10 @@ class App < Sinatra::Base
     )
   end
 
-  # Upcoming ride dates with no sign-up post yet, grouped so one button can
-  # cover a whole Sunday. Limited to the next few weeks — the generator runs a
-  # rolling horizon, so listing everything it has produced would be a wall.
-  #
-  # "Has a post" is judged by service_date rather than by the options' events:
-  # a post someone made but has not filled in yet still counts, or the date
-  # would keep offering to make a second one.
+  # Upcoming ride dates with no sign-up post yet. Delegated so the list the
+  # page offers and the list the automation acts on cannot disagree.
   def dates_needing_signup(weeks: 3)
-    events = Event.active.upcoming
-                  .where('start_time <= ?', weeks.weeks.from_now)
-                  .chronological.to_a
-    return [] if events.empty?
-
-    covered = SignupPost.where.not(status: 'failed')
-                        .where(service_date: events.filter_map { |e| e.start_time&.to_date })
-                        .pluck(:service_date).to_set
-
-    events.group_by { |event| event.start_time.to_date }
-          .reject { |date, _| covered.include?(date) }
-          .sort_by(&:first)
+    Signup::AutoSchedule.new(horizon_weeks: weeks).uncovered_dates
   end
 
   # The occurrences this post could be about — normally the one or two on its
@@ -775,11 +763,11 @@ class App < Sinatra::Base
     { channels: Channel.order(:name).to_a, locations: Location.order(:name).to_a }
   end
 
-  EVENT_FIELDS = %w[name section start_time end_time message_rides_at collect_rides_at
-                    channel_id location_id message].freeze
+  EVENT_FIELDS = %w[name section start_time end_time
+                    channel_id location_id].freeze
 
   SERIES_FIELDS = %w[name section weekday interval_weeks start_time_of_day end_time_of_day
-                     message_lead_hours collect_lead_hours channel_id location_id message
+                     signup_lead_days signup_post_time signup_outro channel_id location_id
                      starts_on ends_on horizon_weeks].freeze
 
   def event_params

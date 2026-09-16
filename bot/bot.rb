@@ -31,7 +31,7 @@ class Bot
   end
 
   # `bot_schedule` lived here. Scheduler no longer registers per-event jobs — it
-  # polls Event.message_due / Event.collection_due — so there is nothing to call.
+  # polls for due sign-up posts instead — so there is nothing to call.
 
   # @return pronouncable password [String]
   def passgen

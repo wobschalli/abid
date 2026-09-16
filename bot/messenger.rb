@@ -324,12 +324,6 @@ class Messenger < Bot
         row.text_input(style: :short, custom_id: 'end_time', label: 'End Time', placeholder: evt.end_time, required: false)
       end
       modal.row do |row|
-        row.text_input(style: :short, custom_id: 'message_time', label: 'Message Time', placeholder: evt.message_rides_at, required: false)
-      end
-      modal.row do |row|
-        row.text_input(style: :short, custom_id: 'collect_time', label: 'Collect Time', placeholder: evt.collect_rides_at, required: false)
-      end
-      modal.row do |row|
         row.text_input(style: :short, custom_id: 'repeat', label: 'Repeat every (week/never(blank))', placeholder: evt.repeats_every, required: false)
       end
     end
@@ -344,8 +338,6 @@ class Messenger < Bot
     values = {
       start_time: Chronic.parse(event.value('start_time')) || evt.start_time,
       end_time: Chronic.parse(event.value('end_time')) || evt.end_time,
-      message_rides_at: Chronic.parse(event.value('message_time')) || evt.message_rides_at,
-      collect_rides_at: Chronic.parse(event.value('collect_time')) || evt.collect_rides_at,
       repeats_every: event.value('repeat').nil? || (event.value('repeat').empty? ? 'never' : event.value('repeat').downcase) || evt.repeats_every
     }.delete_if{ |_, value| value.nil? || (value.is_a?(String) && value.empty?) }
 
@@ -353,7 +345,7 @@ class Messenger < Bot
 
     pt_1_button, _, pt_3_button, disable_button = get_changable_event_create_components event, id
 
-    emoji, style = if !(evt.start_time && evt.end_time && evt.message_rides_at && evt.collect_rides_at)
+    emoji, style = if !(evt.start_time && evt.end_time)
       [ nil, :primary ]
     else
       [ TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints, :success ]
@@ -431,7 +423,7 @@ class Messenger < Bot
       [ TanukiEmoji.find_by_alpha_code(':ballot_box_with_check:').codepoints, :success ]
     end
 
-    # Nothing to schedule: Scheduler polls Event.message_due every 30 seconds and
+    # Nothing to schedule: the sign-up publisher polls every 30 seconds and
     # picks this occurrence up on its own. The call that used to be here
     # (`bot_schedule(evt)`) raised NoMethodError on a nil scheduler every time.
 

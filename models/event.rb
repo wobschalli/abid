@@ -22,15 +22,7 @@ class Event < ApplicationRecord
   has_many :driver_rides, -> { drivers }, class_name: 'Ride'
   has_many :drivers, through: :driver_rides, source: :user
 
-  # Kept for the existing reaction-collection path; new code should use rides.
-  has_and_belongs_to_many :users
-
   SECTIONS = %w[early late].freeze
-
-  # How late the bot may still post a rides message it missed. Beyond this the
-  # occurrence is skipped rather than posted — a bot that has been down for a
-  # week should not wake up and dump ten stale sign-up posts into the channel.
-  POST_GRACE = 6.hours
 
   # Legacy Rufus-cron bookkeeping. The poller replaced it; the columns are
   # dropped a release later so a surviving old bot process does not crash in its
@@ -50,29 +42,6 @@ class Event < ApplicationRecord
   scope :section, ->(section) { where(section: section) }
   scope :chronological, -> { order(:start_time) }
 
-  # Occurrences whose rides message is due but hasn't gone out yet. Recurrence is
-  # one row per occurrence now, so "already posted" is a per-occurrence fact
-  # rather than a flag that permanently latches the series off.
-  scope :message_due, lambda {
-    active.where(rides_message_id: nil)
-          .where.not(message_rides_at: nil)
-          .where.not(channel_id: nil)
-          .where.not(message: nil)
-          .where(message_rides_at: POST_GRACE.ago..Time.zone.now)
-          .where('start_time > ?', Time.zone.now)
-          # A coordinator has already written a sign-up post covering this
-          # occurrence; posting our own would split the roster across two
-          # messages.
-          .where.not(id: SignupOption.published.select(:event_id))
-  }
-
-  scope :collection_due, lambda {
-    active.where(collected_at: nil)
-          .where.not(rides_message_id: nil)
-          .where.not(collect_rides_at: nil)
-          .where('collect_rides_at <= ?', Time.zone.now)
-  }
-
   def disable
     self.disabled = true
     self.save
@@ -91,12 +60,6 @@ class Event < ApplicationRecord
     !self.disabled
   end
 
-  # Has everything the bot needs to post a rides message for this occurrence.
-  # Replaces `schedulable?`, which asked whether a Rufus job could be registered.
-  def postable?
-    name.present? && start_time && message_rides_at && channel_id && message.present?
-  end
-
   def recurring?
     series_id.present?
   end
@@ -105,8 +68,9 @@ class Event < ApplicationRecord
     series_id.nil?
   end
 
+  # Has a sign-up post been sent for this occurrence?
   def posted?
-    rides_message_id.present?
+    signup_posts.any?(&:posted?)
   end
 
   # Mirrors the coalesce in `scope :past`, so Ruby and SQL agree on when an

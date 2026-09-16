@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2800) do
+ActiveRecord::Schema[8.0].define(version: 3000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -109,8 +109,6 @@ ActiveRecord::Schema[8.0].define(version: 2800) do
     t.integer "weekday"
     t.time "start_time_of_day"
     t.time "end_time_of_day"
-    t.integer "message_lead_hours", default: 24
-    t.integer "collect_lead_hours", default: 2
     t.string "message"
     t.boolean "disabled", default: false, null: false
     t.bigint "channel_id"
@@ -123,6 +121,9 @@ ActiveRecord::Schema[8.0].define(version: 2800) do
     t.string "time_zone", default: "America/Indiana/Indianapolis", null: false
     t.integer "horizon_weeks", default: 3, null: false
     t.date "last_generated_on"
+    t.integer "signup_lead_days", default: 3, null: false
+    t.time "signup_post_time", default: "2000-01-01 20:00:00", null: false
+    t.string "signup_outro"
     t.index ["channel_id"], name: "index_event_series_on_channel_id"
     t.index ["disabled", "weekday"], name: "index_event_series_on_disabled_and_weekday"
     t.index ["location_id"], name: "index_event_series_on_location_id"
@@ -130,38 +131,25 @@ ActiveRecord::Schema[8.0].define(version: 2800) do
 
   create_table "events", force: :cascade do |t|
     t.string "name"
-    t.bigint "rides_message_id"
     t.datetime "start_time"
     t.datetime "end_time"
-    t.datetime "message_rides_at"
-    t.datetime "collect_rides_at"
     t.bigint "channel_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.boolean "disabled", default: false, null: false
     t.bigint "location_id"
     t.string "repeats_every"
-    t.string "message"
     t.boolean "scheduled", default: false
     t.string "send_schedule_id"
     t.string "collect_schedule_id"
     t.bigint "series_id"
     t.string "section"
-    t.datetime "collected_at"
     t.date "occurrence_date"
     t.index ["channel_id"], name: "index_events_on_channel_id"
     t.index ["location_id"], name: "index_events_on_location_id"
     t.index ["occurrence_date"], name: "index_events_on_occurrence_date"
     t.index ["series_id", "occurrence_date"], name: "index_events_on_series_id_and_occurrence_date", unique: true
     t.index ["series_id"], name: "index_events_on_series_id"
-    t.unique_constraint ["rides_message_id"]
-  end
-
-  create_table "events_users", id: false, force: :cascade do |t|
-    t.bigint "event_id"
-    t.bigint "user_id"
-    t.index ["event_id"], name: "index_events_users_on_event_id"
-    t.index ["user_id"], name: "index_events_users_on_user_id"
   end
 
   create_table "locations", force: :cascade do |t|

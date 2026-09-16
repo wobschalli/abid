@@ -51,8 +51,8 @@ class SeriesForm < Phlex::HTML
       end
 
       div(class: 'grid grid-cols-2 gap-3') do
-        field('Post sign-ups (hours ahead)') { number_field('message_lead_hours', @series.message_lead_hours, min: 1, max: 336) }
-        field('Collect sign-ups (hours ahead)') { number_field('collect_lead_hours', @series.collect_lead_hours, min: 0, max: 336) }
+        field('Send sign-up (days ahead)') { number_field('signup_lead_days', @series.signup_lead_days, min: 0, max: 30) }
+        field('At what time') { time_field('signup_post_time', @series.signup_post_time) }
       end
 
       div(class: 'grid grid-cols-2 gap-3') do
@@ -66,7 +66,8 @@ class SeriesForm < Phlex::HTML
         field('Generate ahead (weeks)') { number_field('horizon_weeks', @series.horizon_weeks, min: 1, max: 26) }
       end
 
-      field('Sign-up message') { message_field }
+      # The line that used to be retyped on every single post, or forgotten.
+      field('Sign-up footer (optional)') { outro_field }
 
       label(class: 'flex items-center gap-2 text-[13px]') do
         input(type: 'hidden', name: 'disabled', value: '0')
@@ -137,12 +138,12 @@ class SeriesForm < Phlex::HTML
     end
   end
 
-  def message_field
+  def outro_field
     textarea(
-      name: 'message',
-      rows: 3,
+      name: 'signup_outro',
+      rows: 2,
       class: 'board-input resize-y text-[12.5px] leading-[1.5]',
-      placeholder: 'React if you need a ride.'
-    ) { @series.message.to_s }
+      placeholder: 'e.g. React by 8am Sunday'
+    ) { @series.signup_outro.to_s }
   end
 end

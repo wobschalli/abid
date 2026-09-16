@@ -49,51 +49,10 @@ class EventTest < AbidTest
     assert_includes Event.one_off, one_off
   end
 
-  # --- the poller's scopes -------------------------------------------------
-
-  def make_postable(**overrides)
-    Event.create!({
-      name: 'Service',
-      start_time: 2.hours.from_now,
-      message_rides_at: 1.minute.ago,
-      channel: Channel.create!(name: 'rides', discord_id: next_discord_id, server: demo_server),
-      message: 'React if you need a ride.'
-    }.merge(overrides))
-  end
-
-  def test_message_due_picks_up_a_ready_occurrence
-    assert_includes Event.message_due, make_postable
-  end
-
-  def test_message_due_skips_one_already_posted
-    posted = make_postable
-    posted.update!(rides_message_id: 123_456)
-
-    refute_includes Event.message_due, posted
-  end
-
-  def test_message_due_skips_an_occurrence_that_has_already_started
-    gone = make_postable(start_time: 1.minute.ago, message_rides_at: 2.hours.ago)
-
-    refute_includes Event.message_due, gone
-  end
-
-  # A bot that has been down for a week must not wake up and dump a backlog of
-  # stale sign-up posts into the channel.
-  def test_message_due_skips_anything_older_than_the_grace_window
-    stale = make_postable(message_rides_at: (Event::POST_GRACE + 1.hour).ago)
-
-    refute_includes Event.message_due, stale
-  end
-
-  def test_message_due_needs_a_channel_and_a_message
-    refute_includes Event.message_due, make_postable(channel: nil)
-    refute_includes Event.message_due, make_postable(message: nil)
-  end
-
-  def test_message_due_skips_disabled_events
-    refute_includes Event.message_due, make_postable(disabled: true)
-  end
+  # The poller's scopes and their tests lived here. They belonged to the legacy
+  # rides-message path, deleted in 2900_drop_legacy_rides_message — a second
+  # mechanism that posted alongside the sign-up publisher and had been raising
+  # NoMethodError on every send since `Event has_many :emojis` was dropped.
 
   private
 

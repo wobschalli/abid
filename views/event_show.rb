@@ -72,8 +72,7 @@ class EventShow < Phlex::HTML
       fact('Location', @event.location&.name || '—')
       fact('Channel', @event.channel&.name || '—')
       fact('Series', series_link)
-      fact('Sign-ups posted', @event.posted? ? 'yes' : 'no')
-      fact('Collected', @event.collected_at ? @event.collected_at.strftime('%-d %b %-l:%M %p') : '—')
+      fact('Sign-up', @event.posted? ? 'posted' : 'not sent yet')
     end
   end
 

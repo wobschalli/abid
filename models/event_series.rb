@@ -29,6 +29,26 @@ class EventSeries < ApplicationRecord
     weekday.present? && start_time_of_day.present?
   end
 
+  # When the sign-up for an occurrence on `date` should be sent.
+  #
+  # Built in this series' own zone, and from the date rather than the event's
+  # start time: "three days before at 8pm" should land at 8pm whatever time the
+  # service itself begins, and should not drift an hour across a DST boundary.
+  def signup_post_at(date)
+    zone.local(date.year, date.month, date.day,
+               signup_post_time.hour, signup_post_time.min) - signup_lead_days.days
+  end
+
+  # "sends 3 days ahead at 8:00 PM" — for the series list.
+  def signup_schedule_label
+    when_ = case signup_lead_days
+            when 0 then 'same day'
+            when 1 then '1 day ahead'
+            else "#{signup_lead_days} days ahead"
+            end
+    "sends #{when_} at #{signup_post_time.strftime('%-l:%M %p')}"
+  end
+
   # Every occurrence date in [from, to] on this series' cadence.
   #
   # Date arithmetic only. `time + 7.days` is 167 or 169 hours across a DST
@@ -68,12 +88,9 @@ class EventSeries < ApplicationRecord
       section: section,
       channel: channel,
       location: location,
-      message: message,
       occurrence_date: day,
       start_time: starts,
       end_time: end_time_of_day ? combine(day, end_time_of_day) : nil,
-      message_rides_at: starts - (message_lead_hours || 24).hours,
-      collect_rides_at: starts - (collect_lead_hours || 2).hours,
       disabled: disabled
     )
   end

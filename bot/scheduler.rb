@@ -4,12 +4,12 @@ require_relative 'bot'
 class Bot
   # Drives everything time-based in the bot from a single poll.
   #
-  # This replaced a Rufus cron-per-event design that was the direct cause of the
-  # "a weekly event posts exactly once, ever" bug: one Event row was reused for
-  # every week, `send_scheduled_message` bailed as soon as `rides_message_id` was
-  # set, and nothing ever cleared it. With one Event row per occurrence,
-  # "already posted" is a per-occurrence fact, and the two scopes below — which
-  # were written months ago and never called — become the whole engine.
+  # There used to be a second posting path here — Event.message_due ->
+  # post_rides_message -> collect_reactions — running alongside the sign-up
+  # publisher and posting `events.message` off its own schedule. It is gone:
+  # two mechanisms announcing the same rides could both land in the channel,
+  # and it had been raising NoMethodError on `event.emojis` after committing
+  # the message id ever since that association was dropped.
   #
   # Polling also means no in-memory schedule to lose, so a restart costs nothing
   # and a bot that was down catches up on its own.
@@ -63,8 +63,6 @@ class Bot
       generate_occurrences
       publish_signups
       send_dispatches
-      Event.message_due.find_each { |event| safely(event) { post_rides_message(event) } }
-      Event.collection_due.find_each { |event| safely(event) { collect_reactions(event) } }
     end
 
     # Drains the dispatch outbox. If the bot was down when a coordinator pressed
@@ -89,84 +87,23 @@ class Bot
       warn "signup reconcile failed: #{e.class}: #{e.message}"
     end
 
-    # Materialise upcoming occurrences once a day rather than every 30 seconds.
+    # Materialise upcoming occurrences once a day rather than every 30 seconds,
+    # then give each new ride date its sign-up post. Generation first: the
+    # scheduler can only cover dates that exist.
     def generate_occurrences
       return if @generated_on == Time.zone.today
 
       EventGenerator.call
+      created = Signup::AutoSchedule.new.call
+      warn "auto-scheduled #{created.size} sign-up post(s)" if created.any?
       @generated_on = Time.zone.today
     rescue StandardError => e
       warn "occurrence generation failed: #{e.class}: #{e.message}"
     end
 
-    def post_rides_message(event)
-      message = @bot.send(event.channel.discord_id, event.message)
 
-      # Record the id *before* reacting. events.rides_message_id is UNIQUE, and a
-      # reaction failing partway through must not leave the occurrence looking
-      # unposted — that would repost the whole message on the next tick.
-      event.update_column(:rides_message_id, message.id)
 
-      event.emojis.each { |emoji| message.react(emoji) }
-    end
 
-    def collect_reactions(event)
-      event = Event.find(event.id)
-      return unless event&.enabled? && event.rides_message_id
 
-      reaction_users = @bot.channel(event.channel.discord_id)
-                           .load_message(event.rides_message_id)
-                           .all_reaction_users
-
-      # `event.users = ...` used to run inside this loop, so each emoji replaced
-      # the previous one's reactors and only the last emoji survived.
-      signed_up = []
-      summary = reaction_users.map do |emoji, users|
-        signed_up.concat(known_users(users))
-        "#{emoji}: #{users.join(', ')}"
-      end.join("\n")
-
-      signed_up.uniq!
-      event.users = signed_up
-      event.collected_at = Time.zone.now
-      event.save
-
-      sync_rides(event, signed_up)
-
-      @messenger&.dm_leaders "reaction details for event: #{event}\n#{summary}"
-    end
-
-    def known_users(reaction_users)
-      reaction_users.filter_map do |reaction_user|
-        next if reaction_user.bot_account?
-
-        User.find_by(discord_id: reaction_user.id)
-      end
-    end
-
-    # Turn sign-ups into Ride rows so the web ride board has something to show.
-    # Everyone comes in as a rider; coordinators flip people to driver on the
-    # board, since the reaction emoji doesn't say which one someone meant.
-    def sync_rides(event, users)
-      users.each do |user|
-        ride = event.rides.find_or_initialize_by(user_id: user.id)
-        next if ride.persisted?
-
-        ride.role = 'rider'
-        ride.status = 'requested'
-        ride.zone = user.location&.zone
-        ride.signed_up_at = Time.zone.now
-        ride.save
-      end
-    rescue StandardError => e
-      warn "could not sync rides for event #{event.id}: #{e.class}: #{e.message}"
-    end
-
-    # One bad occurrence must not stop the tick from servicing the others.
-    def safely(event)
-      yield
-    rescue StandardError => e
-      warn "event #{event.id}: #{e.class}: #{e.message}"
-    end
   end
 end

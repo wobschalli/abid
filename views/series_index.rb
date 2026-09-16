@@ -70,7 +70,7 @@ class SeriesIndex < Phlex::HTML
 
     bits = ["#{DAYS[series.weekday]}s at #{series.start_time_of_day.strftime('%-l:%M %p')}"]
     bits << series.location.name if series.location
-    bits << "posts #{series.message_lead_hours}h ahead"
+    bits << series.signup_schedule_label
     bits.join(' · ')
   end
 

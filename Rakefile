@@ -16,6 +16,17 @@ namespace :db do
     ruby 'db/geocode.rb'
   end
 
+  desc "Make the database match Abide's real weekly schedule (add [apply] to write)"
+  task :schedule, [:mode] do |_task, args|
+    require_relative 'config/environment'
+    Abid.establish_connection
+    Abid.load_models
+    Abid.load_services
+    require_relative 'db/schedule'
+
+    Abid::Schedule.call(apply: args[:mode] == 'apply')
+  end
+
   desc 'Remove everything db:demo invented, keeping the real server data (add [apply] to write)'
   task :drop_demo, [:mode] do |_task, args|
     require_relative 'config/environment'

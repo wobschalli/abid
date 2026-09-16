@@ -58,16 +58,9 @@ class EventForm < Phlex::HTML
       end
 
       div(class: 'grid grid-cols-2 gap-3') do
-        field('Post sign-ups at') { datetime_field('message_rides_at', @event.message_rides_at) }
-        field('Collect sign-ups at') { datetime_field('collect_rides_at', @event.collect_rides_at) }
-      end
-
-      div(class: 'grid grid-cols-2 gap-3') do
         field('Channel') { belongs_to_select('channel_id', @channels, @event.channel_id) }
         field('Location') { belongs_to_select('location_id', @locations, @event.location_id) }
       end
-
-      field('Sign-up message') { message_field }
 
       label(class: 'flex items-center gap-2 text-[13px]') do
         input(type: 'hidden', name: 'disabled', value: '0')
@@ -125,12 +118,4 @@ class EventForm < Phlex::HTML
     end
   end
 
-  def message_field
-    textarea(
-      name: 'message',
-      rows: 3,
-      class: 'board-input resize-y text-[12.5px] leading-[1.5]',
-      placeholder: 'React if you need a ride.'
-    ) { @event.message.to_s }
-  end
 end

@@ -12,8 +12,6 @@ class EventSeriesTest < AbidTest
       weekday: 0,
       start_time_of_day: Time.zone.parse('09:30'),
       end_time_of_day: Time.zone.parse('11:00'),
-      message_lead_hours: 24,
-      collect_lead_hours: 2,
       message: 'React if you need a ride.',
       interval_weeks: 1,
       horizon_weeks: 3
@@ -119,16 +117,14 @@ class EventSeriesTest < AbidTest
 
   # --- occurrence contents -------------------------------------------------
 
-  def test_occurrence_copies_the_template_and_derives_lead_times
-    s = series(message_lead_hours: 48, collect_lead_hours: 3)
+  def test_occurrence_copies_the_template
+    s = series
     event = s.ensure_occurrence(next_sunday)
 
     assert_equal 'Sunday Service', event.name
     assert_equal 'early', event.section
-    assert_equal s.message, event.message
     assert_equal next_sunday, event.occurrence_date
-    assert_equal event.start_time - 48.hours, event.message_rides_at
-    assert_equal event.start_time - 3.hours, event.collect_rides_at
+    assert_equal s.location, event.location
     assert event.recurring?
     refute event.one_off?
   end
