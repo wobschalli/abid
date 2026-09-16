@@ -34,16 +34,28 @@ class Schedule < Phlex::HTML
 
   private
 
+  # Adding an event is a top-level action, so it lives in the header rather than
+  # folded inside the recurring section — which is collapsed by default, and is
+  # about the templates rather than about creating anything.
   def header
-    div(class: 'flex items-baseline gap-3 flex-wrap') do
+    div(class: 'flex items-center gap-3 flex-wrap') do
       h1(class: 'font-display font-bold text-2xl -tracking-[.015em]') { 'Schedule' }
       span(class: 'board-meta') { "#{@dates.size} dates coming up" }
+      div(class: 'flex-1')
+      new_event_actions if @leader
+    end
+  end
+
+  def new_event_actions
+    div(class: 'flex gap-2 flex-wrap') do
+      a(href: '/events/new', class: 'board-btn-solid no-underline') { 'New event' }
+      a(href: '/series/new', class: 'board-btn no-underline text-ink') { 'New recurring event' }
     end
   end
 
   def empty_note
     div(class: 'p-3.5 rounded-lg border border-line bg-surface-sunk text-[13px] text-ink/70') do
-      'Nothing coming up. Add a recurring event below and occurrences appear automatically.'
+      'Nothing coming up. Add a recurring event above and its occurrences — and their sign-ups — appear on their own.'
     end
   end
 
@@ -176,11 +188,7 @@ class Schedule < Phlex::HTML
   end
 
   def series_actions
-    div(class: 'flex gap-2 flex-wrap') do
-      a(href: '/series/new', class: 'board-btn-solid no-underline') { 'New recurring event' }
-      a(href: '/events/new', class: 'board-btn no-underline text-ink') { 'One-off event' }
-      generate_button
-    end
+    div(class: 'flex gap-2 flex-wrap') { generate_button }
   end
 
   # Occurrences are materialised daily by the bot, and creating or editing a
