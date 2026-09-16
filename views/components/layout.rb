@@ -32,6 +32,7 @@ class Components::Layout < Phlex::HTML
       link rel: 'preconnect', href: 'https://fonts.googleapis.com'
       link rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: true
       link rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap'
+      link href: url('css/leaflet.css'), type: 'text/css', rel: 'stylesheet'
       link href: url('css/application.min.css'), type: 'text/css', rel: 'stylesheet'
       # Intentionally render-blocking: darkmode.js sets the .dark class before
       # first paint, and deferring it reintroduces a flash of the light theme.

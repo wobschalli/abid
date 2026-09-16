@@ -59,6 +59,27 @@ module Abid
       ActiveRecord::Base.establish_connection(database_config)
     end
 
+    # Basemap tiles for the route map.
+    #
+    # OpenStreetMap by default: no account, no token, no card on file, which
+    # suits an app that otherwise takes no third-party runtime dependency.
+    # Set MAPBOX_TOKEN to switch — nothing else changes. Mapbox needs a public
+    # token shipped to the browser, so scope it to styles:read and restrict it
+    # to your domain in the Mapbox console.
+    def map_tiles
+      token = ENV['MAPBOX_TOKEN'].to_s
+      return OSM_TILES if token.empty?
+
+      { url: "https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=#{token}",
+        attribution: '&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> ' \
+                     '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }
+    end
+
+    OSM_TILES = {
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }.freeze
+
     # Discord credentials. ENV wins so deploys don't need a seeded DB row, but we
     # still fall back to the discord_infos table for existing installs.
     def discord_token

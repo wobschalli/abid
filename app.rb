@@ -615,7 +615,8 @@ class App < Sinatra::Base
   get '/board/:event_id/map' do
     event = find_event(params[:event_id]) or halt 404, 'No such event'
     board = RideBoard.new(event)
-    phlex BoardMap.new(board: board, map: RouteMap.new(board), leader: leader?)
+    phlex BoardMap.new(board: board, map: RouteMap.new(board),
+                       tiles: Abid.map_tiles, leader: leader?)
   end
 
   get '/events/:event_id/dispatches' do

@@ -251,9 +251,11 @@ class RoutesTest < AbidTest
 
     body = get_ok("/board/#{@event.id}/map").body
 
-    assert_includes body, '<svg'
-    assert_includes body, 'polyline', 'a route with two stops should be drawn as a line'
+    assert_includes body, 'data-route-map'
+    assert_includes body, 'tile.openstreetmap.org', 'the basemap tiles must be configured'
     assert_includes body, 'Caleb'
+    # The payload the browser draws from, carried on the element.
+    assert_includes body, '&quot;lat&quot;'
   end
 
   # "Nothing to draw" with no cause is indistinguishable from a broken page,
@@ -270,7 +272,7 @@ class RoutesTest < AbidTest
 
     body = get_ok("/board/#{@event.id}/map").body
     assert_includes body, 'No rider has been seated'
-    refute_includes body, '<polyline', 'an empty car is not a route'
+    refute_includes body, 'data-route-map', 'an empty car is not a route, so there is nothing to draw'
   end
 
   def test_a_stop_with_no_location_is_named_rather_than_dropped

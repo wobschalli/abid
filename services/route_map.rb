@@ -63,6 +63,35 @@ class RouteMap
     :no_locations
   end
 
+  # Everything the browser needs to draw, in real coordinates. Leaflet does the
+  # projection, so nothing here is pre-projected — the SVG version had to, and
+  # that maths is gone with it.
+  def to_json_payload
+    drawn_routes.each_with_index.map do |route, i|
+      { driver: route.name,
+        colour: colour_for(i),
+        stops: route.plan.pickups.select(&:coords?).map do |stop|
+          { lat: stop.lat.to_f, lon: stop.lon.to_f, name: stop.name, label: stop.label }
+        end }
+    end
+  end
+
+  def venue_payload
+    stop = plans.map { |_, plan| plan.destination }.compact.find(&:coords?)
+    return nil if stop.nil?
+
+    { lat: stop.lat.to_f, lon: stop.lon.to_f, name: stop.name }
+  end
+
+  # Categorical identity, assigned in fixed order and never cycled. Resolved to
+  # a real colour here rather than a CSS variable: Leaflet writes these into
+  # inline SVG attributes it generates itself, where var() is awkward to reach.
+  SERIES_LIGHT = %w[#2a78d6 #eb6834 #1baf7a #eda100 #e87ba4 #008300].freeze
+
+  def colour_for(index)
+    SERIES_LIGHT[index % SERIES_LIGHT.size]
+  end
+
   private
 
   def plans
