@@ -75,11 +75,6 @@ class App < Sinatra::Base
 
   # --- events ---------------------------------------------------------------
 
-  get '/events' do
-    filter = %w[upcoming past all].include?(params[:when]) ? params[:when] : 'upcoming'
-    phlex EventsIndex.new(events: events_for(filter), filter: filter, leader: leader?)
-  end
-
   # Must precede '/events/:id', which would otherwise match "new".
   get '/events/new' do
     require_leader!
@@ -199,11 +194,27 @@ class App < Sinatra::Base
     )
   end
 
-  # --- recurring series -----------------------------------------------------
+  # --- the schedule ---------------------------------------------------------
+  #
+  # Events, Series and Sign-ups were three pages over the same rows. They are
+  # one page now; the old paths redirect so existing links and bookmarks work.
 
-  get '/series' do
-    phlex series_page
+  get '/schedule' do
+    phlex schedule_page
   end
+
+  post '/schedule/generate' do
+    require_leader!
+    # Honours `disabled`, which the old per-series button did not — it would
+    # materialise occurrences the daily job would never have made.
+    EventGenerator.call
+    Signup::AutoSchedule.new.call
+    redirect to('/schedule')
+  end
+
+  get('/series') { redirect to('/schedule') }
+  get('/signups') { redirect to('/schedule') }
+  get('/events') { redirect to('/schedule') }
 
   # Academic breaks live on the series page because that is the only thing they
   # affect. Shared across every series — the calendar belongs to the university.
@@ -215,10 +226,10 @@ class App < Sinatra::Base
       # Occurrences generated before the break existed are now wrong; switch
       # off the upcoming ones rather than deleting anyone's roster.
       academic_break.disable_future_occurrences!
-      redirect to('/series')
+      redirect to('/schedule')
     else
       status 422
-      phlex series_page(error: academic_break.errors.full_messages.to_sentence)
+      phlex schedule_page(error: academic_break.errors.full_messages.to_sentence)
     end
   end
 
@@ -226,7 +237,7 @@ class App < Sinatra::Base
     require_leader!
     AcademicBreak.find_by(id: params[:id])&.destroy
     EventGenerator.call
-    redirect to('/series')
+    redirect to('/schedule')
   end
 
   get '/series/new' do
@@ -290,12 +301,6 @@ class App < Sinatra::Base
   end
 
   # --- sign-up posts --------------------------------------------------------
-
-  get '/signups' do
-    posts = SignupPost.includes(:channel, options: :event).recent.limit(50)
-    phlex SignupsIndex.new(posts: posts, channels: Channel.order(:name).to_a,
-                           needing_signup: dates_needing_signup, leader: leader?)
-  end
 
   post '/signups' do
     require_leader!
@@ -626,33 +631,33 @@ class App < Sinatra::Base
   end
 
   # Rides are preloaded because EventTable counts riders and drivers per row.
-  def events_for(filter)
-    scope = Event.includes(:location, :series, rides: :user)
-    case filter
-    when 'past' then scope.past.order(start_time: :desc).limit(200)
-    when 'all' then scope.order(start_time: :desc).limit(200)
-    else scope.upcoming.chronological
-    end.to_a
+
+  # One date's worth of the schedule: its occurrences, and the single sign-up
+  # post that covers them.
+  ScheduleDay = Struct.new(:date, :events, :post, keyword_init: true) do
+    def channel_id = events.filter_map(&:channel_id).first
   end
 
-  def series_page(error: nil)
-    series = EventSeries.order(:name).to_a
-    SeriesIndex.new(
-      series: series,
-      upcoming: upcoming_by_series(series),
+  def schedule_page(error: nil, weeks: 6)
+    events = Event.includes(:location, :series, :channel, rides: :user)
+                  .where(start_time: Time.zone.now..(Time.zone.now + weeks.weeks))
+                  .chronological.to_a
+    by_date = events.group_by { |event| event.start_time.to_date }
+
+    posts = SignupPost.includes(:options)
+                      .where(service_date: by_date.keys)
+                      .index_by(&:service_date)
+
+    Schedule.new(
+      dates: by_date.sort_by(&:first).map { |date, day_events|
+        ScheduleDay.new(date: date, events: day_events, post: posts[date])
+      },
+      series: EventSeries.order(:weekday, :start_time_of_day).to_a,
       breaks: AcademicBreak.chronological.to_a,
+      past: Event.past.includes(rides: :user).order(start_time: :desc).limit(25).to_a,
       leader: leader?,
       error: error
     )
-  end
-
-  def upcoming_by_series(series)
-    return {} if series.empty?
-
-    Event.upcoming.chronological
-         .where(series_id: series.map(&:id))
-         .group_by(&:series_id)
-         .transform_values { |events| events.first(4) }
   end
 
   def find_signup(id)

@@ -47,7 +47,18 @@ class RoutesTest < AbidTest
   end
 
   def test_every_listing_page_renders
-    %w[/ /board /events /series /signups /locations /users].each { |path| get_ok(path) }
+    %w[/ /board /schedule /locations /users].each { |path| get_ok(path) }
+  end
+
+  # Events, Series and Sign-ups are one page now. The old paths still work so
+  # bookmarks and any link out in the wild do not break.
+  def test_the_three_old_index_paths_redirect_to_the_schedule
+    %w[/events /series /signups].each do |path|
+      as_leader
+      get path
+      assert_equal 302, last_response.status, path
+      assert_includes last_response.location, '/schedule'
+    end
   end
 
   def test_every_record_page_renders
@@ -63,6 +74,7 @@ class RoutesTest < AbidTest
     get_ok('/series/new')
     get_ok("/signups/#{post.id}")
     get_ok("/users/#{@leader.id}")
+    get_ok('/schedule')
     get_ok("/events/#{@event.id}/dispatches")
   end
 
@@ -347,11 +359,11 @@ class RoutesTest < AbidTest
     assert_includes body, "value=\"#{other.id}\""
   end
 
-  def test_the_index_offers_to_create_a_signup_for_an_uncovered_date
-    body = get_ok('/signups').body
+  def test_the_schedule_offers_to_create_a_signup_for_an_uncovered_date
+    body = get_ok('/schedule').body
 
-    assert_includes body, 'Create sign-up'
     assert_includes body, @event.start_time.strftime('%A %-d %B')
+    assert_includes body, 'Create'
   end
 
   # --- the emoji picker ----------------------------------------------------

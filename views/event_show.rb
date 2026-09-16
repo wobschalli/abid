@@ -30,7 +30,7 @@ class EventShow < Phlex::HTML
 
   def breadcrumb
     div(class: 'text-[12px] text-ink/60') do
-      a(href: '/events', class: 'text-accent no-underline hover:underline') { 'Events' }
+      a(href: '/schedule', class: 'text-accent no-underline hover:underline') { 'Schedule' }
       plain ' / '
       plain @event.name.to_s
     end

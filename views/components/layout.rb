@@ -10,9 +10,8 @@ class Components::Layout < Phlex::HTML
   # text, href, and the path prefix that marks the entry active.
   NAV = [
     ['Ride board', '/board', '/board'],
-    ['Events', '/events', '/events'],
-    ['Series', '/series', '/series'],
-    ['Sign-ups', '/signups', '/signups'],
+    # Events, Series and Sign-ups were three entries over the same rows.
+    ['Schedule', '/schedule', '/schedule'],
     ['Locations', '/locations', '/locations'],
     ['Members', '/users', '/users']
   ].freeze

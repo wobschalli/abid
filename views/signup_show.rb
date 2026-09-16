@@ -51,7 +51,7 @@ class SignupShow < Phlex::HTML
 
   def breadcrumb
     div(class: 'text-[12px] text-ink/60') do
-      a(href: '/signups', class: 'text-accent no-underline hover:underline') { 'Sign-up posts' }
+      a(href: '/schedule', class: 'text-accent no-underline hover:underline') { 'Schedule' }
       plain ' / '
       plain(@post.service_date&.strftime('%-d %b') || 'new')
     end

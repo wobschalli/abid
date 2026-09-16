@@ -82,7 +82,7 @@ class Home < Phlex::HTML
       span(class: 'text-[12.5px] text-ink/60') do
         'Recurring series generate their occurrences automatically — check that one is set up.'
       end
-      a(href: '/series', class: 'board-btn no-underline self-start') { 'Recurring series' }
+      a(href: '/schedule', class: 'board-btn no-underline self-start') { 'Schedule' }
     end
   end
 
