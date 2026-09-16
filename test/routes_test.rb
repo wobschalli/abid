@@ -256,11 +256,21 @@ class RoutesTest < AbidTest
     assert_includes body, 'Caleb'
   end
 
-  def test_the_map_survives_a_board_with_nothing_to_draw
-    # No drivers, no coordinates — it must explain itself rather than 500.
-    body = get_ok("/board/#{@event.id}/map").body
+  # "Nothing to draw" with no cause is indistinguishable from a broken page,
+  # which is exactly how this was reported.
+  def test_an_empty_map_says_which_of_the_reasons_it_is
+    assert_includes get_ok("/board/#{@event.id}/map").body, 'Nobody is driving'
 
-    assert_includes body, 'Nothing to draw yet'
+    # A driver with an empty car has only the destination, which draws nothing.
+    # Twenty of those rendered one dot and a legend of twenty names.
+    here = Location.create!(name: 'Cary', zone: Location::ZONES.first, lat: 40.4278, lon: -86.9210)
+    driver = User.create!(name: 'Caleb', username: 'cbm3', discord_id: next_discord_id,
+                          password: 'x' * 10, capacity: 4, location: here)
+    @event.rides.create!(user: driver, role: 'driver', status: 'confirmed', seats: 4)
+
+    body = get_ok("/board/#{@event.id}/map").body
+    assert_includes body, 'No rider has been seated'
+    refute_includes body, '<polyline', 'an empty car is not a route'
   end
 
   def test_a_stop_with_no_location_is_named_rather_than_dropped

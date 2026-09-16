@@ -48,10 +48,18 @@ class BoardMap < Phlex::HTML
     end
   end
 
+  # Say which of the three reasons it is. "Nothing to draw" with no cause is
+  # indistinguishable from a broken page.
+  EMPTY_REASONS = {
+    no_drivers: 'Nobody is driving this one yet, so there are no routes to draw.',
+    nobody_seated: 'No rider has been seated in a car yet — a route needs somewhere to collect ' \
+                   'someone. Seat people on the board, or press Auto-fill.',
+    no_locations: 'None of the pickups have a location on file yet. Add a street address on Locations.'
+  }.freeze
+
   def empty_note
     div(class: 'p-3.5 rounded-lg border border-line bg-surface-sunk text-[13px] text-ink/70') do
-      plain 'Nothing to draw yet — no driver has a pickup with a location on file. '
-      plain 'Seat some riders on the board, or add a street address on Locations.'
+      plain EMPTY_REASONS[@map.empty_reason]
     end
   end
 
@@ -71,8 +79,7 @@ class BoardMap < Phlex::HTML
 
   def legend
     div(class: 'flex flex-wrap gap-x-4 gap-y-1.5 px-1') do
-      @map.routes.each do |route|
-        next if route.points.empty?
+      @map.drawn_routes.each do |route|
 
         div(class: 'flex items-center gap-1.5 text-[12px]') do
           span(class: 'w-3.5 h-3.5 rounded-full shrink-0',

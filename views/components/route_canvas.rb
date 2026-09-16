@@ -19,8 +19,8 @@ class Components::RouteCanvas < Phlex::SVG
         class: 'block w-full h-auto',
         xmlns: 'http://www.w3.org/2000/svg') do
       # Lines first so the stop markers sit on top of them.
-      @map.routes.each { |route| route_line(route) }
-      @map.routes.each { |route| route_stops(route) }
+      @map.drawn_routes.each { |route| route_line(route) }
+      @map.drawn_routes.each { |route| route_stops(route) }
       destination_marker
     end
   end

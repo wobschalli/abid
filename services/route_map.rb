@@ -47,8 +47,20 @@ class RouteMap
     @unplotted ||= plans.flat_map { |_, plan| plan.stops.reject(&:coords?) }.uniq(&:label)
   end
 
-  def any?
-    routes.any? { |r| r.points.size > 1 } || destination
+  # A route needs somewhere to collect someone. A driver with an empty car has
+  # only the destination, which draws nothing — twenty of those made the page
+  # look broken: one dot, and a legend of twenty names with no lines.
+  def drawn_routes
+    @drawn_routes ||= routes.select { |r| r.pickups.any? }
+  end
+
+  def any? = drawn_routes.any?
+
+  def empty_reason
+    return :no_drivers if @board.cars.empty?
+    return :nobody_seated if @board.cars.any? && routes.none? { |r| r.pickups.any? }
+
+    :no_locations
   end
 
   private
