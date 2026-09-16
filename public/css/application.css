@@ -22,17 +22,6 @@
   --color-line: rgba(23, 32, 28, 0.13);
   --color-line-soft: rgba(23, 32, 28, 0.055);
   --color-accent: #1e6b52;
-
-  /* Route-map series. Categorical identity, assigned in fixed order and never
-     cycled — a route's colour must not change because a driver was added.
-     Validated against this surface: lightness band, chroma floor, CVD
-     separation and normal-vision floor all pass. */
-  --color-series-1: #2a78d6;
-  --color-series-2: #eb6834;
-  --color-series-3: #1baf7a;
-  --color-series-4: #eda100;
-  --color-series-5: #e87ba4;
-  --color-series-6: #008300;
   --color-accent-deep: #14513e;
   --color-accent-tint: #dff0e7;
   --color-accent-tint-strong: #c9e7d6;
@@ -46,6 +35,24 @@
   --font-sans: "IBM Plex Sans", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --font-display: "Bricolage Grotesque", "IBM Plex Sans", sans-serif;
+}
+
+/* Route-map series colours.
+   Deliberately NOT in @theme: Tailwind v4 drops theme variables that no utility
+   class references, and these are read only by `var()` inside inline SVG
+   attributes — so declared there they compiled away and every route drew black.
+
+   Categorical identity, assigned in fixed order and never cycled: a route must
+   not change colour because another driver was added. Validated against this
+   surface for lightness band, chroma floor, CVD separation and normal-vision
+   floor. */
+:root {
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+  --color-series-4: #eda100;
+  --color-series-5: #e87ba4;
+  --color-series-6: #008300;
 }
 
 .dark {
