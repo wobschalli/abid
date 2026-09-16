@@ -1,0 +1,38 @@
+# Copy to config.yml (gitignored) and fill in. Read by `rake db:seed`.
+#
+# Every id is a Discord snowflake. To copy one: Discord → Settings → Advanced →
+# Developer Mode on, then right-click anything → Copy ID.
+#
+# The token can live here OR in the DISCORD_TOKEN environment variable, which
+# takes precedence. Prefer the env var in production — this file is a plain
+# text secret sitting in the repo directory.
+
+discord:
+  token: 'your-bot-token'
+  app_id: '000000000000000000'
+  public_key: 'your-public-key'
+
+servers:
+  # The server the bot manages. Must be present — the Server row it creates is
+  # what the bot matches incoming events against.
+  abide: 000000000000000000
+  # A scratch server for trying things without an audience. Can be the same id.
+  test: 000000000000000000
+
+# Channels the bot may post in. The names are yours; `rides` is what the
+# sign-up composer will offer by default.
+channels:
+  rides: 000000000000000000
+  general: 000000000000000000
+
+# Custom server emoji, so they can be offered as sign-up options alongside
+# the unicode ones. Leave as {} if you only use unicode.
+emojis: {}
+#  abide_car: 000000000000000000
+
+test:
+  general: 000000000000000000
+
+# Pre-seeded people. Normally left empty — members are created automatically
+# from the Discord member sync when the bot boots.
+users: {}

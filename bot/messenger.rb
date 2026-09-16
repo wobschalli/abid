@@ -1,4 +1,7 @@
 class Messenger < Bot
+  # The Discord server this bot manages, matched by the Server row's name.
+  ABIDE_SERVER_NAME = 'Abide'.freeze
+
   attr_reader :bot, :map, :token
 
   # Messenger inherits from Bot but is *constructed by* Bot#initialize, so it
@@ -88,7 +91,19 @@ class Messenger < Bot
       event_cmd.subcommand(:create, 'create a new event')
     end
 
-    bot.register_application_command(:login, 'send a login code', server_id: Server.find_by(name: 'Abide').discord_id)
+    # Guild-scoped so it appears instantly rather than waiting on Discord's
+    # global command propagation. Falls back to a global command when the
+    # server has not been seeded yet — this used to be
+    # `Server.find_by(name: 'Abide').discord_id`, which killed the whole boot
+    # with a NoMethodError on a fresh database.
+    abide = Server.find_by(name: ABIDE_SERVER_NAME)
+    warn "no '#{ABIDE_SERVER_NAME}' server row — run `rake db:seed` first" if abide.nil?
+
+    if abide
+      bot.register_application_command(:login, 'send a login code', server_id: abide.discord_id)
+    else
+      bot.register_application_command(:login, 'send a login code')
+    end
   end
 
   def set_commands
@@ -513,7 +528,7 @@ class Messenger < Bot
 
   # @param event [Discordrb::Events::ServerMemberAddEvent]
   def handle_member_join(event)
-    return unless Server.find_by(name: 'Abide').discord_id == event.server.id #we only care if it's the abide server
+    return unless Server.find_by(name: ABIDE_SERVER_NAME)&.discord_id == event.server.id #we only care if it's the abide server
     User.find_or_create_by(discord_id: event.member.id) do |user|
       pass = passgen
       user.username = event.member.username
@@ -537,7 +552,7 @@ class Messenger < Bot
   #
   # @param event [Discordrb::Events::ServerMemberDeleteEvent]
   def handle_member_leave(event)
-    return unless Server.find_by(name: 'Abide')&.discord_id == event.server.id
+    return unless Server.find_by(name: ABIDE_SERVER_NAME)&.discord_id == event.server.id
 
     user = User.find_by(discord_id: event.member.id)
     return if user.nil?

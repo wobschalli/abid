@@ -3,6 +3,9 @@ require_relative 'bot'
 
 class Bot
   class Setup
+    # Discord roles that grant leader access on the dashboard. Missing roles are
+    # tolerated — server admins are always leaders regardless.
+    LEADER_ROLE_NAMES = ['Leaders', 'Coordinator'].freeze
     # @param bot [Discordrb::Commands::CommandBot]
     def initialize(bot)
       @bot = bot
@@ -63,14 +66,21 @@ class Bot
     # @param server [Server]
     # @return array of users [Array<Discordrb::Member>]
     def setup_users(server)
+      # A server without roles named exactly these used to crash the whole boot
+      # here on `Role.find_by(...).discord_id` — NoMethodError on nil, before
+      # the bot had done anything.
+      leader_role_ids = LEADER_ROLE_NAMES.filter_map { |name| Role.find_by(name: name)&.discord_id }
+      if leader_role_ids.empty?
+        warn "no #{LEADER_ROLE_NAMES.join('/')} role on this server — only admins will be leaders"
+      end
+
       @bot.server(server.discord_id).non_bot_members.each do |user|
         User.find_or_create_by(discord_id: user.id) do |u| #block runs on create only
           pass = passgen
-          leader = Role.find_by(name: 'Leaders').discord_id
-          coordinator = Role.find_by(name: 'Coordinator').discord_id
           u.username = user.username
           u.name = user.display_name
-          u.leader = user.permission?(:administrator) || user.role?(leader) || user.role?(coordinator)
+          u.leader = user.permission?(:administrator) ||
+                     leader_role_ids.any? { |role_id| user.role?(role_id) }
           u.password = pass
           u.password_confirmation = pass
         end
