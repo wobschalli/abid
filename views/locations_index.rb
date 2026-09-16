@@ -39,13 +39,13 @@ class LocationsIndex < Phlex::HTML
     div(class: 'p-3.5 rounded-lg border border-line bg-surface-sunk text-[12.5px] leading-[1.6] text-ink/75') do
       plain 'Pickup areas around Purdue. The board groups the waiting queue by zone, '
       plain 'auto-fill prefers a driver in the same zone, and a driver collects one zone at a time. '
-      plain 'Edit the list in '
+      plain 'The list itself lives in '
       code(class: 'font-mono text-[11.5px]') { 'db/locations.rb' }
-      plain ' and re-run '
-      code(class: 'font-mono text-[11.5px]') { 'rake db:seed' }
-      plain '. Coordinates are approximate — '
-      code(class: 'font-mono text-[11.5px]') { 'rake db:geocode' }
-      plain ' refines them.'
+      plain '. Anything marked '
+      strong { 'no coords' }
+      plain ' could not be found on the map by name — apartment brands are not map '
+      plain 'features, but the streets they stand on are. Give it a street address '
+      plain 'and it is looked up when you save.'
     end
   end
 
