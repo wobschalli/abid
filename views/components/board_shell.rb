@@ -164,9 +164,23 @@ class Components::BoardShell < Phlex::HTML
   end
 
   def empty_board
-    div(class: 'col-span-full p-8 text-center text-ink/65 text-[13px] leading-relaxed') do
-      plain 'Nobody has volunteered to drive yet. Add a driver from the Roster tab, '
-      plain 'or mark someone as driving in their details.'
+    div(class: 'col-span-full p-8 text-center text-ink/65 text-[13px] leading-relaxed flex flex-col items-center gap-3') do
+      span do
+        plain 'Nobody is driving yet. Reactions arrive as riders — the emoji does not say '
+        plain 'which someone meant — so say who is driving here.'
+      end
+      add_drivers_button if @leader
+      span(class: 'text-[12px] text-ink/55') do
+        'Or switch anyone already on the board to Driving in their details.'
+      end
+    end
+  end
+
+  # The app already knows who drives: an active member with a seat count. This
+  # saves adding the same handful of people by hand on every board, every week.
+  def add_drivers_button
+    action_form('drivers', class: 'contents') do
+      button(type: 'submit', class: 'board-btn-solid') { 'Add the regular drivers' }
     end
   end
 

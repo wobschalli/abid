@@ -537,6 +537,23 @@ class App < Sinatra::Base
     end
   end
 
+  # Seats everyone who drives, in one press.
+  #
+  # Nothing ever created a driver: reactions arrive as riders because the emoji
+  # does not say which someone meant, so every week began by adding the same
+  # people by hand, one at a time, on every board. The app already knows who
+  # they are — an active member with a seat count.
+  post '/board/:event_id/drivers' do
+    with_board do |event, _history|
+      already = event.rides.pluck(:user_id)
+      User.active.drivers.where.not(id: already).find_each do |driver|
+        # Symbol keys: `create_for` reads `params[:user_id]`, and Sinatra's
+        # indifferent access does not come with a plain Hash.
+        RideDetails.create_for(event, user_id: driver.id, role: 'driver')
+      end
+    end
+  end
+
   post '/board/:event_id/clashes' do
     with_board do |event, _history|
       a = event.rides.find(params[:ride_id]).user_id

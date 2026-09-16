@@ -7,7 +7,11 @@ require_relative '../map/map'
 # spot, seat count and notes are per-occurrence.
 class RideDetails
   USER_FIELDS = %w[name phone].freeze
-  RIDE_FIELDS = %w[zone pickup_address note seats].freeze
+  # `role` is here so a rider can be promoted to driver in place. Without it the
+  # only way to say "actually Caleb is driving" was to delete his ride and add
+  # him again — and since everyone who reacts to a sign-up arrives as a rider,
+  # that was every driver, every week.
+  RIDE_FIELDS = %w[role zone pickup_address note seats].freeze
 
   def initialize(ride)
     @ride = ride
@@ -17,6 +21,7 @@ class RideDetails
     Ride.transaction do
       update_user(params)
       update_ride(params)
+      seat_a_new_driver
       geocode_pickup
     end
     @ride
@@ -55,6 +60,9 @@ class RideDetails
     attrs = params.slice(*RIDE_FIELDS)
     attrs['seats'] = normalize_seats(attrs['seats']) if attrs.key?('seats')
     attrs['zone'] = attrs['zone'].presence if attrs.key?('zone')
+    # Dropped rather than passed through: `update!` raises on an invalid role,
+    # which would turn a stray param into a 500 on the board.
+    attrs.delete('role') unless Ride::ROLES.include?(attrs['role'])
     @ride.update!(attrs)
   end
 
@@ -77,6 +85,19 @@ class RideDetails
 
     location.update(zone: @ride.zone) if location.zone.blank? && @ride.zone.present?
     @ride.update_column(:pickup_location_id, location.id)
+
+    # And remember it as where they live, if we did not already know. This was
+    # written only onto the ride, so the same person triggered the blocking
+    # "no pickup" finding again next week and the same address got typed again.
+    user = @ride.user
+    user.update(location_id: location.id) if user && user.location_id.blank?
+  end
+
+  # A promoted driver with no seats would show a car with nowhere to sit.
+  def seat_a_new_driver
+    return unless @ride.role == 'driver' && @ride.seats.to_i.zero?
+
+    @ride.update(seats: @ride.user&.capacity.presence || 4)
   end
 
   def safely

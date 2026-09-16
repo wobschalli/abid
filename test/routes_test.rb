@@ -159,6 +159,64 @@ class RoutesTest < AbidTest
     refute member.reload.active?
   end
 
+  # --- the weekly driver work ----------------------------------------------
+
+  def test_a_rider_can_be_promoted_to_driver_in_place
+    # Everyone who reacts arrives as a rider, so without this every driver had
+    # to be deleted and re-added, every week.
+    user = User.create!(name: 'Caleb', username: 'caleb', discord_id: next_discord_id,
+                        password: 'x' * 10, capacity: 4)
+    ride = @event.rides.create!(user: user, role: 'rider', status: 'requested')
+
+    as_leader
+    patch "/board/#{@event.id}/rides/#{ride.id}", role: 'driver'
+
+    ride.reload
+    assert_equal 'driver', ride.role
+    assert_equal 4, ride.seats, 'a promoted driver needs seats or the car has none'
+  end
+
+  def test_a_nonsense_role_is_ignored_rather_than_crashing
+    user = User.create!(name: 'Caleb', username: 'caleb2', discord_id: next_discord_id,
+                        password: 'x' * 10)
+    ride = @event.rides.create!(user: user, role: 'rider', status: 'requested')
+
+    as_leader
+    patch "/board/#{@event.id}/rides/#{ride.id}", role: 'astronaut'
+
+    refute_equal 500, last_response.status
+    assert_equal 'rider', ride.reload.role
+  end
+
+  def test_one_press_seats_every_regular_driver
+    drives = User.create!(name: 'Caleb', username: 'caleb3', discord_id: next_discord_id,
+                          password: 'x' * 10, capacity: 4, active: true)
+    User.create!(name: 'Passenger', username: 'pax', discord_id: next_discord_id,
+                 password: 'x' * 10, active: true)
+    User.create!(name: 'Alum', username: 'alum', discord_id: next_discord_id,
+                 password: 'x' * 10, capacity: 4)
+
+    as_leader
+    post "/board/#{@event.id}/drivers"
+
+    roles = @event.rides.reload.includes(:user).map { |r| [r.user.name, r.role] }
+    assert_equal [['Caleb', 'driver']], roles,
+                 'only active members with seats, and nobody twice'
+    assert_equal 4, @event.rides.first.seats
+  end
+
+  def test_adding_regular_drivers_twice_does_not_duplicate_anyone
+    User.create!(name: 'Caleb', username: 'caleb4', discord_id: next_discord_id,
+                 password: 'x' * 10, capacity: 4, active: true)
+
+    as_leader
+    post "/board/#{@event.id}/drivers"
+    as_leader
+    post "/board/#{@event.id}/drivers"
+
+    assert_equal 1, @event.rides.reload.count
+  end
+
   def test_unknown_record_is_not_found_rather_than_a_crash
     as_leader
     get '/events/999999'

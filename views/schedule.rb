@@ -80,7 +80,9 @@ class Schedule < Phlex::HTML
   def roster(event)
     riders = event.rides.count { |r| r.role == 'rider' }
     cars = event.rides.count { |r| r.role == 'driver' }
-    return 'no sign-ups yet' if riders.zero? && cars.zero?
+    # Not "no sign-ups" — that reads as a comment on the sign-up post one line
+    # below, which may well have been sent.
+    return 'nobody yet' if riders.zero? && cars.zero?
 
     [("#{riders} riders" if riders.positive?), ("#{cars} cars" if cars.positive?)].compact.join(' · ')
   end

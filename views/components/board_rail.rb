@@ -70,8 +70,12 @@ class Components::BoardRail < Phlex::HTML
         end
 
         div(class: 'flex gap-2.5') do
-          div(class: 'flex-1') { labeled('Zone') { zone_select(ride) } }
+          div(class: 'flex-1') { labeled('Riding or driving') { role_select(ride) } }
           div(class: 'w-24') { labeled('Seats') { seats_field(ride) } } if ride.driver?
+        end
+
+        div(class: 'flex gap-2.5') do
+          div(class: 'flex-1') { labeled('Zone') { zone_select(ride) } }
         end
 
         labeled('Notes') { notes_field(ride) }
@@ -119,6 +123,16 @@ class Components::BoardRail < Phlex::HTML
       disabled: !@leader,
       class: 'board-input font-mono font-medium'
     )
+  end
+
+  # Everyone who reacts to a sign-up arrives as a rider — the emoji does not say
+  # which they meant. Without this, turning one into a driver meant deleting the
+  # ride and adding them back, for every driver, every week.
+  def role_select(ride)
+    select(name: 'role', disabled: !@leader, class: 'board-input') do
+      option(value: 'rider', selected: ride.rider?) { 'Riding' }
+      option(value: 'driver', selected: ride.driver?) { 'Driving' }
+    end
   end
 
   def zone_select(ride)
