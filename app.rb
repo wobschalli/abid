@@ -194,6 +194,29 @@ class App < Sinatra::Base
     )
   end
 
+  # The address is the one piece of a location a human has to supply: OSM knows
+  # streets, not leasing brands. Saving looks it up immediately so the feedback
+  # is one press rather than a seed file and a rake task.
+  patch '/locations/:id' do
+    require_leader!
+    location = Location.find_by(id: params[:id]) or halt 404, 'No such location'
+    location.update(address: params[:address].presence)
+
+    if location.address.present?
+      # Best-effort and never blocking: Nominatim is a third party, and a
+      # failed lookup must still keep the address that was typed.
+      coords = begin
+        Map.new.addr_to_coord(location.geocode_query)
+      rescue StandardError => e
+        warn "geocoding #{location.name} failed: #{e.class}: #{e.message}"
+        {}
+      end
+      location.update(lat: coords[:lat], lon: coords[:lon]) if coords[:lat].present?
+    end
+
+    redirect to('/locations')
+  end
+
   # --- the schedule ---------------------------------------------------------
   #
   # Events, Series and Sign-ups were three pages over the same rows. They are

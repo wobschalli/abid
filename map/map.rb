@@ -64,7 +64,10 @@ class Map
       return nil if data.empty?
       coords = addr_to_coord(data).delete_if { |_, v| v.nil? }
       unless coords.empty?
-        return Location.create(coords.merge({ name: data }))
+        # The typed text is an ADDRESS, and goes in the address column. Storing
+        # it as the name made every one-off pickup spot a permanent place in the
+        # Locations list called "1838 King Eider Drive", with no zone.
+        return Location.create(coords.merge({ name: data, address: data }))
       end
       nil
     when "Hash"

@@ -36,12 +36,13 @@ updated = 0
 missed = []
 
 scope.each do |location|
-  query = "#{location.name}, #{CONTEXT}"
+  # Address first: a street is a map feature, a leasing brand is not.
+  query = location.geocode_query(CONTEXT)
   result = map.addr_to_coord(query)
   sleep PAUSE
 
   if result[:lat].blank? || result[:lon].blank?
-    missed << [location.name, 'no result']
+    missed << [location.name, location.address.present? ? 'no result' : 'no result — needs a street address']
     next
   end
 

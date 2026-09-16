@@ -64,6 +64,13 @@ class Location < ApplicationRecord
   # Map a spelling onto the canonical zone. Unknown input comes back UNCHANGED,
   # not nil — silently blanking a typo destroys the only clue anyone has about
   # where that person lives.
+  # What to send a geocoder. The street address when we have one, because that
+  # is a thing maps know about; the name only as a fallback, which works for
+  # "Cary Quadrangle" and not at all for a leasing brand like "Third and West".
+  def geocode_query(context = 'West Lafayette, Indiana')
+    [address.presence || name, context].compact_blank.join(', ')
+  end
+
   def self.canonical_zone(value)
     return nil if value.blank?
 

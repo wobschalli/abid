@@ -1,9 +1,10 @@
 require_relative 'components/master'
 
-# Reference view of the seeded pickup areas. Read-only on purpose: the list is
-# real geography maintained in db/locations.rb, not something to edit per-event.
-# It exists so you can check which zone a complex landed in without opening a
-# console, and so the sidebar link is not a 404.
+# The seeded pickup areas. The list itself is real geography maintained in
+# db/locations.rb, but the ADDRESS is editable here, because it is the one piece
+# a human has to supply: geocoding searches OpenStreetMap, which knows streets
+# and not leasing brands, so "Third and West" resolves to nothing while the
+# street it stands on resolves fine.
 class LocationsIndex < Phlex::HTML
   include Components
 
@@ -74,8 +75,27 @@ class LocationsIndex < Phlex::HTML
         if location.aliases.present?
           span(class: 'board-meta') { "also: #{location.aliases.join(', ')}" }
         end
+        address_form(location)
       end
       span(class: 'font-mono text-[11px] text-ink/70 whitespace-nowrap') { usage_label(location) }
+    end
+  end
+
+  # Saving looks the address up straight away, so the feedback loop is one
+  # press rather than "edit a seed file and re-run a rake task".
+  def address_form(location)
+    unless @leader
+      span(class: 'board-meta') { location.address } if location.address.present?
+      return
+    end
+
+    form(method: 'post', action: "/locations/#{location.id}",
+         class: 'flex gap-2 items-center pt-1') do
+      input(type: 'hidden', name: '_method', value: 'patch')
+      input(type: 'text', name: 'address', value: location.address.to_s,
+            placeholder: location.coords? ? 'street address (optional)' : 'street address — needed to place this on the map',
+            class: 'board-input text-[12px] py-1.5')
+      button(type: 'submit', class: 'board-btn whitespace-nowrap') { 'Save' }
     end
   end
 

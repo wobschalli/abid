@@ -234,6 +234,39 @@ class RoutesTest < AbidTest
     assert_equal 1, @event.rides.reload.count
   end
 
+  # --- locations -----------------------------------------------------------
+
+  def test_a_location_address_can_be_saved
+    place = Location.create!(name: 'Third and West', zone: Location::ZONES.first)
+
+    as_leader
+    patch "/locations/#{place.id}", address: 'West Third Street'
+
+    assert_equal 'West Third Street', place.reload.address
+  end
+
+  def test_the_geocode_query_prefers_the_address_over_the_name
+    # OSM has never heard of "Third and West" — querying it unbounded returns
+    # nothing. It knows the street it stands on.
+    place = Location.new(name: 'Third and West', address: 'West Third Street')
+    assert_equal 'West Third Street, West Lafayette, Indiana', place.geocode_query
+
+    named = Location.new(name: 'Cary Quadrangle')
+    assert_equal 'Cary Quadrangle, West Lafayette, Indiana', named.geocode_query
+  end
+
+  def test_a_non_leader_cannot_edit_a_location
+    place = Location.create!(name: 'Somewhere', zone: Location::ZONES.first)
+    plain_user = User.create!(name: 'Nobody', username: 'nobody2', discord_id: next_discord_id,
+                              password: 'x' * 10)
+
+    env 'rack.session', { user_id: plain_user.id }
+    patch "/locations/#{place.id}", address: 'hacked'
+
+    assert_equal 403, last_response.status
+    assert_nil place.reload.address
+  end
+
   def test_unknown_record_is_not_found_rather_than_a_crash
     as_leader
     get '/events/999999'
