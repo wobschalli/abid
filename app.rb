@@ -724,13 +724,13 @@ class App < Sinatra::Base
     scope = User.includes(:location).by_name
     scope = scope.search(query) if query.present?
 
+    # Everything except Non-Active is a cut of the active roster.
     case filter
-    when 'active' then scope.active
     when 'other' then scope.other
-    when 'drivers' then scope.drivers
-    when 'riders' then scope.riders
-    when 'missing' then scope.missing_details
-    else scope
+    when 'drivers' then scope.active.drivers
+    when 'riders' then scope.active.riders
+    when 'missing' then scope.active.missing_details
+    else scope.active
     end.to_a
   end
 
@@ -739,10 +739,10 @@ class App < Sinatra::Base
   def user_counts
     {
       'active' => User.active.count,
-      'other' => User.other.count,
-      'drivers' => User.drivers.count,
-      'riders' => User.riders.count,
-      'missing' => User.missing_details.count
+      'drivers' => User.active.drivers.count,
+      'riders' => User.active.riders.count,
+      'missing' => User.active.missing_details.count,
+      'other' => User.other.count
     }
   end
 

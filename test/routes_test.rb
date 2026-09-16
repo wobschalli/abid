@@ -101,7 +101,24 @@ class RoutesTest < AbidTest
 
     refute_includes UsersIndex::FILTERS.map(&:first), 'all'
     assert_includes body, 'Active'
-    assert_includes body, 'Other'
+    assert_includes body, 'Non-Active'
+  end
+
+  # Drivers / Riders / Missing details describe the active roster, not everyone
+  # who has ever been in the Discord.
+  def test_the_member_tabs_are_cuts_of_the_active_roster
+    User.create!(name: 'Active driver', username: 'ad', discord_id: next_discord_id,
+                 password: 'x' * 10, capacity: 4, active: true)
+    User.create!(name: 'Alum driver', username: 'alumd', discord_id: next_discord_id,
+                 password: 'x' * 10, capacity: 4)
+
+    names = ->(f) { get_ok("/users?filter=#{f}").body }
+
+    assert_includes names.call('drivers'), 'Active driver'
+    refute_includes names.call('drivers'), 'Alum driver'
+    refute_includes names.call('riders'), 'Alum driver'
+    refute_includes names.call('missing'), 'Alum driver'
+    assert_includes names.call('other'), 'Alum driver'
   end
 
   def test_one_click_marks_a_member_active_and_back

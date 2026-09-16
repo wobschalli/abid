@@ -11,10 +11,12 @@
 # bounding box — a search that drifts to a Lark in Nevada should be reported,
 # not saved.
 require_relative '../config/environment'
-require_relative '../map/map'
 
 Abid.establish_connection
 Abid.load_models
+# After load_models: map/map.rb requires models/location.rb, which subclasses
+# ApplicationRecord and blows up if it is loaded first.
+require_relative '../map/map'
 
 PAUSE = 1.1
 CONTEXT = 'West Lafayette, Indiana'.freeze

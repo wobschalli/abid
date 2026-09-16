@@ -3,15 +3,20 @@ require_relative 'components/master'
 class UsersIndex < Phlex::HTML
   include Components
 
-  # 'Everyone' is gone on purpose: the Discord sync brings in everyone who has
-  # ever joined the server, so an unfiltered list of 271 is not a roster anyone
-  # works from. Active is the default and the first thing you see.
+  # The Discord sync brings in everyone who has ever joined the server, so an
+  # unfiltered list of 271 is not a roster anyone works from — there is no
+  # "Everyone" tab, and Active is the default.
+  #
+  # Drivers, Riders and Missing details are cuts of the ACTIVE roster: "who is
+  # driving this term", not "who has ever been in the server". Non-Active sits
+  # last because it is the exception you go looking for, not a lens on the
+  # people you work with.
   FILTERS = [
     ['active', 'Active'],
-    ['other', 'Other'],
     ['drivers', 'Drivers'],
     ['riders', 'Riders'],
-    ['missing', 'Missing details']
+    ['missing', 'Missing details'],
+    ['other', 'Non-Active']
   ].freeze
 
   def initialize(users:, load:, filter: 'active', query: nil, counts: {}, leader: false)
