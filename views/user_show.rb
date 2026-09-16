@@ -84,6 +84,12 @@ class UserShow < Phlex::HTML
 
       if @leader
         label(class: 'flex items-center gap-2 text-[13px]') do
+          input(type: 'hidden', name: 'active', value: '0')
+          input(type: 'checkbox', name: 'active', value: '1', checked: @user.active?, class: 'accent-accent')
+          plain 'Active this year — part of the fellowship, not just in the server'
+        end
+
+        label(class: 'flex items-center gap-2 text-[13px]') do
           input(type: 'hidden', name: 'leader', value: '0')
           input(type: 'checkbox', name: 'leader', value: '1', checked: @user.leader, class: 'accent-accent')
           plain 'Leader — can edit the board and dispatch drivers'

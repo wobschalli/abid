@@ -3,14 +3,18 @@ require_relative 'components/master'
 class UsersIndex < Phlex::HTML
   include Components
 
+  # 'Everyone' is gone on purpose: the Discord sync brings in everyone who has
+  # ever joined the server, so an unfiltered list of 271 is not a roster anyone
+  # works from. Active is the default and the first thing you see.
   FILTERS = [
-    ['all', 'Everyone'],
+    ['active', 'Active'],
+    ['other', 'Other'],
     ['drivers', 'Drivers'],
     ['riders', 'Riders'],
     ['missing', 'Missing details']
   ].freeze
 
-  def initialize(users:, load:, filter: 'all', query: nil, counts: {}, leader: false)
+  def initialize(users:, load:, filter: 'active', query: nil, counts: {}, leader: false)
     @users = users
     @load = load
     @filter = filter
@@ -34,7 +38,8 @@ class UsersIndex < Phlex::HTML
   def header
     div(class: 'flex items-baseline gap-3 flex-wrap') do
       h1(class: 'font-display font-bold text-2xl -tracking-[.015em]') { 'Members' }
-      span(class: 'board-meta') { "#{@counts['all']} people" }
+      total = @counts['active'].to_i + @counts['other'].to_i
+      span(class: 'board-meta') { "#{@counts['active'].to_i} active of #{total} in the server" }
     end
   end
 
@@ -69,7 +74,7 @@ class UsersIndex < Phlex::HTML
   end
 
   def filter_href(value)
-    query = { filter: (value unless value == 'all'), q: @query.presence }.compact
+    query = { filter: (value unless value == 'active'), q: @query.presence }.compact
     query.empty? ? '/users' : "/users?#{URI.encode_www_form(query)}"
   end
 
@@ -77,7 +82,7 @@ class UsersIndex < Phlex::HTML
   # queue filter.
   def search_form
     form(method: 'get', action: '/users', class: 'flex gap-2 items-center') do
-      input(type: 'hidden', name: 'filter', value: @filter) unless @filter == 'all'
+      input(type: 'hidden', name: 'filter', value: @filter) unless @filter == 'active'
       input(type: 'search', name: 'q', value: @query.to_s, placeholder: 'Search by name',
             autocomplete: 'off', class: 'board-input w-56 text-[12.5px] py-2')
     end
@@ -97,13 +102,13 @@ class UsersIndex < Phlex::HTML
     div(class: 'flex flex-col gap-1.5') { @users.each { |user| row(user) } }
   end
 
+  # A div rather than a link wrapping everything, because the active toggle is a
+  # form and a form cannot live inside an anchor. The name is the link instead.
   def row(user)
-    a(
-      href: "/users/#{user.id}",
-      class: 'flex items-center gap-3 px-3 py-2.5 rounded-lg border border-line bg-surface ' \
-             'no-underline text-ink hover:border-accent transition-colors'
-    ) do
-      div(class: 'flex-1 min-w-0 flex flex-col gap-0.5') do
+    div(class: 'flex items-center gap-3 px-3 py-2.5 rounded-lg border border-line bg-surface ' \
+               'hover:border-accent transition-colors') do
+      a(href: "/users/#{user.id}",
+        class: 'flex-1 min-w-0 flex flex-col gap-0.5 no-underline text-ink') do
         div(class: 'flex items-baseline gap-2 flex-wrap') do
           span(class: 'font-semibold text-[13px] capitalize') { user.display_name }
           badges(user)
@@ -111,6 +116,28 @@ class UsersIndex < Phlex::HTML
         span(class: 'board-meta') { meta(user) }
       end
       span(class: 'font-mono text-[11px] text-ink/70 text-right whitespace-nowrap') { load_label(user) }
+      active_toggle(user) if @leader
+    end
+  end
+
+  # One click, and it comes back to the tab and search you were on — marking a
+  # dozen people active in a row should not bounce you to the top of an
+  # unfiltered list each time.
+  def active_toggle(user)
+    form(method: 'post', action: "/users/#{user.id}/active", class: 'contents') do
+      input(type: 'hidden', name: 'active', value: user.active? ? '0' : '1')
+      input(type: 'hidden', name: 'filter', value: @filter.to_s)
+      input(type: 'hidden', name: 'q', value: @query.to_s)
+      button(
+        type: 'submit',
+        title: user.active? ? 'Mark as not active' : 'Mark as active this year',
+        class: [
+          'shrink-0 cursor-pointer font-mono text-[9.5px] font-semibold tracking-[.06em] uppercase',
+          'px-[9px] py-[5px] rounded-md border transition-colors',
+          user.active? ? 'border-accent bg-accent-tint text-accent hover:bg-accent-tint-strong'
+                       : 'border-line bg-surface text-ink/45 hover:text-ink hover:border-ink/30'
+        ].join(' ')
+      ) { user.active? ? 'active' : '+ active' }
     end
   end
 

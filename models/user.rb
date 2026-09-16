@@ -22,6 +22,11 @@ class User < ApplicationRecord
                         allow_nil: true
 
   scope :leaders, -> { where(leader: true) }
+  # Who is actually part of the fellowship this year, as opposed to everyone who
+  # has ever joined the Discord. Set by the census import and by the toggle on
+  # the members page.
+  scope :active, -> { where(active: true) }
+  scope :other, -> { where(active: false) }
   scope :drivers, -> { where.not(capacity: nil).where('capacity > 0') }
   # The exact complement of `drivers`: everyone who needs a seat rather than
   # offering one. This is the roster a rides coordinator actually works from.

@@ -33,6 +33,44 @@ class RiderImportTest < AbidTest
     assert_empty User.drivers.where(id: User.riders), 'nobody may be both'
   end
 
+  # The Members page shows Active and Other as tabs, so between them they have
+  # to account for everybody.
+  def test_active_and_other_partition_everyone
+    make_user(name: 'Answered', username: 'a1', active: true)
+    make_user(name: 'Did not', username: 'a2')
+
+    assert_equal User.count, User.active.count + User.other.count
+    assert_empty User.active.where(id: User.other), 'nobody may be both'
+  end
+
+  def test_the_census_marks_a_matched_person_active
+    user = make_user(name: 'Laura Sun', username: 'laurasun0')
+
+    import(row(name: 'Laura Sun', handle: 'Laurasun0'), mark_active: true)
+
+    assert user.reload.active?
+  end
+
+  def test_an_ordinary_import_does_not_touch_active
+    # The rides sheet is not a statement of membership — a one-off passenger can
+    # appear on it — so only the census sets the flag.
+    user = make_user(name: 'Laura Sun', username: 'laurasun0')
+
+    import(row(name: 'Laura Sun', handle: 'Laurasun0', phone: '7651234567'))
+
+    refute user.reload.active?
+  end
+
+  def test_the_census_never_un_marks_anyone
+    # Not answering a form is not a resignation, and someone a coordinator
+    # marked active by hand must survive an import they are absent from.
+    user = make_user(name: 'Marked By Hand', username: 'byhand', active: true)
+
+    import(row(name: 'Somebody Else', handle: 'nobody'), mark_active: true)
+
+    assert user.reload.active?
+  end
+
   def test_matches_on_exact_discord_username
     user = make_user(name: 'Marcus Ito', username: 'marcusito23')
 

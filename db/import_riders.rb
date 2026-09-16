@@ -23,16 +23,25 @@ module Abid
       [/discord|contact/i,     :handle],
       [/where do you live|residence|dorm|apartment/i, :residence],
       [/capacity|seats/i,      :capacity],
+      # Before the generic /name/i, or the census's "Last Name" is read as the
+      # name column and the first-name answer is thrown away.
+      [/last\s*name|surname/i, :last_name],
+      [/year|class of/i,       :year],
       [/name/i,                :name]
     ].freeze
 
+    # Academic year -> the year they graduate. Derived from the current
+    # September, so "Sophomore" answered this autumn means three more years.
+    YEARS = { 'freshman' => 3, 'sophomore' => 2, 'junior' => 1, 'senior' => 0 }.freeze
+
     module_function
 
-    def call(path, apply: false)
+    def call(path, apply: false, mark_active: false)
       rows = parse(path)
       abort "no usable rows in #{path}" if rows.empty?
 
-      results = RiderImport.new(rows, scope: User.all, dry_run: !apply).call
+      results = RiderImport.new(rows, scope: User.all, dry_run: !apply,
+                                      mark_active: mark_active).call
       report(results, apply: apply)
       results
     end
@@ -85,9 +94,12 @@ module Abid
       return if values[:name].blank?
 
       RiderImport::Row.new(
-        name: clean_name(values[:name]),
+        # The census asks for first and last separately; the rides sheet has one
+        # column and no :last_name, so this joins whatever is there.
+        name: [clean_name(values[:name]), clean_name(values[:last_name])].compact_blank.join(' '),
         handle: clean_handle(values[:handle]),
         phone: clean_phone(values[:phone]),
+        grad_year: grad_year_from(values[:year]),
         residence: values[:residence],
         capacity: values[:capacity].to_s[/\d+/]&.to_i
       )
@@ -98,16 +110,32 @@ module Abid
     # "Last,First"), so it is just removed rather than used to reorder.
     def clean_name(value) = value.to_s.gsub(/\s*,\s*/, ' ').squeeze(' ').strip
 
+    # "Sophomore" -> 2029. Anchored on the current academic year, which starts
+    # in August: answering in September 2026 and in February 2027 both mean the
+    # 2026-27 year. Grad students and anything unrecognised return nil rather
+    # than a guess.
+    def grad_year_from(value)
+      years = YEARS[value.to_s.strip.downcase] or return nil
+
+      today = Time.zone.today
+      academic_start = today.month >= 8 ? today.year : today.year - 1
+      academic_start + years + 1
+    end
+
     def clean_handle(value)
       handle = value.to_s.strip.sub(/\Adiscord\s*:\s*/i, '').delete_prefix('@').strip
       # "Etasman (Elsa)", "bloonsaddict (dino)" — the handle, then who it is.
       handle = Regexp.last_match(1) if handle.match(/\A([A-Za-z0-9._]+)\s*\(/)
       # A phone number in the contact column is a phone number, not a handle.
       return '' if handle.delete('^0-9').length >= 7
-      # "Laura Yue", "Christy Liu" — a name typed into the handle box. Discord
-      # usernames cannot contain spaces, so this is never a handle.
-      return '' if handle.include?(' ') || handle.length < 2
+      return '' if handle.length < 2
 
+      # A value with spaces in it is not literally a handle — Discord usernames
+      # cannot contain one — but it is still worth keeping. People type their
+      # own name into the box, and "David cochern" is exactly @davidcochern
+      # with a space in it. The relaxed tier strips the space and is guarded by
+      # uniqueness in both directions, so an answer that resolves to nobody
+      # simply matches nobody rather than guessing.
       handle
     end
 
@@ -132,7 +160,7 @@ module Abid
       end
       puts "would update:     #{changed.size}" unless apply
       puts "updated:          #{changed.size}" if apply
-      %i[phone location_id capacity].each do |field|
+      %i[active phone location_id capacity grad_year].each do |field|
         count = changed.count { |r| r.changes.key?(field) }
         puts "    #{field}:".ljust(22) + count.to_s if count.positive?
       end

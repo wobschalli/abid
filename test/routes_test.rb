@@ -84,6 +84,69 @@ class RoutesTest < AbidTest
     get_ok('/users?q=coord')
   end
 
+  def test_members_defaults_to_active_and_has_no_everyone_tab
+    body = get_ok('/users').body
+
+    refute_includes UsersIndex::FILTERS.map(&:first), 'all'
+    assert_includes body, 'Active'
+    assert_includes body, 'Other'
+  end
+
+  def test_one_click_marks_a_member_active_and_back
+    member = User.create!(name: 'Laura', username: 'laura', discord_id: next_discord_id,
+                          password: 'x' * 10)
+
+    as_leader
+    post "/users/#{member.id}/active", active: '1'
+    assert member.reload.active?
+
+    as_leader
+    post "/users/#{member.id}/active", active: '0'
+    refute member.reload.active?
+  end
+
+  def test_the_toggle_returns_to_the_tab_you_were_on
+    # Marking a dozen people active in a row must not bounce you back to the
+    # top of an unfiltered list each time.
+    member = User.create!(name: 'Laura', username: 'laura', discord_id: next_discord_id,
+                          password: 'x' * 10)
+
+    as_leader
+    post "/users/#{member.id}/active", active: '1', filter: 'other', q: 'rach'
+
+    assert_equal 302, last_response.status
+    assert_includes last_response.location, 'filter=other'
+    assert_includes last_response.location, 'q=rach'
+  end
+
+  def test_a_member_cannot_be_marked_active_by_a_non_leader
+    member = User.create!(name: 'Laura', username: 'laura', discord_id: next_discord_id,
+                          password: 'x' * 10)
+    plain_user = User.create!(name: 'Nobody', username: 'nobody', discord_id: next_discord_id,
+                              password: 'x' * 10)
+
+    env 'rack.session', { user_id: plain_user.id }
+    post "/users/#{member.id}/active", active: '1'
+
+    assert_equal 403, last_response.status
+    refute member.reload.active?
+  end
+
+  def test_the_profile_checkbox_saves_active
+    member = User.create!(name: 'Laura', username: 'laura', discord_id: next_discord_id,
+                          password: 'x' * 10)
+
+    as_leader
+    patch "/users/#{member.id}", name: 'Laura', active: '1'
+    assert member.reload.active?
+
+    # Unticked checkboxes are absent from params; the hidden '0' is what turns
+    # it off, so this must not silently leave it on.
+    as_leader
+    patch "/users/#{member.id}", name: 'Laura', active: '0'
+    refute member.reload.active?
+  end
+
   def test_unknown_record_is_not_found_rather_than_a_crash
     as_leader
     get '/events/999999'

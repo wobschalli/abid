@@ -42,6 +42,22 @@ namespace :import do
 
     Abid::ImportRiders.call(args[:path], apply: args[:mode] == 'apply')
   end
+
+  desc 'Import the census CSV: same details, and marks everyone who answered as Active'
+  task :census, %i[path mode] do |_task, args|
+    abort 'usage: rake import:census[path/to/census.csv[,apply]]' if args[:path].to_s.empty?
+
+    require_relative 'config/environment'
+    Abid.establish_connection
+    Abid.load_models
+    Abid.load_services
+    require_relative 'db/import_riders'
+
+    # Filling in the census is the statement "I am part of this fellowship this
+    # year", which is exactly what Active means. The rides sheet is not — a
+    # one-off passenger can appear on it — so only this task sets the flag.
+    Abid::ImportRiders.call(args[:path], apply: args[:mode] == 'apply', mark_active: true)
+  end
 end
 
 Rake::TestTask.new(:test) do |t|

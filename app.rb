@@ -141,7 +141,7 @@ class App < Sinatra::Base
   # --- members --------------------------------------------------------------
 
   get '/users' do
-    filter = %w[all drivers riders missing].include?(params[:filter]) ? params[:filter] : 'all'
+    filter = %w[active other drivers riders missing].include?(params[:filter]) ? params[:filter] : 'active'
     users = users_for(filter, params[:q])
 
     phlex UsersIndex.new(
@@ -157,6 +157,20 @@ class App < Sinatra::Base
   get '/users/:id' do
     user = User.find_by(id: params[:id]) or halt 404, 'No such member'
     phlex user_page(user)
+  end
+
+  # One click from the members list. Returns to the tab and search you were on,
+  # so marking a dozen people active in a row does not bounce you back to the
+  # top of an unfiltered list each time.
+  post '/users/:id/active' do
+    require_leader!
+    user = User.find_by(id: params[:id]) or halt 404, 'No such member'
+    user.update(active: params[:active] != '0')
+
+    back = URI.encode_www_form(
+      { filter: params[:filter].presence, q: params[:q].presence }.compact
+    )
+    redirect to(back.empty? ? '/users' : "/users?#{back}")
   end
 
   patch '/users/:id' do
@@ -701,6 +715,8 @@ class App < Sinatra::Base
     scope = scope.search(query) if query.present?
 
     case filter
+    when 'active' then scope.active
+    when 'other' then scope.other
     when 'drivers' then scope.drivers
     when 'riders' then scope.riders
     when 'missing' then scope.missing_details
@@ -712,7 +728,8 @@ class App < Sinatra::Base
   # not how many match what is currently typed.
   def user_counts
     {
-      'all' => User.count,
+      'active' => User.active.count,
+      'other' => User.other.count,
       'drivers' => User.drivers.count,
       'riders' => User.riders.count,
       'missing' => User.missing_details.count
@@ -721,8 +738,14 @@ class App < Sinatra::Base
 
   USER_FIELDS = %w[name phone location_id capacity grad_year].freeze
 
+  # Checkboxes are absent from the params when unticked, so both booleans are
+  # read positionally rather than through `permitted` — each has a hidden '0'
+  # in front of it in the form.
   def user_params
-    permitted(USER_FIELDS).merge('leader' => params[:leader] == '1')
+    permitted(USER_FIELDS).merge(
+      'leader' => params[:leader] == '1',
+      'active' => params[:active] == '1'
+    )
   end
 
   def user_page(user, error: nil)

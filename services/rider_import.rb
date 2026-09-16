@@ -14,7 +14,7 @@
 # confidence, anything ambiguous is refused rather than guessed, and every
 # refusal is reported for a human to resolve.
 class RiderImport
-  Row = Struct.new(:name, :handle, :phone, :residence, :capacity, keyword_init: true)
+  Row = Struct.new(:name, :handle, :phone, :residence, :capacity, :grad_year, keyword_init: true)
 
   Result = Struct.new(:row, :user, :how, :changes, :residence_match, :problem,
                       keyword_init: true) do
@@ -38,10 +38,15 @@ class RiderImport
   # was not specific enough, so both are refused.
   WEAK = %i[name_initial first_name].freeze
 
-  def initialize(rows, scope: User.all, dry_run: false)
+  # mark_active: the census is a statement of "I am part of this fellowship this
+  # year", which is exactly what the Active roster means. The rides sheet is
+  # not — someone can appear on it as a one-off passenger — so this is opt-in
+  # per import rather than something every import does.
+  def initialize(rows, scope: User.all, dry_run: false, mark_active: false)
     @rows = rows
     @scope = scope
     @dry_run = dry_run
+    @mark_active = mark_active
     index!
   end
 
@@ -181,9 +186,14 @@ class RiderImport
   # import must not overwrite it.
   def apply(user, row, location)
     changes = {}
+    # Not a blank-fill like the rest: filling out the census IS the statement,
+    # so it sets the flag even on someone previously marked inactive. It never
+    # un-marks anyone — not answering a form is not a resignation.
+    changes[:active] = true if @mark_active && !user.active?
     changes[:phone] = row.phone if row.phone.present? && user.phone.blank?
     changes[:location_id] = location.id if location && user.location_id.blank?
     changes[:capacity] = row.capacity if row.capacity.present? && user.capacity.blank?
+    changes[:grad_year] = row.grad_year if row.grad_year.present? && user.grad_year.blank?
     return changes if changes.empty? || @dry_run
 
     user.update!(changes)

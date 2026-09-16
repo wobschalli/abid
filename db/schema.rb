@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2700) do
+ActiveRecord::Schema[8.0].define(version: 2800) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -302,6 +302,8 @@ ActiveRecord::Schema[8.0].define(version: 2700) do
     t.bigint "location_id"
     t.string "password_digest"
     t.string "phone"
+    t.boolean "active", default: false, null: false
+    t.index ["active"], name: "index_users_on_active"
     t.index ["location_id"], name: "index_users_on_location_id"
     t.unique_constraint ["discord_id"]
   end
