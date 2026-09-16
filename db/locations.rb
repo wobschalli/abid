@@ -19,10 +19,10 @@ module Abid
     # The two rows db/seeds.rb has always created. Coordinates left exactly as
     # they were — this is live data; the only thing being added is a zone.
     EXISTING = [
-      # NOTE: these coordinates put 'lark' about 5km north of campus, which is
-      # not where the Chauncey-area Lark most people mean actually is. Zoned to
-      # match the coordinates that exist rather than silently moving a
-      # production row. Worth a human check.
+      # These coordinates put lark about 5km north of campus, which I once
+      # flagged as probably wrong. It is not: Lark is at 3800 Campus Suites
+      # Blvd and its own listing describes it as roughly three miles north of
+      # Purdue. The original row was right and the doubt was the error.
       ['lark', 'Northwestern', 40.4729654, -86.9467261,
        ['lark apartments', 'lark apts', 'lark west lafayette']],
       [GLCAC, 'Klondike', 40.4521281, -86.9720287,
@@ -105,9 +105,9 @@ module Abid
 
       # --- Chauncey / the blocks just off campus ----------------------------
       ['Campus Edge on Pierce', 'Chauncey', nil, nil, ['campus edge', 'campus edge on pierce', 'pierce']],
-      ['Crosswalk Commons', 'Chauncey', nil, nil, ['crosswalk', 'crosswalk commons']],
+      ['Crosswalk Commons', 'On-campus', nil, nil, ['crosswalk', 'crosswalk commons']],
       ['Grant Street Station', 'Chauncey', nil, nil, ['grant street station', 'grant st station', 'grant']],
-      ['Third and West',    'Chauncey', nil, nil, ['3rd and west', '3rd & west', 'third and west', 'third & west']],
+      ['Third and West',    'On-campus', nil, nil, ['3rd and west', '3rd & west', 'third and west', 'third & west']],
       ['Waldron Street',    'Chauncey', nil, nil, ['waldron', '221 waldron']],
       ['Brown Street',      'Chauncey', nil, nil, ['brown st', 'brown street']],
       ['Columbia Street',   'Chauncey', nil, nil, ['columbia', 'columbia st', 'columbia street']],
@@ -118,11 +118,39 @@ module Abid
 
       # --- Northwestern -----------------------------------------------------
       ['Alight West Lafayette', 'Northwestern', nil, nil, ['alight', 'the cottages']],
-      ['Benchmark Apartments', 'Northwestern', nil, nil, ['benchmark', 'benchmark iii']],
+      ['Benchmark Apartments', 'Chauncey', nil, nil, ['benchmark', 'benchmark ii', 'benchmark iii']],
 
       # --- Klondike ---------------------------------------------------------
       ['Provenance',        'Klondike', nil, nil, ['provenance', 'provinence', 'provinance', 'provenance apt']]
     ].freeze
+
+    # Street addresses, taken from each property's own listing and verified by
+    # geocoding them — every one below resolves inside Tippecanoe County.
+    #
+    # This is what makes a place findable. OpenStreetMap has never heard of
+    # "Third and West" or "Alight West Lafayette"; querying them unbounded
+    # returns nothing at all. It knows the streets they stand on perfectly well.
+    #
+    # Streets are their own address, and the Purdue halls resolve by name, so
+    # only the named properties need an entry here.
+    ADDRESSES = {
+      # Purdue-owned
+      'Third and West' => '1401 3rd Street',
+      'Aspire at Discovery Park' => '1245 W State Street',
+      # Private complexes
+      'lark' => '3800 Campus Suites Boulevard',
+      'Alight West Lafayette' => '2243 Sagamore Parkway West',
+      'Benchmark Apartments' => '421 S Chauncey Avenue',
+      'Yugo River Market' => '221 E State Street',
+      'Provenance' => '1501 Mitch Daniels Boulevard',
+      'Rise on Chauncey' => '100 S Chauncey Avenue',
+      'Campus Edge on Pierce' => '134 Pierce Street',
+      'Crosswalk Commons' => '925 Hilltop Drive',
+      'Grant Street Station' => '320 S Grant Street',
+      'Fuse' => '720 Northwestern Avenue',
+      'Hub on State' => '111 S Salisbury Street',
+      'Riverbend Apartments' => '202 S River Road'
+    }.freeze
 
     # Spellings for places that already exist above. Folded in by `seed!` so a
     # form answer of 'cary nw' or 'honors south' resolves instead of silently
@@ -161,6 +189,15 @@ module Abid
         location.lon = lon if location.lon.blank?
         location.aliases = (location.aliases.to_a | aliases).uniq
         location.save! # bang: a zone typo here must not seed silently
+      end
+
+      # Street addresses, looked up from the property's own listing. A name is
+      # not a map feature — OpenStreetMap has never heard of "Third and West" —
+      # so these are what makes a place findable.
+      ADDRESSES.each do |name, address|
+        location = Location.find_by(name: name) or next
+
+        location.update!(address: address)
       end
 
       EXTRA_ALIASES.each do |name, aliases|

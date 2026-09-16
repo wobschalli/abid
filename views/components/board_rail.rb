@@ -294,12 +294,16 @@ class Components::BoardRail < Phlex::HTML
   # People come from the Discord member sync, so this picks an existing user
   # rather than the design's free-text name field — a typo here would otherwise
   # create a second person who can never be matched to their Discord account.
+  #
+  # Active members only. The sync brings in everyone who has ever joined the
+  # server, so this was a 271-name dropdown of mostly alumni to find the one
+  # person standing in front of you.
   def user_select
     taken = @board.rides.map(&:user_id)
-    candidates = User.where.not(id: taken).by_name.limit(500)
+    candidates = User.active.where.not(id: taken).by_name.limit(500)
 
     if candidates.empty?
-      span(class: 'text-[12px] text-ink/60') { 'Everyone in the server is already on this board.' }
+      span(class: 'text-[12px] text-ink/60') { 'Everyone active is already on this board.' }
     else
       select(name: 'user_id', required: true, class: 'board-input text-[12.5px]') do
         option(value: '') { 'Choose a person…' }
