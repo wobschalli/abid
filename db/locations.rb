@@ -81,7 +81,71 @@ module Abid
       ['Elston Road',           'Lafayette', 40.4300, -86.8800, ['elston', 'elston rd']]
     ].freeze
 
-    ALL = (EXISTING + PLACES).freeze
+    # Everywhere the riders spreadsheet actually named that the list above did
+    # not cover, plus the spellings people really typed into the form ('hawk',
+    # 'cary nw', 'wiley sw', 'provinence', 'mccutcehon').
+    #
+    # Purdue-owned halls get approximate coordinates, on the same eyeballed
+    # footing as the block above. The private complexes deliberately get NONE:
+    # I am not confident enough about where each one sits to write a lat/lon
+    # down and have it read as surveyed fact. `seed!` only fills blank
+    # coordinates, `maps_token` falls back to searching the name, and
+    # `rake db:geocode` resolves them properly — so nil is both honest and
+    # self-correcting, where a wrong number would quietly misroute a driver.
+    FROM_SPREADSHEET = [
+      # --- On-campus: halls the roster named --------------------------------
+      ['Hawkins Hall',      'On-campus', 40.4264, -86.9256, ['hawkins', 'hawk']],
+      ['McCutcheon Hall',   'On-campus', 40.4213, -86.9250, ['mccutcheon', 'mccutcehon', 'mccutcheon hall']],
+      ['Frieda Parker Hall', 'On-campus', 40.4270, -86.9150, ['frieda parker', 'freida parker', 'frieda', 'freida']],
+      ['Winifred Parker Hall', 'On-campus', 40.4268, -86.9152, ['winifred parker', 'winifred', 'winnifred']],
+      # Purdue's graduate and family housing, both genuinely on university land.
+      ['Hilltop Apartments', 'On-campus', 40.4340, -86.9190, ['hilltop', 'hill top']],
+      ['Purdue Village',    'On-campus', 40.4310, -86.9280, ['village west', 'purdue village', 'nimitz']],
+      ['Third Street Suites', 'On-campus', 40.4255, -86.9260, ['third street suites', '3rd street suites']],
+
+      # --- Chauncey / the blocks just off campus ----------------------------
+      ['Campus Edge on Pierce', 'Chauncey', nil, nil, ['campus edge', 'campus edge on pierce', 'pierce']],
+      ['Crosswalk Commons', 'Chauncey', nil, nil, ['crosswalk', 'crosswalk commons']],
+      ['Grant Street Station', 'Chauncey', nil, nil, ['grant street station', 'grant st station', 'grant']],
+      ['Third and West',    'Chauncey', nil, nil, ['3rd and west', '3rd & west', 'third and west', 'third & west']],
+      ['Waldron Street',    'Chauncey', nil, nil, ['waldron', '221 waldron']],
+      ['Brown Street',      'Chauncey', nil, nil, ['brown st', 'brown street']],
+      ['Columbia Street',   'Chauncey', nil, nil, ['columbia', 'columbia st', 'columbia street']],
+      ['Lincoln Street',    'Chauncey', nil, nil, ['lincoln', 'lincoln st', 'lincoln street']],
+      ['Vine Street',       'Chauncey', nil, nil, ['vine', 'vine st', '4up']],
+      ['Yugo River Market', 'Chauncey', nil, nil, ['yugo', 'river market', 'yugo west lafayette river market']],
+      ['Riverbend Apartments', 'Chauncey', nil, nil, ['riverbend', 'riverbend apts', 'river road']],
+
+      # --- Northwestern -----------------------------------------------------
+      ['Alight West Lafayette', 'Northwestern', nil, nil, ['alight', 'the cottages']],
+      ['Benchmark Apartments', 'Northwestern', nil, nil, ['benchmark', 'benchmark iii']],
+
+      # --- Klondike ---------------------------------------------------------
+      ['Provenance',        'Klondike', nil, nil, ['provenance', 'provinence', 'provinance', 'provenance apt']]
+    ].freeze
+
+    # Spellings for places that already exist above. Folded in by `seed!` so a
+    # form answer of 'cary nw' or 'honors south' resolves instead of silently
+    # creating a duplicate row with no zone.
+    EXTRA_ALIASES = {
+      'Cary Quadrangle' => ['cary nw', 'cary east', 'cary west', 'cary south', 'cary northwest'],
+      'Wiley Hall' => ['wiley sw', 'wiley southwest'],
+      'Honors College' => ['honors south', 'honors north', 'honors college south'],
+      'Earhart Hall' => ['earhart hall'],
+      'Tarkington Hall' => ['tarkington hall'],
+      'Harrison Hall' => ['harrison hall'],
+      'Meredith South' => ['meredith south hall'],
+      'lark' => ['apt lark', 'lark apt'],
+      'Aspire at Discovery Park' => ['aspire apartments', 'aspire apts'],
+      'Fuse' => ['fuse apts'],
+      'Rise on Chauncey' => ['rise on chauncey apartments'],
+      'Shreve Hall' => ['shreve hall'],
+      'Owen Hall' => ['owen hall'],
+      'Hillenbrand Hall' => ['hillenbrand hall'],
+      'Windsor Halls' => ['windsor hall']
+    }.freeze
+
+    ALL = (EXISTING + PLACES + FROM_SPREADSHEET).freeze
 
     module_function
 
@@ -97,6 +161,12 @@ module Abid
         location.lon = lon if location.lon.blank?
         location.aliases = (location.aliases.to_a | aliases).uniq
         location.save! # bang: a zone typo here must not seed silently
+      end
+
+      EXTRA_ALIASES.each do |name, aliases|
+        location = Location.find_by(name: name) or next
+
+        location.update!(aliases: (location.aliases.to_a | aliases).uniq)
       end
     end
 

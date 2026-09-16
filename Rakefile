@@ -17,6 +17,22 @@ namespace :db do
   end
 end
 
+namespace :import do
+  desc 'Import rider phone/residence/capacity from a form CSV (add ,apply to write)'
+  task :riders, %i[path mode] do |_task, args|
+    # Plain Ruby: ActiveSupport is not loaded until the require below.
+    abort 'usage: rake import:riders[path/to/export.csv[,apply]]' if args[:path].to_s.empty?
+
+    require_relative 'config/environment'
+    Abid.establish_connection
+    Abid.load_models
+    Abid.load_services
+    require_relative 'db/import_riders'
+
+    Abid::ImportRiders.call(args[:path], apply: args[:mode] == 'apply')
+  end
+end
+
 Rake::TestTask.new(:test) do |t|
   t.libs << 'test'
   t.pattern = 'test/**/*_test.rb'
