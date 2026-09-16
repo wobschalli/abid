@@ -15,6 +15,17 @@ namespace :db do
   task :geocode do
     ruby 'db/geocode.rb'
   end
+
+  desc 'Remove everything db:demo invented, keeping the real server data (add [apply] to write)'
+  task :drop_demo, [:mode] do |_task, args|
+    require_relative 'config/environment'
+    Abid.establish_connection
+    Abid.load_models
+    Abid.load_services
+    require_relative 'db/drop_demo'
+
+    Abid::DropDemo.call(apply: args[:mode] == 'apply')
+  end
 end
 
 namespace :import do
