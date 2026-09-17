@@ -31,7 +31,7 @@ class Matcher
     drivers_with_capacity = rider_drivers_list
                               .flat_map { |pair| pair[:driver_candidates] }
                               .uniq
-                              .map { |driver| { driver: driver, capacity: driver.capacity, riders: [] } }
+                              .map { |driver| { driver: driver, capacity: driver.capacity.to_i, riders: [] } }
 
     rider_drivers_list.each do |pair|
       pair => { rider:, driver_candidates: }
