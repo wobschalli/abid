@@ -81,7 +81,8 @@ class Components::BoardCar < Phlex::HTML
   # Whether this driver has been told, and whether anything has changed since.
   DISPATCH_BADGES = {
     queued: ['bg-ink/[.07] text-ink/70', 'sending…'],
-    sent: ['bg-accent-tint text-accent', 'sent'],
+    sent: ['bg-ink/[.07] text-ink/70', 'sent'],
+    confirmed: ['bg-accent-tint text-accent', '✓ confirmed'],
     changed: ['bg-warn-tint text-warn-ink', 'changed'],
     failed: ['bg-danger-tint text-danger', 'dm failed']
   }.freeze

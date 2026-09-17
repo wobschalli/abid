@@ -1,16 +1,37 @@
 require_relative 'test_helper'
+# The sender resolves Discordrb::Webhooks::View lazily so the web process need
+# not load discordrb — but without it here the button path would never run and
+# every test would silently exercise the plain-DM fallback instead.
+require 'discordrb'
 
 class DispatchTest < AbidTest
   class FakeDM
     def id = 4242
   end
 
+  # The DM channel. `User#pm` with no argument returns it, which is what the
+  # components-aware send needs — `User#dm(body)` cannot carry a button.
+  class FakeChannel
+    def id = 99_001
+  end
+
   class FakeDiscordUser
     attr_reader :dms
 
-    def initialize(raise_with: nil)
+    def initialize(raise_with: nil, no_pm: false)
       @raise_with = raise_with
+      @no_pm = no_pm
       @dms = []
+    end
+
+    # Standing in for an older discordrb, to exercise the fallback.
+    def pm
+      raise NoMethodError, "undefined method `pm'" if @no_pm
+      # Opening a DM channel with someone who has them closed fails here, not
+      # at send — which is why this must raise before a channel exists.
+      raise @raise_with if @raise_with
+
+      FakeChannel.new
     end
 
     def dm(body)
@@ -22,15 +43,28 @@ class DispatchTest < AbidTest
   end
 
   class FakeBot
-    attr_reader :users
+    attr_reader :users, :components
 
-    def initialize(raise_with: nil)
+    def initialize(raise_with: nil, no_pm: false)
       @raise_with = raise_with
-      @users = Hash.new { |h, k| h[k] = FakeDiscordUser.new(raise_with: @raise_with) }
+      @no_pm = no_pm
+      @components = []
+      @users = Hash.new { |h, k| h[k] = FakeDiscordUser.new(raise_with: @raise_with, no_pm: @no_pm) }
     end
 
     def user(discord_id) = @users[discord_id]
-    def sent_bodies = @users.values.flat_map(&:dms)
+
+    # The patched Discordrb::Bot#send, which is what carries components.
+    def send(_channel_id, body, components: nil, **_opts)
+      raise @raise_with if @raise_with
+
+      @components << components
+      @bodies ||= []
+      @bodies << body
+      FakeDM.new
+    end
+
+    def sent_bodies = (@bodies || []) + @users.values.flat_map(&:dms)
   end
 
   def setup
@@ -234,6 +268,103 @@ class DispatchTest < AbidTest
     assert_equal 1, status.queued_count
     refute_includes status.stale_driver_rides, driver,
                     'a driver already queued must not be counted as still needing a message'
+  end
+
+  # --- "Got it" ------------------------------------------------------------
+  #
+  # Discord tells a bot nothing about whether a DM was read, so the driver says
+  # so themselves.
+
+  def test_the_dm_carries_a_got_it_button
+    plan
+    bot = FakeBot.new
+    DispatchSender.new(bot).pump
+
+    view = bot.components.compact.first
+    refute_nil view, 'the DM should have been sent with components'
+
+    button = view.to_a.dig(0, :components, 0)
+    assert_equal 'Got it', button[:label]
+    assert_match(/\Adispatch_ack_\d+\z/, button[:custom_id],
+                 'the handler matches on the message id in the custom_id')
+  end
+
+  # A driver getting their roster without a button beats not getting it at all.
+  def test_it_falls_back_to_a_plain_dm_when_the_button_cannot_be_attached
+    plan
+    bot = FakeBot.new(no_pm: true)
+
+    capture_io { DispatchSender.new(bot).pump }
+
+    assert_equal 'sent', DispatchMessage.last.status
+    refute_empty bot.sent_bodies
+    assert_empty bot.components.compact
+  end
+
+  def test_a_delivered_message_starts_unconfirmed
+    event = make_event
+    driver = make_driver(event, 'caleb', seats: 4)
+    deliver(DispatchPlanner.new(RideBoard.new(event), requested_by: nil, scope: 'all').call)
+
+    message = DispatchMessage.last
+    assert message.sent?
+    refute message.acknowledged?
+    assert_equal :sent, DispatchStatus.new(RideBoard.new(event)).state_for(driver)
+  end
+
+  def test_pressing_got_it_confirms_it
+    event = make_event
+    driver = make_driver(event, 'caleb', seats: 4)
+    deliver(DispatchPlanner.new(RideBoard.new(event), requested_by: nil, scope: 'all').call)
+
+    assert DispatchMessage.last.acknowledge!
+
+    status = DispatchStatus.new(RideBoard.new(event))
+    assert_equal :confirmed, status.state_for(driver)
+    assert_equal 1, status.confirmed_count
+    assert_equal 0, status.awaiting_count
+    refute_includes status.stale_driver_rides, driver, 'a confirmed driver needs no re-send'
+  end
+
+  # Discord will deliver a second press if the driver taps twice; it must not
+  # move the timestamp or raise.
+  def test_pressing_it_twice_changes_nothing
+    event = make_event
+    make_driver(event, 'caleb', seats: 4)
+    deliver(DispatchPlanner.new(RideBoard.new(event), requested_by: nil, scope: 'all').call)
+
+    message = DispatchMessage.last
+    message.acknowledge!
+    first = message.acknowledged_at
+
+    refute message.acknowledge!
+    assert_equal first, message.reload.acknowledged_at
+  end
+
+  def test_an_unsent_message_cannot_be_confirmed
+    event = make_event
+    make_driver(event, 'caleb', seats: 4)
+    DispatchPlanner.new(RideBoard.new(event), requested_by: nil, scope: 'all').call
+
+    message = DispatchMessage.last
+    refute message.sent?
+    refute message.acknowledge!
+  end
+
+  # What they confirmed is out of date the moment the car changes, so a moved
+  # rider must put the driver back in the queue even though they pressed it.
+  def test_a_roster_change_outranks_an_earlier_confirmation
+    event = make_event
+    driver = make_driver(event, 'caleb', seats: 4)
+    deliver(DispatchPlanner.new(RideBoard.new(event), requested_by: nil, scope: 'all').call)
+    DispatchMessage.last.acknowledge!
+
+    rider = make_rider(event, 'nathan')
+    rider.update!(driver_ride: driver)
+
+    status = DispatchStatus.new(RideBoard.new(event))
+    assert_equal :changed, status.state_for(driver)
+    assert_includes status.stale_driver_rides, driver
   end
 
   private

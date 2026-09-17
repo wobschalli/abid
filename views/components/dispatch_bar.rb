@@ -60,6 +60,9 @@ class Components::DispatchBar < Phlex::HTML
 
     bits = []
     bits << "last sent #{@status.last_sent_at.strftime('%-l:%M %p')}" if @status.last_sent_at
+    # The question at 8am is not "did it send" but "who has not confirmed".
+    bits << "#{@status.confirmed_count} confirmed" if @status.confirmed_count.positive?
+    bits << "#{@status.awaiting_count} not confirmed yet" if @status.awaiting_count.positive?
     bits << "#{@status.changed_count} changed since" if @status.changed_count.positive?
     bits << "#{@status.failed_count} failed" if @status.failed_count.positive?
 

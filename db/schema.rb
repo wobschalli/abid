@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 3200) do
+ActiveRecord::Schema[8.0].define(version: 3300) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -68,6 +68,7 @@ ActiveRecord::Schema[8.0].define(version: 3200) do
     t.integer "attempts", default: 0, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "acknowledged_at"
     t.index ["dispatch_id", "driver_ride_id"], name: "index_dispatch_messages_on_dispatch_id_and_driver_ride_id", unique: true
     t.index ["dispatch_id"], name: "index_dispatch_messages_on_dispatch_id"
     t.index ["driver_ride_id", "status"], name: "index_dispatch_messages_on_driver_ride_id_and_status"

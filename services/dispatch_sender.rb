@@ -42,7 +42,7 @@ class DispatchSender
     return skip(message, 'too many attempts') if message.attempts >= MAX_ATTEMPTS
 
     body = DriverBriefing.new(message.roster).to_text
-    dm = @bot.user(message.discord_id).dm(body)
+    dm = send_with_button(message, body)
 
     message.update!(status: 'sent', body: body, sent_at: Time.zone.now,
                     discord_message_id: dm&.id, attempts: message.attempts + 1,
@@ -55,6 +55,39 @@ class DispatchSender
     message.update!(status: 'failed', attempts: message.attempts + 1,
                     error_class: e.class.name, error_message: e.message.to_s.first(500))
     warn "DM to #{message.driver_name} failed: #{e.class}: #{e.message}"
+  end
+
+  # A "Got it" button, because Discord tells a bot nothing about whether a DM
+  # was read. `User#pm` with no argument returns the DM channel, which is what
+  # the components-aware send needs — `User#dm(body)` cannot carry them.
+  #
+  # Falls back to a plain DM if anything about the button path fails: a driver
+  # getting their roster without a button is a far better outcome than not
+  # getting it at all.
+  def send_with_button(message, body)
+    view = acknowledge_view(message)
+    return @bot.user(message.discord_id).dm(body) if view.nil?
+
+    channel = @bot.user(message.discord_id).pm
+    @bot.send(channel.id, body, components: view)
+  rescue NoMethodError, ArgumentError, NameError => e
+    warn "could not attach the confirm button for #{message.driver_name}: #{e.class}: #{e.message}"
+    @bot.user(message.discord_id).dm(body)
+  end
+
+  # nil when discordrb is not loaded. `load_services` pulls this file into the
+  # WEB process too, which does not require discordrb, so naming the constant
+  # unguarded would be a NameError waiting for the first dispatch — the same
+  # trap Signup::Reconciler documents.
+  def acknowledge_view(message)
+    return nil unless defined?(Discordrb::Webhooks::View)
+
+    Discordrb::Webhooks::View.new.tap do |view|
+      view.row do |row|
+        row.button(label: 'Got it', style: :success,
+                   custom_id: "dispatch_ack_#{message.id}", emoji: { name: '✅' })
+      end
+    end
   end
 
   def skip(message, reason)

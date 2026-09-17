@@ -21,7 +21,11 @@ class DispatchStatus
         if queued_ride_ids.include?(ride.id) then :queued
         elsif prior.nil? then :never
         elsif prior.status == 'failed' then :failed
+        # Confirmed beats sent, but NOT changed: if the roster moved since they
+        # pressed it, what they confirmed is out of date and they need telling
+        # again.
         elsif prior.roster_digest != digest_for(ride) then :changed
+        elsif prior.acknowledged? then :confirmed
         else :sent
         end
       [ride.id, state]
@@ -35,7 +39,7 @@ class DispatchStatus
   # Drivers who need a message: never sent, changed since, or last attempt
   # failed.
   def stale_driver_rides
-    @board.driver_rides.select { |r| r.active? && !%i[sent queued].include?(states[r.id]) }
+    @board.driver_rides.select { |r| r.active? && !%i[sent queued confirmed].include?(states[r.id]) }
   end
 
   def queued_count
@@ -56,6 +60,15 @@ class DispatchStatus
 
   def changed_count
     states.values.count(:changed)
+  end
+
+  def confirmed_count
+    states.values.count(:confirmed)
+  end
+
+  # Told, but not yet confirmed. The question a coordinator asks at 8am.
+  def awaiting_count
+    states.values.count(:sent)
   end
 
   private

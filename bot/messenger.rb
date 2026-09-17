@@ -172,6 +172,13 @@ class Messenger < Bot
       event_disable event, id
     end
 
+    # A driver confirming they have their roster. Deliberately not leader-gated
+    # — the person pressing it is the driver, and the only thing they can do is
+    # confirm their own message.
+    bot.button custom_id: /dispatch_ack_(\d+)/ do |event|
+      acknowledge_dispatch event, event.custom_id.match(/dispatch_ack_(\d+)/)[1].to_i
+    end
+
     bot.button custom_id: /event_delete_(\d+)/ do |event|
       return event.respond('You don\'t have permission to do this!') unless User.find_by(discord_id: event.user.id).leader
       event.defer_update
@@ -244,6 +251,30 @@ class Messenger < Bot
     event.user&.display_name
   rescue StandardError
     nil
+  end
+
+  # Mark the DM confirmed, and tell the driver it landed. The button is left in
+  # place but disabled, so the DM still reads as a confirmed one when they scroll
+  # back to it rather than looking like it was never pressed.
+  #
+  # @param event [Discordrb::Events::ButtonEvent]
+  # @param id [Integer] dispatch_messages.id
+  def acknowledge_dispatch(event, id)
+    message = DispatchMessage.find_by(id: id)
+    return event.respond(content: 'That ride has been cancelled.', ephemeral: true) if message.nil?
+
+    # A second press is not an error: Discord will happily deliver one if the
+    # driver taps twice, and they should see the same confirmation either way.
+    message.acknowledge!
+
+    event.update_message(content: event.message.content) do |_, view|
+      view.row do |row|
+        row.button(label: 'Confirmed', style: :secondary, disabled: true,
+                   custom_id: "dispatch_ack_#{id}", emoji: { name: '✅' })
+      end
+    end
+  rescue StandardError => e
+    warn "dispatch ack #{id} failed: #{e.class}: #{e.message}"
   end
 
   # @param event [Discordrb::Events::ButtonEvent]

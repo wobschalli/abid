@@ -17,7 +17,19 @@ class DispatchMessage < ApplicationRecord
 
   scope :pending, -> { where(status: 'pending') }
   scope :sent, -> { where(status: 'sent') }
+  scope :acknowledged, -> { where.not(acknowledged_at: nil) }
+  scope :unacknowledged, -> { sent.where(acknowledged_at: nil) }
   scope :failed, -> { where(status: 'failed') }
+
+  # The driver pressed "Got it" on their DM. Only meaningful once sent — an
+  # unsent message cannot have been acknowledged.
+  def acknowledged? = acknowledged_at.present?
+
+  def acknowledge!
+    return false if acknowledged? || !sent?
+
+    update!(acknowledged_at: Time.zone.now)
+  end
 
   def sent?
     status == 'sent'
