@@ -86,13 +86,21 @@ module DraftHelper
       evt = Event.find(draft.event_id)
       @manager&.scheduler&.unschedule(evt) if status == :unpublished
       evt.update!(draft.to_event_attributes.merge(status: status, scheduled: (status == :scheduled)))
-      evt.emojis = draft.emojis if draft.emojis.any?
+      evt.emojis = persistable_emojis_for(evt, draft.emojis) if draft.emojis.any?
       evt
     else
       attrs = draft.to_event_attributes.merge(status: status, scheduled: (status == :scheduled))
       evt = Event.create!(attrs)
-      evt.emojis = draft.emojis if draft.emojis.any?
+      evt.emojis = persistable_emojis_for(evt, draft.emojis) if draft.emojis.any?
       evt
+    end
+  end
+
+  def persistable_emojis_for(evt, emojis)
+    emojis.map do |emoji|
+      next emoji if emoji.event_id == evt.id
+
+      Emoji.new(name: emoji.name, discord_id: emoji.discord_id, server: emoji.server, event: evt)
     end
   end
 
