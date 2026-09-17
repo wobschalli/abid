@@ -244,7 +244,7 @@ class Bot
   end
 
   def handle_member_leave(event)
-    return unless Server.exists?(discord_id: event.server.id)
+    return unless Server.find_by(name: 'Abide')&.discord_id == event.server.id
     User.find_by(discord_id: event.member.id)&.destroy
   end
 
