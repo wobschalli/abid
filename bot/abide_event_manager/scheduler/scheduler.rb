@@ -58,7 +58,7 @@ class Scheduler
 
   def collect_scheduled_message(event)
     event = Event.find(event.id)
-    return unless event.rides_message_id
+    return unless %w[scheduled active].include?(event.status) && event.rides_message_id
 
     message = @bot.client.channel(event.channel.discord_id).load_message(event.rides_message_id)
     return unless message
