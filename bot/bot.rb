@@ -114,7 +114,9 @@ class Bot
 
     client.autocomplete(:name) do |event|
       search = event.options['name'].to_s.downcase
-      events = Event.where("LOWER(name) LIKE ?", "%#{search}%").limit(25)
+      events = event_scope_for_interaction(event)
+        .where("LOWER(name) LIKE ?", "%#{search}%")
+        .limit(25)
       choices = events.map { |e| { name: e.name || "Untitled_#{e.id}", value: e.id.to_s } }
       event.respond(choices: choices)
     end
@@ -127,9 +129,9 @@ class Bot
         if status_filter == 'unpublished' && !(user&.leader || user&.coordinator?)
           return event.respond(content: 'Only leaders and coordinators can view unpublished events.', ephemeral: true)
         end
-        Event.where(status: status_filter.to_sym)
+        event_scope_for_interaction(event).where(status: status_filter.to_sym)
       else
-        Event.published
+        event_scope_for_interaction(event).published
       end.limit(25)
 
       if events.empty?
@@ -143,7 +145,7 @@ class Bot
     client.application_command(:event).subcommand(:delete) do |event|
       user = User.find_by(discord_id: event.user.id)
       return event.respond(content: 'You are not allowed to do that!', ephemeral: true) unless user&.leader || user&.coordinator?
-      evt = Event.find_by(id: event.options['name'].to_i)
+      evt = event_scope_for_interaction(event).find_by(id: event.options['name'].to_i)
       return event.respond(content: 'Event not found.', ephemeral: true) unless evt
       return event.respond(content: 'Only unpublished events can be deleted with this command.', ephemeral: true) unless evt.unpublished?
       name = evt.name || "Untitled_#{evt.id}"
@@ -167,7 +169,7 @@ class Bot
     client.application_command(:event).subcommand(:show) do |event|
       user = User.find_by(discord_id: event.user.id)
       return event.respond(content: 'You are not allowed to do that!', ephemeral: true) unless user&.leader || user&.coordinator?
-      evt = Event.find_by(id: event.options['name'].to_i)
+      evt = event_scope_for_interaction(event).find_by(id: event.options['name'].to_i)
       return event.respond(content: 'Event not found.', ephemeral: true) unless evt
 
       can_edit = user.leader || user.coordinator? || (evt.organizer_id && evt.organizer_id == user.id)
@@ -258,5 +260,10 @@ class Bot
 
   def bot_schedule(event)
     @manager&.bot_schedule(event)
+  end
+
+  def event_scope_for_interaction(event)
+    server = Server.find_by(discord_id: event.server&.id)
+    server ? server.events : Event.none
   end
 end
