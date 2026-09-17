@@ -4,19 +4,19 @@ require 'http'
 require_relative File.join('..', 'models', 'location.rb')
 
 class Map
-  attr_accessor :client, :box
+  attr_accessor :map_client, :box
   BOXES = {
     tippecanoe: %w( -87.0955 40.2143 -86.6948 40.5630 ),
     indiana: %w( -88.102 37.760 -84.798 41.761 )
   }
-  OSRM_TRIP_URL = "http://router.project-osrm.org/trip/v1/driving"
-  OSRM_ROUTE_URL = "http://router.project-osrm.org/route/v1/driving"
+  OSRM_TRIP_URL = "https://router.project-osrm.org/trip/v1/driving"
+  OSRM_ROUTE_URL = "https://router.project-osrm.org/route/v1/driving"
 
   private_constant :OSRM_TRIP_URL, :OSRM_ROUTE_URL
 
   # @param box [Symbol] binding box for OSM lookups, either indiana or tippecanoe
   def initialize(box=BOXES[:tippecanoe])
-    @client = OpenStreetMap::Client.new
+    @map_client = OpenStreetMap::Client.new
     @box = box
   end
 
@@ -24,7 +24,7 @@ class Map
   # @return lat and lon [Hash]
   def addr_to_coord(addr)
     begin
-      response = client.search(q: addr, format: 'json', viewbox: q_box, bounded: 1, limit: 1)[0]
+      response = map_client.search(q: addr, format: 'json', viewbox: q_box, bounded: 1, limit: 1)[0]
       { lat: response['lat'], lon: response['lon'] }
     rescue NoMethodError
       { lat: nil, lon: nil }
@@ -34,7 +34,7 @@ class Map
   # @param coord [Hash] hash with lon and lat
   # @return name [String]
   def coord_to_addr(coord)
-    response = client.reverse(format: 'json', lon: coord[:lon], lat: coord[:lat])
+    response = map_client.reverse(format: 'json', lon: coord[:lon], lat: coord[:lat])
     response['display_name']
   end
 
@@ -69,7 +69,7 @@ class Map
     end
   end
 
-  # @param location data, either a hash with lon, lat or a string [Hash, String]
+  # @param data, either a hash with lon, lat or a string [Hash, String]
   # @return [Location, nil]
   def create_new_location(data)
     case data.class.to_s

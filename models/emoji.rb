@@ -1,8 +1,10 @@
 class Emoji < ApplicationRecord
-  belongs_to :server
+  belongs_to :server, optional: true
   belongs_to :event, optional: true
 
   before_save :ensure_not_alpha_code
+
+  validates :name, presence: true
 
   scope :find_by_codepoints, ->(codepoints) { where(name: TanukiEmoji.find_by_codepoints(codepoints)&.name) }
 
@@ -23,7 +25,8 @@ class Emoji < ApplicationRecord
   end
 
   private
+
   def ensure_not_alpha_code
-    self.name.remove ':'
+    self.name = name.to_s.delete(':').strip.presence
   end
 end

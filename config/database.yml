@@ -1,19 +1,22 @@
+# Connection settings come from the environment so the same image can run
+# locally (defaults below) and in Docker/production (env vars from .env).
 default: &default
   adapter: postgresql
   encoding: unicode
-  pool: 5
-  username: postgres
-  password: password
-  host: localhost
+  pool: <%= ENV.fetch('DB_POOL', 5) %>
+  host: <%= ENV.fetch('DB_HOST', 'localhost') %>
+  port: <%= ENV.fetch('DB_PORT', 5432) %>
+  username: <%= ENV.fetch('DB_USER', 'postgres') %>
+  password: <%= ENV.fetch('DB_PASSWORD', 'password') %>
 
 development:
   <<: *default
-  database: abid_development
+  database: <%= ENV.fetch('DB_NAME', 'abid_development') %>
 
 test:
   <<: *default
-  database: abid_test
+  database: <%= ENV.fetch('DB_NAME', 'abid_test') %>
 
 production:
   <<: *default
-  database: abid_production
+  database: <%= ENV.fetch('DB_NAME', 'abid_production') %>

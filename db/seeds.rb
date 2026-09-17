@@ -1,5 +1,6 @@
 require 'yaml'
 require 'active_record'
+require 'securerandom'
 
 #have to require models manually
 require_relative '../models/application_record'
@@ -12,10 +13,14 @@ require_relative '../models/role'
 require_relative '../models/server'
 require_relative '../models/user'
 
+# CONFIG_FILE lets you seed a beta/dev database from an alternate config
+# (e.g. CONFIG_FILE=config2.yml rake db:seed).
+config_file = ENV.fetch('CONFIG_FILE', 'config.yml')
+
 begin
-  config = YAML.load_file('config.yml')
+  config = YAML.load_file(config_file)
 rescue Errno::ENOENT
-  puts "config.yml was not found"
+  puts "#{config_file} was not found"
   exit
 end
 
@@ -32,12 +37,23 @@ end
 TEST_SERVER = Server.find_or_create_by name: 'Test', discord_id: config.dig('servers', 'test')
 Channel.find_or_create_by name: 'general', discord_id: config.dig('test', 'general'), server: TEST_SERVER
 
+WL_STUDY_SERVER = Server.find_or_create_by name: 'WL Study for Finals Group', discord_id: config.dig('servers', 'wl_study_for_finals_group')
+
 DiscordInfo.find_or_create_by token: config.dig('discord', 'token'), app_id: config.dig('discord', 'app_id'), public_key: config.dig('discord', 'public_key')
 
 Location.find_or_create_by name: 'lark', lon: -86.9467261, lat: 40.4729654, aliases: ['lark apartments', 'lark apts', 'lark west lafayette']
 Location.find_or_create_by name: 'greater lafayette chinese alliance church', lon: -86.9720287, lat: 40.4521281, aliases: ['glcac', 'chinese alliance church', 'church']
 
 #data privacy or something
-config['users'].each do |user, data|
-  User.find_or_create_by data
+config['users'].each do |_, data|
+  User.find_or_create_by(discord_id: data['discord_id']) do |u|
+    u.name = data['name']
+    u.username = data['username']
+    u.grad_year = data['grad_year']
+    u.capacity = data['capacity']
+    u.leader = data['leader'] || false
+    bootstrap_password = SecureRandom.urlsafe_base64(32)
+    u.password = bootstrap_password
+    u.password_confirmation = bootstrap_password
+  end
 end

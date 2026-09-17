@@ -1,26 +1,44 @@
 require_relative 'hfile'
-require_relative 'scheduler'
-require_relative 'messenger'
-require_relative 'bot'
+require_relative 'app_manager'
 
-class Runner < Bot
+class Runner < AppManager
   def initialize
-    super(INFO.token)
+    super()
   end
 end
 
 begin
   r = Runner.new
+
+  # Set up signal handlers for clean shutdown
+  trap('INT') do
+    puts "\nShutting down bot..."
+    r.client&.stop
+    exit(0)
+  end
+
+  trap('TERM') do
+    puts "\nTerminating bot..."
+    r.client&.stop
+    exit(0)
+  end
+
   loop do
-    sleep(1.hour)
+    sleep(1)
   end
 rescue Interrupt
-  r.bot.join
-  exit
+  puts "Interrupt received"
+  r&.client&.stop
+  exit(0)
 rescue => err
   puts err
+  puts err.backtrace&.join("\n") || "No backtrace available"
   binding.irb
 ensure
-  r.bot.join
-  exit
+  begin
+    r&.client&.stop
+  rescue
+    # Ignored
+  end
+  exit(0)
 end
