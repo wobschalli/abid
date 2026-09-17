@@ -155,9 +155,7 @@ class Scheduler
     end
   end
 
-  def send_scheduled_message(event)
-    event = Event.find(event.id)
-    return unless event.scheduled? && !event.cancelled? && event.rides_message_id.nil?
+    return unless event.scheduled? && !event.cancelled? && (event.repeats_every == 'week' || event.rides_message_id.nil?)
 
     rides_message = @bot.client.send(event.channel.discord_id, event.message)
     event.emojis.each do |emoji|
