@@ -1,5 +1,6 @@
 require 'yaml'
 require 'active_record'
+require 'securerandom'
 
 #have to require models manually
 require_relative '../models/application_record'
@@ -51,6 +52,8 @@ config['users'].each do |_, data|
     u.grad_year = data['grad_year']
     u.capacity = data['capacity']
     u.leader = data['leader'] || false
-    u.password = 'default_password' # Default password, should be changed on first login
+    bootstrap_password = SecureRandom.urlsafe_base64(32)
+    u.password = bootstrap_password
+    u.password_confirmation = bootstrap_password
   end
 end
