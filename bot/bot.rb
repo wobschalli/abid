@@ -30,7 +30,7 @@ class Bot
 
   def dm_mods(message)
     [:dm_ian, :dm_alan, :dm_bfm].map do |send_msg|
-      send(send_msg, message)
+      public_send(send_msg, message)
     end
   end
 
