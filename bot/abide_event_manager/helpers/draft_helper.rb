@@ -84,6 +84,7 @@ module DraftHelper
   def persist_draft(draft, status:)
     if draft.persisted?
       evt = Event.find(draft.event_id)
+      @manager&.scheduler&.unschedule(evt) if status == :unpublished
       evt.update!(draft.to_event_attributes.merge(status: status, scheduled: (status == :scheduled)))
       evt.emojis = draft.emojis if draft.emojis.any?
       evt
@@ -101,8 +102,8 @@ module DraftHelper
 
   def unpublish_event(event, evt)
     event.defer_update
+    @manager&.scheduler&.unschedule(evt)
     evt.update!(status: :unpublished)
-    evt.unschedule
     event.edit_response content: "⏸️ Event **#{evt.name}** unpublished.", embeds: [event_dashboard_embed(evt)] do |_, view|
       render_event_management_components(view, evt)
     end
@@ -123,8 +124,8 @@ module DraftHelper
 
   def cancel_event(event, evt)
     event.defer_update
+    @manager&.scheduler&.unschedule(evt)
     evt.update!(status: :cancelled)
-    evt.unschedule
     event.edit_response content: "🚫 Event **#{evt.name}** has been cancelled.", embeds: [event_dashboard_embed(evt)] do |_, view|
       render_event_management_components(view, evt)
     end
