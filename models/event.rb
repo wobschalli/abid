@@ -4,7 +4,8 @@ class Event < ApplicationRecord
   belongs_to :organizer, class_name: 'User'
 
   has_many :event_signups, dependent: :destroy
-  has_many :riders, through: :event_signups, source: :user
+  has_many :rider_signups, -> { where(response_type: :rider) }, class_name: 'EventSignup'
+  has_many :riders, through: :rider_signups, source: :user
   has_many :emojis, dependent: :destroy
   has_many :ride_assignments, dependent: :destroy
 
