@@ -12,8 +12,8 @@ class Event < ApplicationRecord
            -> { where(role: :driver) },
            class_name: 'RideAssignment'
   has_many :drivers,
-           through: :driver_assignments,
-           source: :user
+           through: :ride_assignments,
+           source: :driver
 
   # unpublished (0) replaces the old "draft" state. Database rows in this state
   # are intentionally saved but not scheduled. cancelled (4) keeps historical
