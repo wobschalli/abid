@@ -61,7 +61,7 @@ class Matcher
     assignments.map do |assignment|
       assignment => { driver:, riders: }
 
-      rider_locations = riders.map { |r| [r.location.lon, r.location.lat] }
+      rider_locations = riders.map { |r| [r.location.lon.to_f.to_s, r.location.lat.to_f.to_s] }
 
       optimized_route = @map.create_trip(rider_locations)
       { driver: driver, riders: riders, route: optimized_route}
