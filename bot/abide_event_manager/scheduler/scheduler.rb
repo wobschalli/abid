@@ -114,7 +114,7 @@ class Scheduler
   end
 
   def schedule_existing_events
-    Event.upcoming.unscheduled.each do |event|
+    Event.where(status: :scheduled).upcoming.unscheduled.each do |event|
       next unless event.schedulable?
 
       begin
