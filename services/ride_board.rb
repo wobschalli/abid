@@ -33,7 +33,7 @@ class RideBoard
 
   # Drivers actually driving today.
   def cars
-    @cars ||= driver_rides.select(&:active?).map { |d| Car.new(d, passengers_for(d), clash_map) }
+    @cars ||= driver_rides.select(&:active?).map { |d| Car.new(d, passengers_for(d)) }
   end
 
   def pool
@@ -86,22 +86,42 @@ class RideBoard
     @focused ||= rides.find { |r| r.id == focus_ride_id }
   end
 
-  def clash_map
-    @clash_map ||= Clash.map_for(rides.map(&:user_id))
-  end
-
   # Memoised: the dispatch bar and every car badge read these, and both cost a
   # query.
   def readiness
     @readiness ||= DispatchReadiness.new(self)
   end
 
-  def dispatch_status
-    @dispatch_status ||= DispatchStatus.new(self)
+  # A sweep has been asked for and the bot has not done it yet. Scoped to the
+  # service DATE because a Sunday's two services share one sign-up post.
+  def sync_pending?
+    return false if service_date.nil?
+
+    SignupPost.reconcile_requested.where(service_date: service_date).exists?
   end
 
-  def clashes_for(ride)
-    clash_map[ride.user_id] || []
+  def signup_posts
+    @signup_posts ||= service_date ? SignupPost.where(service_date: service_date).to_a : []
+  end
+
+  # What the last sweep did, so the button can say more than nothing. nil until
+  # one has run.
+  #
+  # A failure on ANY post for the date wins: "2 added" next to a message the bot
+  # could not reach would read as success when half the roster is unverifiable.
+  def last_sync
+    posts = signup_posts.select { |p| p.reconciled_at.present? && p.reconcile_note.present? }
+    return nil if posts.empty?
+
+    posts.find { |p| p.reconcile_ok == false } || posts.max_by(&:reconciled_at)
+  end
+
+  def service_date
+    event.occurrence_date || event.start_time&.to_date
+  end
+
+  def dispatch_status
+    @dispatch_status ||= DispatchStatus.new(self)
   end
 
   # --- counters shown in the header and footer -----------------------------
@@ -118,10 +138,6 @@ class RideBoard
     cars.sum(&:seats_free)
   end
 
-  def conflict_count
-    cars.sum { |c| c.passengers.count { |p| c.conflict?(p) } }
-  end
-
   def overfull_count
     cars.count(&:over?)
   end
@@ -129,7 +145,6 @@ class RideBoard
   def warnings
     [].tap do |warn|
       warn << "#{pool_count} still without a ride" if pool_count.positive?
-      warn << "#{conflict_count} seated with someone they clash with" if conflict_count.positive?
       warn << "#{overfull_count} #{'car'.pluralize(overfull_count)} over capacity" if overfull_count.positive?
     end
   end
@@ -180,10 +195,9 @@ class RideBoard
   class Car
     attr_reader :ride, :passengers
 
-    def initialize(ride, passengers, clash_map)
+    def initialize(ride, passengers)
       @ride = ride
       @passengers = passengers
-      @clash_map = clash_map
     end
 
     def id = ride.id
@@ -202,21 +216,9 @@ class RideBoard
       [(used.to_f / seats * 100).round, 100].min
     end
 
-    # Two people in this car who have each other on their "won't ride with" list.
-    def conflict?(passenger)
-      others = passengers.map(&:user_id) - [passenger.user_id]
-      (@clash_map[passenger.user_id] || []).intersect?(others)
-    end
-
-    # Would seating `rider` here break a clash?
-    def clashes_with?(rider)
-      (@clash_map[rider.user_id] || []).intersect?(passengers.map(&:user_id))
-    end
-
     # The pill shown on each car while a rider is selected.
     def fit_for(rider)
       return nil if rider.nil?
-      return :clash if clashes_with?(rider)
       return :full if full?
       return :closest if zone.present? && zone == rider.zone
       :space

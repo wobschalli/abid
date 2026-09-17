@@ -54,13 +54,8 @@ class Components::RosterSnapshot < Phlex::HTML
     end
   end
 
-  def passenger(car, passenger)
-    conflict = car.conflict?(passenger)
-
-    div(class: "flex items-center gap-2 px-[11px] py-1.5 border-t border-line-soft #{conflict ? 'bg-warn-tint' : ''}") do
-      if conflict
-        span(title: 'clashed with someone in this car', class: 'w-[5px] h-[5px] rounded-full bg-warn flex-none')
-      end
+  def passenger(_car, passenger)
+    div(class: 'flex items-center gap-2 px-[11px] py-1.5 border-t border-line-soft') do
       div(class: 'flex-1 min-w-0 flex flex-col gap-px') do
         span(class: 'font-medium text-[12.5px] capitalize') { passenger.display_name }
         if passenger.address.present?

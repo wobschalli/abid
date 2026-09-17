@@ -67,8 +67,33 @@ class Location < ApplicationRecord
   # What to send a geocoder. The street address when we have one, because that
   # is a thing maps know about; the name only as a fallback, which works for
   # "Cary Quadrangle" and not at all for a leasing brand like "Third and West".
-  def geocode_query(context = 'West Lafayette, Indiana')
-    [address.presence || name, context].compact_blank.join(', ')
+  def geocode_query(context = nil)
+    [address.presence || name, context || city].compact_blank.join(', ')
+  end
+
+  # The city a place actually sits in. Nearly everything we touch is in West
+  # Lafayette, but the Lafayette zone is across the Wabash and is a different
+  # city with its own street numbering — there is a State Street on both sides.
+  # Appending the wrong one sends a driver over a bridge they did not need.
+  def city
+    zone == 'Lafayette' ? 'Lafayette, Indiana' : 'West Lafayette, Indiana'
+  end
+
+  # What to hand Google Maps for this place. A street address beats a lat/lon
+  # pair for the driver: it survives being read aloud to a passenger, it is
+  # recognisable as somewhere real, and Google resolves it to the building
+  # entrance rather than to whichever rooftop point we happened to geocode.
+  #
+  # nil when there is no address — a whole street, or a complex with no single
+  # door — and the caller falls back to coordinates.
+  def maps_query
+    return nil if address.blank?
+    # Some addresses already carry their own city and ZIP, because they had to:
+    # a rural grid address needs the ZIP to be unambiguous. Do not append a
+    # second city onto one of those.
+    return address if address.match?(/lafayette/i)
+
+    "#{address}, #{city}"
   end
 
   def self.canonical_zone(value)

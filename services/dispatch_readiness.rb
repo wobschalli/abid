@@ -13,7 +13,6 @@ class DispatchReadiness
   def findings
     @findings ||= [
       unseated_riders,
-      clashes,
       over_capacity,
       drivers_out_with_passengers,
       riders_without_a_pickup,
@@ -57,15 +56,6 @@ class DispatchReadiness
     Finding.new(key: :unseated, severity: :warn,
                 message: "#{@board.pool_count} still without a ride",
                 ride_ids: @board.pool.map(&:id))
-  end
-
-  def clashes
-    return if @board.conflict_count.zero?
-
-    ids = @board.cars.flat_map { |car| car.passengers.select { |p| car.conflict?(p) }.map(&:id) }
-    Finding.new(key: :clash, severity: :error,
-                message: "#{@board.conflict_count} seated with someone they clash with",
-                ride_ids: ids)
   end
 
   def over_capacity

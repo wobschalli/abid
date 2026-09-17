@@ -33,6 +33,7 @@ module Signup
         # logging an error each time. Stop polling something Discord has told us
         # is gone — but only when it said so definitively (see `load_message`).
         close_vanished(post) if @vanished
+        record(post, false, @vanished ? 'the sign-up message has been deleted' : 'could not reach the message')
         return Report.new(post: post, status: :message_gone)
       end
 
@@ -48,11 +49,33 @@ module Signup
       end
 
       reseed_missing_reactions(message, post, counts)
-      post.update!(reconciled_at: Time.zone.now, reconcile_requested_at: nil)
+      post.update!(reconciled_at: Time.zone.now, reconcile_requested_at: nil,
+                   reconcile_note: summarise(report), reconcile_ok: true)
       report
     rescue StandardError => e
       warn "reconcile of post #{post.id} failed: #{e.class}: #{e.message}"
+      record(post, false, "sync failed — #{e.class}")
       Report.new(post: post, status: :error)
+    end
+
+    # "nothing new" is a real answer and has to be distinguishable from a failure,
+    # which is the whole point of storing this.
+    def summarise(report)
+      changes = [
+        ("#{report.added} added" if report.added.positive?),
+        ("#{report.removed} removed" if report.removed.positive?)
+      ].compact
+
+      changes.empty? ? 'up to date — no changes' : changes.join(', ')
+    end
+
+    # Clears the request either way: a failure that left the flag set would be
+    # retried every 15 seconds forever.
+    def record(post, ok, note)
+      post.update_columns(reconciled_at: Time.zone.now, reconcile_requested_at: nil,
+                          reconcile_note: note, reconcile_ok: ok)
+    rescue StandardError => e
+      warn "could not record sync result for post #{post.id}: #{e.class}: #{e.message}"
     end
 
     private

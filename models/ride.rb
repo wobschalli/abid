@@ -18,11 +18,21 @@ class Ride < ApplicationRecord
   # passenger list is scoped to one occurrence instead of being a permanent
   # property of the user (which is what users.driver_id implied).
   belongs_to :driver_ride, class_name: 'Ride', optional: true
-  has_many :passengers, class_name: 'Ride', foreign_key: :driver_ride_id, dependent: :nullify
+  # Deliberately NOT `dependent: :nullify`. That option registers its own
+  # before_destroy when the association is declared, so it ran first and cleared
+  # driver_ride_id before anything else could look at the passengers — leaving
+  # `unseat_passengers` with an empty set and riders still marked 'assigned'.
+  # Doing both here, in order, is the only way they stay consistent.
+  has_many :passengers, class_name: 'Ride', foreign_key: :driver_ride_id
 
   has_many :signup_reactions, dependent: :nullify
 
   before_validation :canonicalize_zone
+  # Deleting a driver puts their riders back in the waiting queue, rather than
+  # taking them off the board along with the car. Somebody who dropped out of
+  # driving has not told us anything about whether their passengers still need
+  # a lift — they do, and they are now the most urgent people on the board.
+  before_destroy :unseat_passengers
 
   validates :role, inclusion: { in: ROLES }
   validates :status, inclusion: { in: STATUSES }
@@ -104,6 +114,25 @@ class Ride < ApplicationRecord
     pickup_address.presence || pickup&.name
   end
 
+  # What to put in the driver's Google Maps link for this pickup.
+  #
+  # Typed text first — it is a correction to where the pin sits ("north door",
+  # "apt 412"), and it is the more specific of the two. Then the location's own
+  # street address. nil when we have neither, and the route falls back to the
+  # coordinates.
+  #
+  # The typed text is passed through with the city appended only when it does
+  # not already name one, so "123 Vine St, Lafayette" is not turned into
+  # "123 Vine St, Lafayette, West Lafayette, Indiana".
+  def pickup_maps_query
+    return pickup&.maps_query if pickup_address.blank?
+
+    typed = pickup_address.strip
+    return typed if typed.match?(/lafayette/i)
+
+    [typed, pickup&.city || 'West Lafayette, Indiana'].join(', ')
+  end
+
   def out?
     OUT_STATUSES.include?(status)
   end
@@ -126,16 +155,21 @@ class Ride < ApplicationRecord
     user&.display_name.to_s
   end
 
-  # Riders this one must not share a car with.
-  def clash_user_ids
-    @clash_user_ids ||= Clash.ids_for(user_id)
-  end
-
   def to_s
     "#{user&.name || 'unknown'} (#{role}, #{status})"
   end
 
   private
+
+  # Status first, while the riders are still linked to this car; then the link.
+  #
+  # Only 'assigned' is reset: that status means "seated in a car", and the car
+  # is going. A rider who had confirmed or cancelled said something about
+  # themselves, not about this driver, and that survives.
+  def unseat_passengers
+    passengers.where(status: 'assigned').update_all(status: 'requested', updated_at: Time.current)
+    passengers.update_all(driver_ride_id: nil, updated_at: Time.current)
+  end
 
   # `self[:zone]`, never `self.zone` — the reader below is overridden to fall
   # through to the pickup location, so `self.zone = zone` would copy the

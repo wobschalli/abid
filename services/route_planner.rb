@@ -12,14 +12,22 @@ class RoutePlanner
   # Google's directions URL API caps intermediate waypoints.
   MAX_WAYPOINTS = 9
 
-  Stop = Struct.new(:kind, :ride_id, :name, :label, :lat, :lon, keyword_init: true) do
+  Stop = Struct.new(:kind, :ride_id, :name, :label, :address, :lat, :lon, keyword_init: true) do
     def coords?
       lat.present? && lon.present?
     end
 
-    # Coordinates when we have them — they are unambiguous — otherwise the
-    # address text, which Google will geocode.
+    # A street address first. It is what a driver can read aloud, check against
+    # a building sign, and recognise as somewhere real — "40.428813,-86.912233"
+    # is none of those, and Google resolves an address to the entrance rather
+    # than to whichever rooftop point we geocoded.
+    #
+    # Coordinates remain the fallback, and they are not a lesser answer: for a
+    # bare street or a complex with no single door they are the only honest
+    # one. Better an exact point on Vine Street than a house number nobody
+    # gave us.
     def maps_token
+      return address if address.present?
       return format('%.6f,%.6f', lat.to_f, lon.to_f) if coords?
 
       label.to_s
@@ -67,6 +75,11 @@ class RoutePlanner
             ride_id: passenger.id,
             name: passenger.display_name,
             label: passenger.address.presence || passenger.display_name,
+            # Free text the coordinator typed wins over the location's own
+            # address: "Hillenbrand, north door" and "Wiley, apt 412" are
+            # corrections to where the pin sits, and overriding them with the
+            # building's generic street number throws that knowledge away.
+            address: passenger.pickup_maps_query,
             lat: passenger.pickup&.lat,
             lon: passenger.pickup&.lon
           )
@@ -78,7 +91,8 @@ class RoutePlanner
     return nil if location.nil?
 
     Stop.new(kind: :destination, ride_id: nil, name: location.name,
-             label: location.name, lat: location.lat, lon: location.lon)
+             label: location.name, address: location.maps_query,
+             lat: location.lat, lon: location.lon)
   end
 
   # origin = first pickup, destination = the venue, everything else a waypoint.

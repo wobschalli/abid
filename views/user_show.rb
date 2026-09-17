@@ -9,6 +9,9 @@ require_relative 'components/master'
 class UserShow < Phlex::HTML
   include Components
 
+  # Must match App::NEW_LOCATION — the sentinel the "Other…" option submits.
+  OTHER = '__new__'.freeze
+
   def initialize(user:, locations:, load:, history:, leader: false, error: nil)
     @user = user
     @locations = locations
@@ -69,6 +72,7 @@ class UserShow < Phlex::HTML
 
       field('Home area') do
         location_select('location_id', @user.location_id)
+        new_location_fields('new_location')
         span(class: 'text-[11.5px] text-ink/60') do
           'Where they live. Used by any event that collects from home, and sets their zone on the board.'
         end
@@ -76,6 +80,7 @@ class UserShow < Phlex::HTML
 
       field('Friday class location') do
         location_select('class_location_id', @user.class_location_id)
+        new_location_fields('new_class_location')
         span(class: 'text-[11.5px] text-ink/60') do
           'Where they are before a Friday event — usually their last class, rarely where they live. ' \
           'Used only by events set to collect from class; falls back to home when blank.'
@@ -111,6 +116,26 @@ class UserShow < Phlex::HTML
     end
   end
 
+  # Hidden until "Other…" is chosen. Kept in the same form as everything else so
+  # it saves in one press; the server creates the place and points the member at
+  # it in the same request.
+  def new_location_fields(prefix)
+    return unless @leader
+
+    div(data_new_location: prefix, hidden: true,
+        class: 'flex flex-col gap-2 p-2.5 rounded-lg border border-dashed border-line bg-surface-sunk') do
+      input(type: 'text', name: "#{prefix}_name", placeholder: 'Name of the place',
+            class: 'board-input text-[12.5px] py-1.5')
+      div(class: 'flex gap-2') do
+        select(name: "#{prefix}_zone", class: 'board-input text-[12.5px] py-1.5 w-auto') do
+          Location::ZONES.each { |z| option(value: z) { z } }
+        end
+        input(type: 'text', name: "#{prefix}_address", placeholder: 'Street address (looked up on save)',
+              class: 'board-input text-[12.5px] py-1.5 flex-1')
+      end
+    end
+  end
+
   def field(label, &block)
     div(class: 'flex flex-col gap-[5px]') do
       span(class: 'board-label') { label }
@@ -130,8 +155,14 @@ class UserShow < Phlex::HTML
 
   # Grouped by zone so an 80-entry list stays navigable. Shared by both address
   # fields — they draw from the same set of places; only the question differs.
+  #
+  # "Other…" reveals an inline add rather than sending you to the Locations tab
+  # and back: the moment you discover a place is missing is while you are typing
+  # someone's details, and losing the half-filled form to go and create it is
+  # how a member ends up saved with no address at all.
   def location_select(name, selected_id)
-    select(name: name, disabled: !@leader, class: 'board-input') do
+    select(name: name, disabled: !@leader, class: 'board-input',
+           data_location_select: @leader ? name : nil) do
       option(value: '', selected: selected_id.nil?) { 'Not set' }
       @locations.group_by(&:zone).sort_by { |zone, _| Location::ZONES.index(zone) || 99 }.each do |zone, places|
         optgroup(label: zone || 'Unzoned') do
@@ -140,6 +171,7 @@ class UserShow < Phlex::HTML
           end
         end
       end
+      option(value: OTHER, selected: false) { 'Other — add a new place…' } if @leader
     end
   end
 

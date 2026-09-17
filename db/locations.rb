@@ -159,19 +159,83 @@ module Abid
       ['Wilmeth Active Learning Center', ['walc', 'wilmeth', 'active learning center']]
     ].freeze
 
-    # Street addresses, taken from each property's own listing and verified by
-    # geocoding them — every one below resolves inside Tippecanoe County.
+    # Street addresses, verified by geocoding — every one below resolves inside
+    # Tippecanoe County, and the campus entries are cross-checked against the
+    # coordinates we already held.
     #
-    # This is what makes a place findable. OpenStreetMap has never heard of
-    # "Third and West" or "Alight West Lafayette"; querying them unbounded
-    # returns nothing at all. It knows the streets they stand on perfectly well.
+    # Two jobs, and the second is why this list grew. Geocoding: OpenStreetMap
+    # has never heard of "Third and West" or "Alight West Lafayette", and
+    # querying them unbounded returns nothing at all — it knows the streets they
+    # stand on perfectly well. And the driver's route link, which now sends
+    # these rather than a lat/lon pair, so what the driver's phone shows is
+    # "465 Northwestern Ave" instead of "40.428813,-86.912233".
     #
-    # Streets are their own address, and the Purdue halls resolve by name, so
-    # only the named properties need an entry here.
+    # Campus addresses are from Purdue's own building inventory (the treasurer's
+    # office space report), not from guessing. Where the 2023 State Street
+    # renaming moved a building onto Mitch Daniels Boulevard, the current name
+    # is used.
+    #
+    # Deliberately absent: the bare street names — Vine, Brown, Waldron, Lincoln
+    # and the rest. A street is not an address, there is no number to look up,
+    # and inventing one would put a driver at a stranger's door. Those keep
+    # their coordinates, which are the honest answer for "somewhere on Vine".
     ADDRESSES = {
       # Purdue-owned
       'Third and West' => '1401 3rd Street',
       'Aspire at Discovery Park' => '1245 W State Street',
+
+      # Purdue academic buildings — last-class Friday pickups
+      'Electrical Engineering Building' => '465 Northwestern Avenue',
+      'Materials and Electrical Engineering Building' => '501 Northwestern Avenue',
+      'Mechanical Engineering Building' => '585 Purdue Mall',
+      'Knoy Hall of Technology' => '401 N Grant Street',
+      'Lambertus Hall' => '363 N Grant Street',
+      'Lilly Hall of Life Sciences' => '915 Mitch Daniels Boulevard',
+      'Krannert Building' => '403 Mitch Daniels Boulevard',
+      'Lawson Computer Science Building' => '305 N University Street',
+      'France A. Córdova Recreational Sports Center' => '355 N Martin Jischke Drive',
+      'Wetherill Laboratory of Chemistry' => '560 Oval Drive',
+      'Hampton Hall of Civil Engineering' => '550 Stadium Mall Drive',
+      'Forney Hall of Chemical Engineering' => '480 Stadium Mall Drive',
+      'Schleman Hall' => '475 Stadium Mall Drive',
+      'Grissom Hall' => '315 N Grant Street',
+      'Hawkins Hall' => '430 W Wood Street',
+      'Physics Building' => '525 Northwestern Avenue',
+      'Purdue Memorial Union' => '101 N Grant Street',
+      'Stanley Coulter Hall' => '640 Oval Drive',
+      'Class of 1950 Lecture Hall' => '648 Oval Drive',
+      'Chaney-Hale Hall of Science' => '460 N University Street',
+      'Brown Laboratory of Chemistry' => '425 Central Drive',
+      'Beering Hall' => '100 N University Street',
+      'Armstrong Hall' => '701 W Stadium Avenue',
+      'Wilmeth Active Learning Center' => '340 Centennial Mall Drive',
+
+      # Residence halls
+      'Cary Quadrangle' => '1000 W Stadium Avenue',
+      'Earhart Hall' => '1275 1st Street',
+      'Harrison Hall' => '107 Macarthur Drive',
+      'Hillenbrand Hall' => '1301 3rd Street',
+      'Honors College' => '1101 3rd Street',
+      'McCutcheon Hall' => '400 McCutcheon Drive',
+      'Meredith Hall' => '201 N Martin Jischke Drive',
+      'Meredith South' => '1225 1st Street',
+      'Owen Hall' => '1160 W Stadium Avenue',
+      'Shreve Hall' => '1275 3rd Street',
+      'Tarkington Hall' => '1165 W Stadium Avenue',
+      'Wiley Hall' => '500 N Martin Jischke Drive',
+      'Windsor Halls' => '207 N Russell Street',
+      'Winifred Parker Hall' => '1196 3rd Street',
+      'Frieda Parker Hall' => '401 N Russell Street',
+      'First Street Towers' => '1250 1st Street',
+
+      # Where we are actually going. Spelled out in full, with the ZIP, because
+      # Indiana's rural grid addresses are genuinely ambiguous: "3501 W 250 N"
+      # and "3501 N 250 W" are different roads 2.8km apart, and Nominatim picks
+      # the wrong one. The coordinates we hold are right — they reverse-geocode
+      # to the church by name — so this string is checked against them rather
+      # than trusted on its own. It is the destination of every route we send.
+      'greater lafayette chinese alliance church' => '3501 W 250 N, West Lafayette, IN 47906',
+
       # Private complexes
       'lark' => '3800 Campus Suites Boulevard',
       'Alight West Lafayette' => '2243 Sagamore Parkway West',

@@ -324,14 +324,6 @@ build_signup(
 # And a half-built draft.
 build_signup(rides_channel, sunday + 7, by_name['alan'], [['1️⃣', nil, nil]])
 
-# --- clashes ----------------------------------------------------------------
-
-# 'kenzo' and 'ronin' are in different cars; 'tim' and 'justin' are both in the
-# queue, so Auto-fill has to keep them apart.
-Clash.add(by_name['kenzo'].id, by_name['ronin'].id)
-Clash.add(by_name['tim'].id, by_name['justin'].id)
-Clash.add(by_name['dalton'].id, by_name['irene'].id) # deliberately seated together: shows the warning
-
 puts <<~SUMMARY
 
   done.

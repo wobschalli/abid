@@ -163,14 +163,47 @@ class Schedule < Phlex::HTML
   end
 
   def event_row(event)
-    a(href: "/board?event_id=#{event.id}",
-      class: 'flex items-center gap-3 px-3.5 py-2 no-underline text-ink hover:bg-surface-sunk') do
-      span(class: 'font-mono text-[11.5px] text-ink/70 w-[68px] shrink-0') do
-        event.start_time&.strftime('%-l:%M %p').to_s
+    div(class: 'flex items-center gap-1 pr-2 hover:bg-surface-sunk') do
+      a(href: "/board?event_id=#{event.id}",
+        class: "flex flex-1 min-w-0 items-center gap-3 px-3.5 py-2 no-underline text-ink #{event.disabled ? 'opacity-55' : ''}") do
+        span(class: 'font-mono text-[11.5px] text-ink/70 w-[68px] shrink-0') do
+          event.start_time&.strftime('%-l:%M %p').to_s
+        end
+        span(class: "flex-1 min-w-0 text-[13px] font-medium #{event.disabled ? 'line-through' : ''}") { event.name.to_s }
+        render Components::EventBadge.new(event: event) if event.disabled
+        span(class: 'board-meta whitespace-nowrap') { roster(event) }
       end
-      span(class: 'flex-1 min-w-0 text-[13px] font-medium') { event.name.to_s }
-      render Components::EventBadge.new(event: event) if event.disabled
-      span(class: 'board-meta whitespace-nowrap') { roster(event) }
+      cancel_button(event) if @leader
+    end
+  end
+
+  # Cancelling switches the occurrence OFF; it does not delete the row.
+  #
+  # Two reasons, and the first is not sentiment. The series regenerates its
+  # dates every day, so a deleted occurrence reappears within 24 hours — a
+  # tombstone is required either way, and `disabled` already is one:
+  # `ensure_occurrence` finds the row and leaves it alone. The second is that a
+  # past occurrence is the only record of who rode with whom.
+  #
+  # For a whole holiday use an academic break instead; this is for the one-off
+  # "no gathering this Friday".
+  def cancel_button(event)
+    confirm = if event.disabled
+                nil
+              else
+                "Cancel #{event.name} on #{event.start_time&.strftime('%-d %b')}? " \
+                'It stays on the schedule as cancelled, and nobody is dispatched for it.'
+              end
+
+    form(method: 'post', action: "/events/#{event.id}/disable", class: 'contents') do
+      input(type: 'hidden', name: 'return_to', value: '/schedule')
+      button(
+        type: 'submit',
+        data_confirm: confirm,
+        title: event.disabled ? 'put this date back on' : 'cancel just this date',
+        class: 'border-0 bg-transparent cursor-pointer text-[11px] font-medium px-1.5 py-1 rounded ' \
+               "#{event.disabled ? 'text-accent hover:bg-accent-tint' : 'text-ink/45 hover:text-danger'}"
+      ) { event.disabled ? 'Restore' : 'Cancel' }
     end
   end
 
@@ -245,7 +278,10 @@ class Schedule < Phlex::HTML
 
       div(class: 'flex flex-col gap-3 px-3.5 pb-3.5 pt-1') do
         @series.each { |s| series_row(s) }
-        series_actions if @leader
+        span(class: 'text-[11.5px] text-ink/60 px-1') do
+          'These keep generating on their own — nothing to press. Use the breaks ' \
+          'below to stop them over a holiday, or cancel a single date above.'
+        end
         breaks_section
       end
     end
@@ -270,20 +306,6 @@ class Schedule < Phlex::HTML
       s.location&.name,
       s.signup_schedule_label
     ].compact.join(' · ')
-  end
-
-  def series_actions
-    div(class: 'flex gap-2 flex-wrap') { generate_button }
-  end
-
-  # Occurrences are materialised daily by the bot, and creating or editing a
-  # series does it immediately — so this is only of use when the bot has been
-  # off. Saying so stops it reading as a step someone has to remember.
-  def generate_button
-    form(method: 'post', action: '/schedule/generate', class: 'contents') do
-      button(type: 'submit', class: 'board-btn',
-             title: 'Normally automatic — use this if the bot has been offline') { 'Generate now' }
-    end
   end
 
   def breaks_section

@@ -41,17 +41,6 @@ class DispatchReadinessTest < AbidTest
     assert readiness.ready?, 'unseated riders should not block the send'
   end
 
-  def test_a_clash_in_one_car_blocks
-    driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
-    a = make_rider(@event, 'kenzo', zone: ZONE_1, driver: driver)
-    b = make_rider(@event, 'ronin', zone: ZONE_1, driver: driver)
-    [a, b].each { |r| r.update!(pickup_address: 'x') }
-    Clash.add(a.user_id, b.user_id)
-
-    assert_includes keys, :clash
-    refute readiness.ready?
-  end
-
   def test_an_over_capacity_car_blocks
     driver = make_driver(@event, 'caleb', seats: 1, zone: ZONE_3)
     2.times { |i| make_rider(@event, "over #{i}", zone: ZONE_3, driver: driver).update!(pickup_address: 'x') }

@@ -20,6 +20,7 @@ class LocationsIndex < Phlex::HTML
       div(class: 'max-w-4xl flex flex-col gap-5 font-sans text-ink') do
         header
         note
+        add_form if @leader
         Location::ZONES.each { |zone| zone_section(zone, @by_zone[zone] || []) }
         zone_section('Unzoned', @unzoned) if @unzoned.any?
       end
@@ -39,13 +40,38 @@ class LocationsIndex < Phlex::HTML
     div(class: 'p-3.5 rounded-lg border border-line bg-surface-sunk text-[12.5px] leading-[1.6] text-ink/75') do
       plain 'Pickup areas around Purdue. The board groups the waiting queue by zone, '
       plain 'auto-fill prefers a driver in the same zone, and a driver collects one zone at a time. '
-      plain 'The list itself lives in '
+      plain 'The shared list lives in '
       code(class: 'font-mono text-[11.5px]') { 'db/locations.rb' }
-      plain '. Anything marked '
+      plain ', and you can add your own below. Anything marked '
       strong { 'no coords' }
       plain ' could not be found on the map by name — apartment brands are not map '
       plain 'features, but the streets they stand on are. Give it a street address '
       plain 'and it is looked up when you save.'
+    end
+  end
+
+  # The seed file is still the source of truth for the places everyone shares;
+  # this is for the ones it does not know about yet.
+  def add_form
+    form(method: 'post', action: '/locations',
+         class: 'flex flex-wrap gap-2 items-end p-3.5 rounded-lg border border-line bg-surface') do
+      label(class: 'flex flex-col gap-1 flex-1 min-w-[150px]') do
+        span(class: 'board-label') { 'New place' }
+        input(type: 'text', name: 'name', required: true, placeholder: 'e.g. Rise on Chauncey',
+              class: 'board-input text-[12.5px] py-1.5')
+      end
+      label(class: 'flex flex-col gap-1') do
+        span(class: 'board-label') { 'Zone' }
+        select(name: 'zone', class: 'board-input text-[12.5px] py-1.5 w-auto') do
+          Location::ZONES.each { |z| option(value: z) { z } }
+        end
+      end
+      label(class: 'flex flex-col gap-1 flex-1 min-w-[150px]') do
+        span(class: 'board-label') { 'Street address' }
+        input(type: 'text', name: 'address', placeholder: 'looked up on save',
+              class: 'board-input text-[12.5px] py-1.5')
+      end
+      button(type: 'submit', class: 'board-btn-solid') { 'Add' }
     end
   end
 
@@ -77,8 +103,32 @@ class LocationsIndex < Phlex::HTML
         end
         address_form(location)
       end
-      span(class: 'font-mono text-[11px] text-ink/70 whitespace-nowrap') { usage_label(location) }
+      div(class: 'flex items-center gap-2 shrink-0') do
+        span(class: 'font-mono text-[11px] text-ink/70 whitespace-nowrap') { usage_label(location) }
+        delete_button(location) if @leader
+      end
     end
+  end
+
+  # Offered only for a place nothing points at. Deleting one that is in use
+  # would blank somebody's home address with no way to recover what it was, so
+  # the button is simply absent rather than present-and-failing.
+  def delete_button(location)
+    return if in_use?(location)
+
+    form(method: 'post', action: "/locations/#{location.id}", class: 'contents') do
+      input(type: 'hidden', name: '_method', value: 'delete')
+      button(
+        type: 'submit',
+        data_confirm: "Delete #{location.name}? Nothing points at it.",
+        title: 'delete this place',
+        class: 'border-0 bg-transparent cursor-pointer text-ink/35 hover:text-danger text-[13px] font-mono px-1'
+      ) { '✕' }
+    end
+  end
+
+  def in_use?(location)
+    (@usage[location.id] || {}).values.sum.positive?
   end
 
   # Saving looks the address up straight away, so the feedback loop is one
@@ -103,7 +153,9 @@ class LocationsIndex < Phlex::HTML
     counts = @usage[location.id] || {}
     parts = []
     parts << "#{counts[:users]} live here" if counts[:users].to_i.positive?
+    parts << "#{counts[:classes]} class here" if counts[:classes].to_i.positive?
     parts << "#{counts[:rides]} pickups" if counts[:rides].to_i.positive?
-    parts.empty? ? '—' : parts.join(' · ')
+    parts << "#{counts[:events]} events" if counts[:events].to_i.positive?
+    parts.empty? ? 'unused' : parts.join(' · ')
   end
 end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 3300) do
+ActiveRecord::Schema[8.0].define(version: 3500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -31,17 +31,6 @@ ActiveRecord::Schema[8.0].define(version: 3300) do
     t.datetime "updated_at", null: false
     t.index ["server_id"], name: "index_channels_on_server_id"
     t.unique_constraint ["discord_id"]
-  end
-
-  create_table "clashes", force: :cascade do |t|
-    t.bigint "user_id", null: false
-    t.bigint "other_user_id", null: false
-    t.string "reason"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["other_user_id"], name: "index_clashes_on_other_user_id"
-    t.index ["user_id", "other_user_id"], name: "index_clashes_on_user_id_and_other_user_id", unique: true
-    t.index ["user_id"], name: "index_clashes_on_user_id"
   end
 
   create_table "discord_infos", force: :cascade do |t|
@@ -258,6 +247,8 @@ ActiveRecord::Schema[8.0].define(version: 3300) do
     t.datetime "reconcile_requested_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "reconcile_note"
+    t.boolean "reconcile_ok"
     t.index ["channel_id"], name: "index_signup_posts_on_channel_id"
     t.index ["created_by_id"], name: "index_signup_posts_on_created_by_id"
     t.index ["discord_message_id"], name: "index_signup_posts_on_discord_message_id", unique: true
@@ -303,8 +294,6 @@ ActiveRecord::Schema[8.0].define(version: 3300) do
   end
 
   add_foreign_key "channels", "servers"
-  add_foreign_key "clashes", "users"
-  add_foreign_key "clashes", "users", column: "other_user_id"
   add_foreign_key "dispatch_messages", "dispatches"
   add_foreign_key "dispatch_messages", "rides", column: "driver_ride_id", on_delete: :nullify
   add_foreign_key "dispatch_messages", "users", on_delete: :nullify

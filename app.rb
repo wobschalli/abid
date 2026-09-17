@@ -130,7 +130,9 @@ class App < Sinatra::Base
     require_leader!
     event = find_event(params[:id]) or halt 404, 'No such event'
     event.update(disabled: !event.disabled)
-    redirect to("/events/#{event.id}")
+    # Cancelling from the schedule should land back on the schedule. Only a
+    # known-safe internal path, never an arbitrary redirect target.
+    redirect to(params[:return_to] == '/schedule' ? '/schedule' : "/events/#{event.id}")
   end
 
   # --- members --------------------------------------------------------------
@@ -194,6 +196,35 @@ class App < Sinatra::Base
     )
   end
 
+  # Add a place that is not in db/locations.rb — a new complex, a building
+  # nobody had needed yet. Geocoded on save like the address form, so it is
+  # usable on the map immediately.
+  post '/locations' do
+    require_leader!
+    find_or_create_location(
+      name: params[:name], zone: params[:zone], address: params[:address]
+    ) or halt 422, 'A location needs a name'
+
+    redirect to('/locations')
+  end
+
+  # Only ever a place nothing points at. The usage counts on the page are the
+  # same ones checked here, so the button is not offered for anything in use —
+  # but the check is repeated server-side because a stale page is one click away
+  # from orphaning somebody's home address.
+  delete '/locations/:id' do
+    require_leader!
+    location = Location.find_by(id: params[:id]) or halt 404, 'No such location'
+
+    counts = location_usage[location.id] || {}
+    if counts.values.sum.positive?
+      halt 422, "#{location.name} is still in use — #{describe_usage(counts)}"
+    end
+
+    location.destroy
+    redirect to('/locations')
+  end
+
   # The address is the one piece of a location a human has to supply: OSM knows
   # streets, not leasing brands. Saving looks it up immediately so the feedback
   # is one press rather than a seed file and a rake task.
@@ -201,18 +232,7 @@ class App < Sinatra::Base
     require_leader!
     location = Location.find_by(id: params[:id]) or halt 404, 'No such location'
     location.update(address: params[:address].presence)
-
-    if location.address.present?
-      # Best-effort and never blocking: Nominatim is a third party, and a
-      # failed lookup must still keep the address that was typed.
-      coords = begin
-        Map.new.addr_to_coord(location.geocode_query)
-      rescue StandardError => e
-        warn "geocoding #{location.name} failed: #{e.class}: #{e.message}"
-        {}
-      end
-      location.update(lat: coords[:lat], lon: coords[:lon]) if coords[:lat].present?
-    end
+    geocode!(location) if location.address.present?
 
     redirect to('/locations')
   end
@@ -223,16 +243,8 @@ class App < Sinatra::Base
   # one page now; the old paths redirect so existing links and bookmarks work.
 
   get '/schedule' do
+    catch_up_on_occurrences
     phlex schedule_page
-  end
-
-  post '/schedule/generate' do
-    require_leader!
-    # Honours `disabled`, which the old per-series button did not — it would
-    # materialise occurrences the daily job would never have made.
-    EventGenerator.call
-    Signup::AutoSchedule.new.call
-    redirect to('/schedule')
   end
 
   get('/series') { redirect to('/schedule') }
@@ -519,7 +531,7 @@ class App < Sinatra::Base
   post '/board/:event_id/autofill' do
     with_board do |event, history|
       history.record(event.rides.unassigned.to_a)
-      AutoFiller.new(event, strategy: params[:strategy].to_s).call
+      AutoFiller.new(event).call
     end
   end
 
@@ -577,19 +589,18 @@ class App < Sinatra::Base
     end
   end
 
-  post '/board/:event_id/clashes' do
+  # Ask the bot to re-read this date's sign-up reactions. It polls for the
+  # request every 15 seconds, so nothing has changed by the time this renders —
+  # the board shows "syncing…" until the sweep lands.
+  #
+  # The web process has no Discord connection by design, so this is a flag on
+  # the post rather than a fetch. Scoped to the whole service DATE, not this one
+  # occurrence: a Sunday's two services share a sign-up post.
+  post '/board/:event_id/resync' do
     with_board do |event, _history|
-      a = event.rides.find(params[:ride_id]).user_id
-      b = event.rides.find(params[:other_ride_id]).user_id
-      Clash.add(a, b)
-    end
-  end
-
-  delete '/board/:event_id/clashes' do
-    with_board do |event, _history|
-      a = event.rides.find(params[:ride_id]).user_id
-      b = event.rides.find(params[:other_ride_id]).user_id
-      Clash.remove(a, b)
+      SignupPost.tracking
+                .where(service_date: event.occurrence_date || event.start_time&.to_date)
+                .update_all(reconcile_requested_at: Time.zone.now)
     end
   end
 
@@ -685,6 +696,37 @@ class App < Sinatra::Base
   # post that covers them.
   ScheduleDay = Struct.new(:date, :events, :post, keyword_init: true) do
     def channel_id = events.filter_map(&:channel_id).first
+  end
+
+  # Recurring events keep going on their own. The bot materialises occurrences
+  # once a day — but generation lived ONLY in the bot, so a bot that was off
+  # meant a schedule that quietly stopped, and the fix was a "Generate now"
+  # button the coordinator had to know to press. That is a job for the machine.
+  #
+  # Opening the schedule now does it too, so the page can never show you a gap
+  # it could have filled itself.
+  #
+  # The gate is "has the lookahead shrunk", not "did we run today":
+  # `last_generated_on` holds the FURTHEST occurrence generated, not the date of
+  # the run. Comparing it to today would sit idle until the horizon had already
+  # run out — the exact gap this is here to prevent. Compared instead against
+  # the series' own horizon, so a 3-week series regenerates once it is down to
+  # its last two weeks. One query on every other view.
+  #
+  # Both paths take the same advisory lock inside EventGenerator, so a web
+  # request and the bot's tick cannot duplicate each other's work.
+  def catch_up_on_occurrences
+    thin = EventSeries.generatable.where(
+      'last_generated_on IS NULL OR last_generated_on < CURRENT_DATE + ((horizon_weeks - 1) * 7)'
+    )
+    return unless thin.exists?
+
+    EventGenerator.call
+    Signup::AutoSchedule.new.call
+  rescue StandardError => e
+    # Never let this break the page — it is a background chore that happens to
+    # run in the foreground.
+    warn "catch-up generation failed: #{e.class}: #{e.message}"
   end
 
   def schedule_page(error: nil, weeks: 6)
@@ -783,11 +825,34 @@ class App < Sinatra::Base
   # Checkboxes are absent from the params when unticked, so both booleans are
   # read positionally rather than through `permitted` — each has a hidden '0'
   # in front of it in the form.
+  # The sentinel the "Other — add a new place…" option submits. Not an id, so it
+  # can never collide with one.
+  NEW_LOCATION = '__new__'.freeze
+
   def user_params
-    permitted(USER_FIELDS).merge(
+    attrs = permitted(USER_FIELDS).merge(
       'leader' => params[:leader] == '1',
       'active' => params[:active] == '1'
     )
+
+    # Resolved here rather than by bouncing through POST /locations, so adding a
+    # place and saving the member is one press and a half-filled form is never
+    # thrown away.
+    { 'location_id' => 'new_location', 'class_location_id' => 'new_class_location' }
+      .each do |field, prefix|
+        next unless attrs[field] == NEW_LOCATION
+
+        place = find_or_create_location(
+          name: params[:"#{prefix}_name"],
+          zone: params[:"#{prefix}_zone"],
+          address: params[:"#{prefix}_address"]
+        )
+        # A blank name leaves the field untouched rather than clearing it: the
+        # member's existing address is not collateral for a mis-click.
+        place ? attrs[field] = place.id : attrs.delete(field)
+      end
+
+    attrs
   end
 
   def user_page(user, error: nil)
@@ -804,12 +869,60 @@ class App < Sinatra::Base
   end
 
   # Two grouped counts rather than N per-row queries.
+  # Reused by the Locations page and by the member form's "Other…" option.
+  # Matching an existing name case-insensitively is deliberate: someone adding
+  # "hilltop" when "Hilltop Apartments" exists wants that place, not a second
+  # row that splits everyone who lives there across two entries.
+  #
+  # @return [Location, nil] nil only when the name is blank
+  def find_or_create_location(name:, zone: nil, address: nil)
+    name = name.to_s.strip
+    return nil if name.blank?
+
+    existing = Location.find_by('lower(name) = ?', name.downcase)
+    return existing if existing
+
+    location = Location.new(name: name, zone: zone.presence, address: address.presence)
+    return nil unless location.save
+
+    geocode!(location) if location.address.present?
+    location
+  end
+
+  # Best-effort and never blocking: Nominatim is a third party, and a failed
+  # lookup must still keep the address that was typed.
+  def geocode!(location)
+    coords = begin
+      Map.new.addr_to_coord(location.geocode_query)
+    rescue StandardError => e
+      warn "geocoding #{location.name} failed: #{e.class}: #{e.message}"
+      {}
+    end
+    location.update(lat: coords[:lat], lon: coords[:lon]) if coords[:lat].present?
+  end
+
+  def describe_usage(counts)
+    [
+      ("#{counts[:users]} live there" if counts[:users].to_i.positive?),
+      ("#{counts[:classes]} have class there" if counts[:classes].to_i.positive?),
+      ("#{counts[:rides]} pickups" if counts[:rides].to_i.positive?),
+      ("#{counts[:events]} events" if counts[:events].to_i.positive?)
+    ].compact.join(', ')
+  end
+
+  # Everything that points at a location. `classes` is not decoration: a place
+  # can be someone's Friday last-class pickup and nothing else, and leaving it
+  # out here would show that location as unused and let it be deleted out from
+  # under them.
   def location_usage
     users = User.where.not(location_id: nil).group(:location_id).count
+    classes = User.where.not(class_location_id: nil).group(:class_location_id).count
     rides = Ride.where.not(pickup_location_id: nil).group(:pickup_location_id).count
+    events = Event.where.not(location_id: nil).group(:location_id).count
 
-    (users.keys | rides.keys).to_h do |id|
-      [id, { users: users[id].to_i, rides: rides[id].to_i }]
+    (users.keys | classes.keys | rides.keys | events.keys).to_h do |id|
+      [id, { users: users[id].to_i, classes: classes[id].to_i,
+             rides: rides[id].to_i, events: events[id].to_i }]
     end
   end
 
@@ -853,8 +966,7 @@ class App < Sinatra::Base
       ),
       can_undo: AssignmentHistory.new(session, event).any?,
       leader: leader?,
-      tab: params[:tab] == 'roster' ? :roster : :details,
-      strategy: params[:strategy].presence || 'closest'
+      tab: params[:tab] == 'roster' ? :roster : :details
     )
   end
 

@@ -36,6 +36,11 @@ class DispatchStatus
     states[driver_ride.id] || :never
   end
 
+  # When they pressed "Got it", so the board can say more than "at some point".
+  def acknowledged_at_for(driver_ride)
+    last_messages[driver_ride.id]&.acknowledged_at
+  end
+
   # Drivers who need a message: never sent, changed since, or last attempt
   # failed.
   def stale_driver_rides

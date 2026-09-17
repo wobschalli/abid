@@ -48,55 +48,43 @@ class AutoFillerTest < AbidTest
     assert_equal full.id, seated.reload.driver_ride_id
   end
 
-  def test_keeps_clashing_riders_apart
-    event = make_event
-    a = make_driver(event, 'ian', seats: 4, zone: ZONE_1)
-    b = make_driver(event, 'caleb', seats: 4, zone: ZONE_1)
-    one = make_rider(event, 'kenzo', zone: ZONE_1)
-    two = make_rider(event, 'ronin', zone: ZONE_1)
-    Clash.add(one.user_id, two.user_id)
-
-    AutoFiller.new(event).call
-
-    refute_nil one.reload.driver_ride_id
-    refute_nil two.reload.driver_ride_id
-    refute_equal one.reload.driver_ride_id, two.reload.driver_ride_id
-    assert_includes [a.id, b.id], one.reload.driver_ride_id
-  end
-
-  def test_leaves_rider_waiting_rather_than_breaking_a_clash
-    event = make_event
-    only = make_driver(event, 'ian', seats: 4, zone: ZONE_1)
-    seated = make_rider(event, 'kenzo', zone: ZONE_1, driver: only)
-    waiting = make_rider(event, 'ronin', zone: ZONE_1)
-    Clash.add(seated.user_id, waiting.user_id)
-
-    AutoFiller.new(event).call
-
-    assert_nil waiting.reload.driver_ride_id
-  end
-
-  def test_closest_zone_strategy_prefers_matching_zone
+  def test_prefers_a_driver_in_the_rider_s_zone
     event = make_event
     far = make_driver(event, 'far', seats: 4, zone: ZONE_3)
     near = make_driver(event, 'near', seats: 4, zone: ZONE_5)
     # `far` is emptier only if we ignore zone; both are empty here, so zone decides.
     rider = make_rider(event, 'renata', zone: ZONE_5)
 
-    AutoFiller.new(event, strategy: 'closest').call
+    AutoFiller.new(event).call
 
     assert_equal near.id, rider.reload.driver_ride_id
     refute_equal far.id, rider.reload.driver_ride_id
   end
 
-  def test_spread_strategy_balances_across_cars
+  # Zone wins over emptiness — that is what "closest first" means. The old
+  # "spread evenly" strategy would have put this rider in `quiet`; there is no
+  # longer a way to ask for that, and this pins which of the two we kept.
+  def test_zone_beats_a_shorter_car
     event = make_event
     busy = make_driver(event, 'busy', seats: 4, zone: ZONE_5)
     quiet = make_driver(event, 'quiet', seats: 4, zone: ZONE_3)
     3.times { |i| make_rider(event, "seated #{i}", zone: ZONE_5, driver: busy) }
     rider = make_rider(event, 'newcomer', zone: ZONE_5)
 
-    AutoFiller.new(event, strategy: 'spread').call
+    AutoFiller.new(event).call
+
+    assert_equal busy.id, rider.reload.driver_ride_id
+  end
+
+  # Among drivers in the same zone the emptiest car still wins.
+  def test_emptiest_car_wins_within_a_zone
+    event = make_event
+    busy = make_driver(event, 'busy', seats: 4, zone: ZONE_5)
+    quiet = make_driver(event, 'quiet', seats: 4, zone: ZONE_5)
+    3.times { |i| make_rider(event, "seated #{i}", zone: ZONE_5, driver: busy) }
+    rider = make_rider(event, 'newcomer', zone: ZONE_5)
+
+    AutoFiller.new(event).call
 
     assert_equal quiet.id, rider.reload.driver_ride_id
   end
@@ -120,13 +108,4 @@ class AutoFillerTest < AbidTest
     assert_nil away.reload.driver_ride_id
   end
 
-  def test_unknown_strategy_falls_back_to_closest
-    event = make_event
-    make_driver(event, 'ian', seats: 4, zone: ZONE_1)
-    rider = make_rider(event, 'caitlin', zone: ZONE_1)
-
-    AutoFiller.new(event, strategy: 'nonsense').call
-
-    refute_nil rider.reload.driver_ride_id
-  end
 end

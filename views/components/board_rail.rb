@@ -85,7 +85,6 @@ class Components::BoardRail < Phlex::HTML
         end
       end
 
-      clashes(ride) if ride.rider?
       person_actions(ride) if @leader
     end
   end
@@ -149,56 +148,9 @@ class Components::BoardRail < Phlex::HTML
       name: 'note',
       rows: 3,
       disabled: !@leader,
-      placeholder: 'Car seat needed, gets picked up at the back door, avoid pairing with…',
+      placeholder: 'Car seat needed, gets picked up at the back door…',
       class: 'board-input resize-y text-[12.5px] leading-[1.5]'
     ) { ride.note.to_s }
-  end
-
-  # "WON'T RIDE WITH" — user-level, so it carries across weeks.
-  def clashes(ride)
-    div(class: 'flex flex-col gap-1.5 pt-1 border-t border-line') do
-      span(class: 'board-label pt-2.5') { "Won't ride with" }
-      div(class: 'flex flex-wrap gap-1.5') do
-        clash_rides(ride).each { |other| clash_chip(ride, other) }
-        clash_picker(ride) if @leader
-      end
-    end
-  end
-
-  def clash_rides(ride)
-    ids = @board.clashes_for(ride)
-    @board.rider_rides.select { |r| ids.include?(r.user_id) && r.id != ride.id }
-  end
-
-  def clash_chip(ride, other)
-    span(class: 'flex items-center gap-1.5 font-medium text-[11px] bg-danger-tint text-danger pl-2.5 pr-1.5 py-1 rounded-full capitalize') do
-      plain other.display_name
-      next unless @leader
-
-      action_form('clashes', method: 'delete', ride_id: ride.id, other_ride_id: other.id, class: 'contents') do
-        button(
-          type: 'submit',
-          class: 'border-0 bg-transparent text-danger font-mono text-[11px] font-semibold cursor-pointer px-0.5 opacity-60 hover:opacity-100'
-        ) { '✕' }
-      end
-    end
-  end
-
-  def clash_picker(ride)
-    existing = @board.clashes_for(ride)
-    options = @board.rider_rides.reject { |r| r.id == ride.id || existing.include?(r.user_id) }
-    return if options.empty?
-
-    action_form('clashes', ride_id: ride.id, class: 'contents') do
-      select(
-        name: 'other_ride_id',
-        data_board_autosubmit: true,
-        class: 'border border-dashed border-line rounded-full px-2 py-1 text-[11px] font-medium text-ink/55 bg-transparent cursor-pointer'
-      ) do
-        option(value: '') { '+ add' }
-        options.each { |r| option(value: r.id) { r.display_name } }
-      end
-    end
   end
 
   def person_actions(ride)

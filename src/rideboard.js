@@ -66,11 +66,35 @@ document.addEventListener('submit', event => {
   submitForm(form)
 })
 
-// "+ add" clash picker submits on change.
+// "Other — add a new place…" on the member form reveals the inline fields for
+// it. The panel sits in the same form, so picking Other and filling it in saves
+// the member and creates the place in one press.
+const NEW_LOCATION = '__new__'
+
 document.addEventListener('change', event => {
-  const select = event.target.closest('[data-board-autosubmit]')
-  if (!select || !select.value) return
-  submitForm(select.closest('form'))
+  const select = event.target.closest('[data-location-select]')
+  if (!select) return
+
+  const prefix = select.dataset.locationSelect === 'class_location_id'
+    ? 'new_class_location'
+    : 'new_location'
+  const panel = select.form?.querySelector(`[data-new-location="${prefix}"]`)
+  if (!panel) return
+
+  const adding = select.value === NEW_LOCATION
+  panel.hidden = !adding
+  if (adding) panel.querySelector('input')?.focus()
+})
+
+// Ordinary forms outside the board — cancelling a date on the schedule, say.
+// The board's own handler above swallows its forms and AJAXes them instead;
+// this one only confirms, then lets the browser submit normally.
+document.addEventListener('submit', event => {
+  const form = event.target
+  if (!form.matches('form') || form.closest('[data-board-form]')) return
+
+  const confirmable = form.querySelector('[data-confirm]')
+  if (confirmable && !window.confirm(confirmable.dataset.confirm)) event.preventDefault()
 })
 
 // --- live filter -----------------------------------------------------------

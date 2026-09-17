@@ -604,7 +604,149 @@ class RoutesTest < AbidTest
     assert_equal 0, record.reload.options.count
   end
 
+  # --- things that broke silently because nothing covered them ------------
+
+  def test_the_board_map_renders_for_an_event_with_no_rides
+    get_ok("/board/#{@event.id}/map")
+  end
+
+  def test_queueing_a_dispatch_from_the_board
+    driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    make_rider(@event, 'caitlin', zone: ZONE_1, driver: driver)
+
+    as_leader
+    post "/board/#{@event.id}/dispatch", scope: 'all'
+
+    # POST-redirect-GET for a normal form submit; the board itself is re-rendered
+    # inline only for the XHR path the JS uses.
+    assert_equal 302, last_response.status, last_response.body.to_s[0, 300]
+    assert_equal 1, @event.dispatches.count
+    assert_equal 1, @event.dispatches.first.messages.count
+  end
+
+  # --- deleting a driver ---------------------------------------------------
+
+  def test_deleting_a_driver_returns_their_riders_to_the_queue
+    driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    rider = make_rider(@event, 'caitlin', zone: ZONE_1, driver: driver)
+
+    as_leader
+    delete "/board/#{@event.id}/rides/#{driver.id}"
+
+    rider.reload
+    assert_nil rider.driver_ride_id, 'rider was left pointing at a deleted driver'
+    # Not just unlinked — no longer claiming to be seated in a car that is gone.
+    assert_equal 'requested', rider.status
+    assert_includes RideBoard.new(@event.reload).pool.map(&:id), rider.id
+  end
+
+  def test_deleting_a_driver_leaves_a_cancelled_rider_cancelled
+    driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    away = make_rider(@event, 'gone', zone: ZONE_1, driver: driver, status: 'cancelled')
+
+    as_leader
+    delete "/board/#{@event.id}/rides/#{driver.id}"
+
+    # 'cancelled' is a statement about the rider, not about this driver.
+    assert_equal 'cancelled', away.reload.status
+  end
+
+  # --- cancelling one date -------------------------------------------------
+
+  def test_cancelling_an_occurrence_from_the_schedule_keeps_the_row
+    as_leader
+    post "/events/#{@event.id}/disable", return_to: '/schedule'
+
+    assert_includes last_response.location, '/schedule'
+    assert @event.reload.disabled, 'the occurrence was not switched off'
+    # Deleting would let the daily generator recreate it; disabling is the
+    # tombstone that survives regeneration.
+    assert Event.exists?(@event.id)
+  end
+
+  # --- locations -----------------------------------------------------------
+
+  def test_adding_a_location
+    as_leader
+    post '/locations', name: 'Somewhere New', zone: Location::ZONES.first
+
+    assert_equal 302, last_response.status
+    assert Location.exists?(name: 'Somewhere New')
+  end
+
+  def test_adding_a_location_that_already_exists_reuses_it
+    Location.create!(name: 'Hilltop Apartments', zone: Location::ZONES.first)
+
+    as_leader
+    assert_no_difference_in_locations do
+      post '/locations', name: 'hilltop apartments', zone: Location::ZONES.first
+    end
+  end
+
+  def test_a_location_in_use_cannot_be_deleted
+    place = Location.create!(name: 'Lived In', zone: Location::ZONES.first)
+    @leader.update!(location: place)
+
+    as_leader
+    delete "/locations/#{place.id}"
+
+    assert_equal 422, last_response.status
+    assert Location.exists?(place.id), 'a location someone lives at was deleted'
+  end
+
+  # A place used ONLY as a Friday class pickup still counts as in use — this is
+  # the case the usage query originally missed.
+  def test_a_class_only_location_cannot_be_deleted
+    place = Location.create!(name: 'Lecture Hall', zone: Location::ZONES.first)
+    @leader.update!(class_location: place)
+
+    as_leader
+    delete "/locations/#{place.id}"
+
+    assert_equal 422, last_response.status
+    assert Location.exists?(place.id)
+  end
+
+  def test_an_unused_location_can_be_deleted
+    place = Location.create!(name: 'Nowhere', zone: Location::ZONES.first)
+
+    as_leader
+    delete "/locations/#{place.id}"
+
+    refute Location.exists?(place.id)
+  end
+
+  # "Other — add a new place…" on the member form: one submit creates the place
+  # and points the member at it.
+  def test_choosing_other_creates_the_location_and_assigns_it
+    as_leader
+    patch "/users/#{@leader.id}", location_id: '__new__',
+          new_location_name: 'Brand New Flats',
+          new_location_zone: Location::ZONES.first
+
+    place = Location.find_by(name: 'Brand New Flats')
+    refute_nil place, 'the new location was not created'
+    assert_equal place.id, @leader.reload.location_id
+  end
+
+  # A mis-click on "Other" with nothing typed must not wipe an address we have.
+  def test_choosing_other_with_no_name_leaves_the_existing_location_alone
+    place = Location.create!(name: 'Home', zone: Location::ZONES.first)
+    @leader.update!(location: place)
+
+    as_leader
+    patch "/users/#{@leader.id}", location_id: '__new__', new_location_name: '  '
+
+    assert_equal place.id, @leader.reload.location_id
+  end
+
   private
+
+  def assert_no_difference_in_locations
+    before = Location.count
+    yield
+    assert_equal before, Location.count, 'a duplicate location row was created'
+  end
 
   # EmojiKey's <:name:id> pattern requires a real snowflake (15-25 digits), so
   # the short synthetic ids the other tests use would not parse.

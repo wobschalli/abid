@@ -32,16 +32,11 @@ module Abid
         counts['demo servers']   = servers.count
         counts['sign-up posts']  = posts.count
         counts['dispatches']     = Dispatch.count
-        counts['clashes']        = Clash.where(user: users).count
 
         if apply
           # The dispatch log only ever described the demo board.
           DispatchMessage.delete_all
           Dispatch.delete_all
-
-          # Clash has no dependent: :destroy from User, so it would block the
-          # delete rather than follow it.
-          Clash.where(user: users).delete_all
 
           # destroy_all, not delete_all: options and their reactions cascade.
           posts.destroy_all

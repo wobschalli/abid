@@ -113,32 +113,6 @@ class RideBoardTest < AbidTest
     assert_includes board.warning_text, 'over capacity'
   end
 
-  def test_detects_a_clash_inside_one_car
-    event = make_event
-    driver = make_driver(event, 'ian', seats: 4, zone: ZONE_1)
-    one = make_rider(event, 'kenzo', zone: ZONE_1, driver: driver)
-    two = make_rider(event, 'ronin', zone: ZONE_1, driver: driver)
-    Clash.add(one.user_id, two.user_id)
-
-    board = RideBoard.new(event)
-    car = board.cars.first
-
-    assert car.conflict?(car.passengers.find { |p| p.id == one.id })
-    assert_equal 2, board.conflict_count
-    assert_includes board.warning_text, 'clash'
-  end
-
-  def test_no_clash_when_the_other_person_is_in_a_different_car
-    event = make_event
-    a = make_driver(event, 'ian', seats: 4, zone: ZONE_1)
-    b = make_driver(event, 'caleb', seats: 4, zone: ZONE_1)
-    one = make_rider(event, 'kenzo', zone: ZONE_1, driver: a)
-    two = make_rider(event, 'ronin', zone: ZONE_1, driver: b)
-    Clash.add(one.user_id, two.user_id)
-
-    assert_equal 0, RideBoard.new(event).conflict_count
-  end
-
   def test_fit_pill_reflects_the_selected_rider
     event = make_event
     near = make_driver(event, 'near', seats: 4, zone: ZONE_5)

@@ -23,14 +23,12 @@ module BoardHelpers
   end
 
   FIT_PILLS = {
-    clash: 'bg-danger-tint text-danger',
     full: 'bg-ink/[.07] text-ink/70',
     closest: 'bg-ink text-ink-invert',
     space: 'bg-accent-tint text-accent'
   }.freeze
 
   FIT_LABELS = {
-    clash: 'clash',
     full: 'full',
     closest: 'closest',
     space: 'space'

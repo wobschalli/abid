@@ -11,13 +11,12 @@ class Components::BoardShell < Phlex::HTML
 
   ROOT_ID = 'ride-board'.freeze
 
-  def initialize(board:, can_undo: false, leader: false, tab: :details, strategy: 'closest')
+  def initialize(board:, can_undo: false, leader: false, tab: :details)
     @board = board
     @event = board.event
     @can_undo = can_undo
     @leader = leader
     @tab = tab
-    @strategy = strategy
   end
 
   def view_template
@@ -50,6 +49,7 @@ class Components::BoardShell < Phlex::HTML
       slot_tabs
       div(class: 'flex-1')
       undo_button
+      sync_button if @leader
       a(
         href: "/board/#{@event.id}/map",
         class: 'board-btn no-underline text-ink'
@@ -133,23 +133,53 @@ class Components::BoardShell < Phlex::HTML
     end
   end
 
+  # Auto-fill is always closest-first. There used to be a strategy dropdown
+  # next to this button; it made you answer a question before you could press
+  # the thing you came to press, and the alternative only differed once zones
+  # already matched.
   def autofill_form
-    action_form('autofill', class: 'flex items-center gap-2') do
-      select(
-        name: 'strategy',
-        class: 'board-input w-auto py-[7px] text-xs',
-        aria_label: 'Auto-fill strategy'
-      ) do
-        AutoFiller::STRATEGIES.each do |value, label|
-          option(value: value, selected: value == @strategy) { label }
-        end
-      end
+    action_form('autofill', class: 'contents') do
       button(type: 'submit', class: 'board-btn-solid whitespace-nowrap') do
         plain 'Auto-fill'
         whitespace
         plain @board.pool_count.to_s
       end
     end
+  end
+
+  # Reactions arrive after the sign-up is posted, and a gateway event can be
+  # dropped. This asks the bot to re-read them from Discord.
+  #
+  # It cannot show the result: the web process has no Discord connection, so
+  # this sets a flag the bot picks up within 15 seconds. Saying "syncing…"
+  # until it lands is the honest version — the alternative is a button that
+  # looks like it did nothing.
+  def sync_button
+    if @board.sync_pending?
+      return span(class: 'board-btn opacity-60 cursor-default',
+                  title: 'the bot re-reads reactions within 15 seconds') { 'Syncing…' }
+    end
+
+    div(class: 'flex items-center gap-1.5') do
+      action_form('resync', class: 'contents') do
+        button(type: 'submit', class: 'board-btn whitespace-nowrap',
+               title: 'Re-read this date\'s sign-up reactions from Discord') { 'Sync from Discord' }
+      end
+      sync_result
+    end
+  end
+
+  # The outcome of the last sweep. "No changes" and "could not reach the
+  # message" look identical without this, and they mean opposite things.
+  def sync_result
+    post = @board.last_sync
+    return if post.nil?
+
+    failed = post.reconcile_ok == false
+    span(
+      title: "last synced #{post.reconciled_at.strftime('%-l:%M %p')}",
+      class: "text-[11px] whitespace-nowrap #{failed ? 'text-danger font-medium' : 'text-ink/55'}"
+    ) { failed ? "⚠ #{post.reconcile_note}" : post.reconcile_note.to_s }
   end
 
   def car_grid

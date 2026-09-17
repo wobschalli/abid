@@ -44,7 +44,7 @@ class Components::BoardCar < Phlex::HTML
         'border-line'
       end
 
-    dim = %i[clash full].include?(@fit) ? 'opacity-[.42]' : 'opacity-100'
+    dim = @fit == :full ? 'opacity-[.42]' : 'opacity-100'
 
     "flex flex-col bg-surface border #{border} rounded-[10px] self-start #{dim} transition-[opacity,border-color] duration-150"
   end
@@ -79,21 +79,47 @@ class Components::BoardCar < Phlex::HTML
   end
 
   # Whether this driver has been told, and whether anything has changed since.
+  #
+  # Confirmed is a dot, not a word. It is the state you scan a whole board for
+  # on a Sunday morning — "who has not come back to me?" — and a row of green
+  # dots answers that at a glance in a way five repetitions of "✓ confirmed"
+  # does not. The states that need a human to DO something keep their words,
+  # because a coloured dot cannot say "changed since you sent it".
   DISPATCH_BADGES = {
     queued: ['bg-ink/[.07] text-ink/70', 'sending…'],
     sent: ['bg-ink/[.07] text-ink/70', 'sent'],
-    confirmed: ['bg-accent-tint text-accent', '✓ confirmed'],
     changed: ['bg-warn-tint text-warn-ink', 'changed'],
     failed: ['bg-danger-tint text-danger', 'dm failed']
   }.freeze
 
   def dispatch_badge
-    style, label = DISPATCH_BADGES[@board.dispatch_status.state_for(@car.ride)]
+    state = @board.dispatch_status.state_for(@car.ride)
+    return confirmed_dot if state == :confirmed
+
+    style, label = DISPATCH_BADGES[state]
     return if style.nil? # :never — no badge until something has been sent
 
     span(class: "font-mono text-[9.5px] font-semibold tracking-[.06em] px-[7px] py-[3px] rounded-[5px] #{style}") do
       label
     end
+  end
+
+  # Titled, not colour alone: a green dot is meaningless to anyone who cannot
+  # see green, and it says nothing about WHEN they confirmed.
+  def confirmed_dot
+    span(
+      title: confirmed_title,
+      aria_label: confirmed_title,
+      role: 'img',
+      class: 'w-[9px] h-[9px] rounded-full bg-accent flex-none self-center ring-2 ring-accent/20'
+    )
+  end
+
+  def confirmed_title
+    at = @board.dispatch_status.acknowledged_at_for(@car.ride)
+    return 'confirmed — pressed “Got it” on their DM' if at.nil?
+
+    "confirmed #{at.strftime('%a %-l:%M %p')} — pressed “Got it” on their DM"
   end
 
   def edit_link
@@ -114,25 +140,17 @@ class Components::BoardCar < Phlex::HTML
   end
 
   def passenger_row(passenger)
-    conflict = @car.conflict?(passenger)
     focused = @board.focus_ride_id == passenger.id
 
     div(
       class: [
         'flex items-center gap-2 px-[11px] py-1.5 border-t border-line-soft',
-        conflict ? 'bg-warn-tint' : (focused ? 'bg-ink/[.06]' : 'bg-transparent')
+        focused ? 'bg-ink/[.06]' : 'bg-transparent'
       ].join(' '),
       draggable: @leader.to_s,
       data_ride_id: passenger.id,
       data_draggable_rider: @leader.to_s
     ) do
-      if conflict
-        span(
-          title: 'clashes with someone in this car',
-          class: 'w-[5px] h-[5px] rounded-full bg-warn flex-none'
-        )
-      end
-
       a(href: board_url(focus: passenger.id), class: 'flex-1 flex flex-col gap-px min-w-0 no-underline text-ink') do
         span(class: 'font-medium text-[12.5px] capitalize') { passenger.display_name }
         if passenger.address.present?

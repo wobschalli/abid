@@ -54,6 +54,7 @@ class DriverBriefing
       # `capitalize` would turn "juno wa" into "Juno wa".
       name = rider['name'].to_s.split.map(&:capitalize).join(' ')
       bits = ["#{index + 1}. #{name}"]
+      bits << "(@#{rider['username']})" if rider['username'].present?
       bits << "— #{rider['pickup']}" if rider['pickup'].present?
       bits << "— #{rider['phone']}" if rider['phone'].present?
       line = bits.join(' ')

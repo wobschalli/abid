@@ -69,8 +69,6 @@ module Abid
         rides.update_all(driver_ride_id: nil)
         rides.delete_all
 
-        # Clash is a user-to-user pair that outlives any occurrence, so it is
-        # deliberately untouched here.
         SignupOption.where(event_id: events.select(:id)).update_all(event_id: nil)
         DispatchMessage.where(dispatch_id: Dispatch.where(event_id: events.select(:id)).select(:id)).delete_all
         Dispatch.where(event_id: events.select(:id)).delete_all

@@ -5,12 +5,11 @@ require_relative 'components/master'
 class Board < Phlex::HTML
   include Components
 
-  def initialize(board:, can_undo: false, leader: false, tab: :details, strategy: 'closest')
+  def initialize(board:, can_undo: false, leader: false, tab: :details)
     @board = board
     @can_undo = can_undo
     @leader = leader
     @tab = tab
-    @strategy = strategy
   end
 
   def fragment
@@ -30,8 +29,7 @@ class Board < Phlex::HTML
       board: @board,
       can_undo: @can_undo,
       leader: @leader,
-      tab: @tab,
-      strategy: @strategy
+      tab: @tab
     )
   end
 end

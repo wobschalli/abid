@@ -112,6 +112,11 @@ class DispatchPlanner
       'ride_id' => stop.ride_id,
       'user_id' => ride&.user_id,
       'name' => stop.name,
+      # The Discord handle, so a driver can reach them where the message they
+      # are reading already is. A phone number is the better channel at 6:15am
+      # outside a locked apartment block; a handle is the one that works when
+      # somebody never filled their number in, which is most people.
+      'username' => ride&.user&.username,
       'pickup' => stop.label,
       'zone' => ride&.zone,
       'phone' => ride&.user&.phone,
