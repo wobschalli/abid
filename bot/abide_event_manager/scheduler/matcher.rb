@@ -84,6 +84,7 @@ class Matcher
           event: event,
           driver: assignment[:driver],
           user: rider,
+          role: :driver,
           route: assignment[:route]
         )
       end
