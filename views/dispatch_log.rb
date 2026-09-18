@@ -81,16 +81,27 @@ class DispatchLog < Phlex::HTML
     end
   end
 
+  # Delivered and read back are different facts and get different pills. A
+  # message we sent at 8:02 that nobody ever acknowledged used to look identical
+  # to one the driver confirmed thirty seconds later, which is the whole
+  # question this page gets opened to answer.
   def message_pill(message)
     style, label =
-      case message.status
-      when 'sent' then ['bg-accent-tint text-accent', message.sent_at&.strftime('%-l:%M %p') || 'sent']
-      when 'failed' then ['bg-danger-tint text-danger', 'failed']
-      when 'skipped' then ['bg-ink/[.07] text-ink/70', 'skipped']
-      else ['bg-ink/[.07] text-ink/70', 'pending']
+      if message.acknowledged?
+        ['bg-accent-tint text-accent', "✓ #{message.acknowledged_at.strftime('%-l:%M %p')}"]
+      else
+        case message.status
+        when 'sent' then ['bg-ink/[.07] text-ink/70', "sent #{message.sent_at&.strftime('%-l:%M %p')}".strip]
+        when 'failed' then ['bg-danger-tint text-danger', 'failed']
+        when 'skipped' then ['bg-ink/[.07] text-ink/70', 'skipped']
+        else ['bg-ink/[.07] text-ink/70', 'pending']
+        end
       end
 
-    span(class: "font-mono text-[9.5px] font-semibold px-[7px] py-[3px] rounded-[5px] #{style}") { label }
+    span(
+      title: message.acknowledged? ? 'pressed “Got it” on their DM' : nil,
+      class: "font-mono text-[9.5px] font-semibold px-[7px] py-[3px] rounded-[5px] #{style}"
+    ) { label }
   end
 
   def body_block(message)

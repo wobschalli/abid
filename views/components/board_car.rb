@@ -80,46 +80,42 @@ class Components::BoardCar < Phlex::HTML
 
   # Whether this driver has been told, and whether anything has changed since.
   #
-  # Confirmed is a dot, not a word. It is the state you scan a whole board for
-  # on a Sunday morning — "who has not come back to me?" — and a row of green
-  # dots answers that at a glance in a way five repetitions of "✓ confirmed"
-  # does not. The states that need a human to DO something keep their words,
-  # because a coloured dot cannot say "changed since you sent it".
+  # Every state is a word, in the same slot, so reading down a column of cars
+  # answers "who has not come back to me?" by scanning one place. Confirmed was
+  # briefly a green dot; it is the state you look for most, and a dot made it
+  # the one state you could not read.
+  #
+  # Green carries it as well, but never alone — "confirmed" and "sent" differ in
+  # text, not just colour, so the distinction survives a colourblind reader, a
+  # greyscale print of the board, and a screenshot in a group chat.
   DISPATCH_BADGES = {
     queued: ['bg-ink/[.07] text-ink/70', 'sending…'],
     sent: ['bg-ink/[.07] text-ink/70', 'sent'],
+    confirmed: ['bg-accent-tint text-accent', '✓ confirmed'],
     changed: ['bg-warn-tint text-warn-ink', 'changed'],
     failed: ['bg-danger-tint text-danger', 'dm failed']
   }.freeze
 
   def dispatch_badge
     state = @board.dispatch_status.state_for(@car.ride)
-    return confirmed_dot if state == :confirmed
-
     style, label = DISPATCH_BADGES[state]
     return if style.nil? # :never — no badge until something has been sent
 
-    span(class: "font-mono text-[9.5px] font-semibold tracking-[.06em] px-[7px] py-[3px] rounded-[5px] #{style}") do
-      label
-    end
-  end
-
-  # Titled, not colour alone: a green dot is meaningless to anyone who cannot
-  # see green, and it says nothing about WHEN they confirmed.
-  def confirmed_dot
     span(
-      title: confirmed_title,
-      aria_label: confirmed_title,
-      role: 'img',
-      class: 'w-[9px] h-[9px] rounded-full bg-accent flex-none self-center ring-2 ring-accent/20'
-    )
+      title: badge_title(state),
+      class: "font-mono text-[9.5px] font-semibold tracking-[.06em] px-[7px] py-[3px] rounded-[5px] #{style}"
+    ) { label }
   end
 
-  def confirmed_title
-    at = @board.dispatch_status.acknowledged_at_for(@car.ride)
-    return 'confirmed — pressed “Got it” on their DM' if at.nil?
+  # The badge says the state; the tooltip says when, which is the follow-up
+  # question every time ("has he confirmed since I moved Devon?").
+  def badge_title(state)
+    return nil unless state == :confirmed
 
-    "confirmed #{at.strftime('%a %-l:%M %p')} — pressed “Got it” on their DM"
+    at = @board.dispatch_status.acknowledged_at_for(@car.ride)
+    return 'pressed “Got it” on their DM' if at.nil?
+
+    "pressed “Got it” at #{at.strftime('%a %-l:%M %p')}"
   end
 
   def edit_link
