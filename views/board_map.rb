@@ -25,7 +25,8 @@ class BoardMap < Phlex::HTML
     Layout(title: "Map — #{@board.event.name}", leader: @leader) do
       div(class: 'max-w-5xl flex flex-col gap-4 font-sans text-ink') do
         header
-        @map.any? ? figure : empty_note
+        empty_note if @map.empty_reason
+        @map.any? ? figure : nothing_at_all
         unplotted_note if @map.unplotted.any?
       end
     end
@@ -48,18 +49,29 @@ class BoardMap < Phlex::HTML
     end
   end
 
-  # "Nothing to draw" with no cause is indistinguishable from a broken page,
-  # which is exactly how the first version of this was read.
+  # Why there are no LINES. Shown above the map rather than instead of it: the
+  # map itself is still worth having — where people are waiting is the thing you
+  # need in order to seat them — and swapping it for a paragraph made the page
+  # read as broken, which is exactly how it was reported.
   EMPTY_REASONS = {
-    no_drivers: 'Nobody is driving this one yet, so there are no routes to draw.',
-    nobody_seated: 'No rider has been seated in a car yet — a route needs somewhere to collect ' \
-                   'someone. Seat people on the board, or press Auto-fill.',
-    no_locations: 'None of the pickups have a location on file yet. Add a street address on Locations.'
+    no_drivers: 'No routes yet — nobody is driving this one. The pins below are where people ' \
+                'are waiting, and where you are all going.',
+    nobody_seated: 'No routes yet — nobody has been seated in a car. The pins below are where ' \
+                   'people are waiting; seat them on the board, or press Auto-fill.',
+    no_locations: 'No routes yet — none of the pickups have a location on file. Add a street ' \
+                  'address on Locations.'
   }.freeze
 
   def empty_note
     div(class: 'p-3.5 rounded-lg border border-line bg-surface-sunk text-[13px] text-ink/70') do
       plain EMPTY_REASONS[@map.empty_reason]
+    end
+  end
+
+  # Genuinely nothing with coordinates — not even the venue.
+  def nothing_at_all
+    div(class: 'p-3.5 rounded-lg border border-line bg-surface-sunk text-[13px] text-ink/70') do
+      plain 'Nothing on this board has a location on file yet, so there is nothing to put on a map.'
     end
   end
 
@@ -79,6 +91,7 @@ class BoardMap < Phlex::HTML
       data_route_map: true,
       data_routes: @map.to_json_payload.to_json,
       data_venue: @map.venue_payload.to_json,
+      data_waiting: @map.waiting_payload.to_json,
       data_tiles: @tiles[:url],
       data_attribution: @tiles[:attribution],
       class: 'h-[520px] w-full rounded-lg border border-line overflow-hidden bg-surface-sunk'
@@ -104,6 +117,13 @@ class BoardMap < Phlex::HTML
       div(class: 'flex items-center gap-1.5 text-[12px]') do
         span(class: 'w-3.5 h-3.5 rounded-sm shrink-0 bg-ink')
         span { 'where everyone is going' }
+      end
+
+      if @map.waiting.any?
+        div(class: 'flex items-center gap-1.5 text-[12px]') do
+          span(class: 'w-3.5 h-3.5 rounded-full shrink-0 border-2 border-dashed border-ink/45')
+          span { "waiting for a ride · #{@map.waiting.size}" }
+        end
       end
     end
   end

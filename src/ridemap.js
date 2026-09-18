@@ -50,9 +50,20 @@ const venueIcon = () =>
     iconAnchor: [9, 9]
   })
 
+// Someone who still needs a seat. Hollow and dashed so it reads as "not yet in
+// a car" next to the solid numbered pins — shape, not just colour.
+const waitingIcon = () =>
+  L.divIcon({
+    className: 'route-waiting',
+    html: '<span></span>',
+    iconSize: [18, 18],
+    iconAnchor: [9, 9]
+  })
+
 const draw = el => {
   const routes = readJSON(el, 'routes') || []
   const venue = readJSON(el, 'venue')
+  const waiting = readJSON(el, 'waiting') || []
   const tiles = el.dataset.tiles
   const attribution = el.dataset.attribution || ''
 
@@ -75,6 +86,16 @@ const draw = el => {
         .bindPopup(`<strong>${stop.name}</strong><br>${stop.label || ''}<br><em>${route.driver}</em>`)
       bounds.push([stop.lat, stop.lon])
     })
+  })
+
+  // Before anyone is seated these are the only pins there are, and they are the
+  // reason to look at this page at all: four people on one street is what tells
+  // you which car they belong in.
+  waiting.forEach(person => {
+    L.marker([person.lat, person.lon], { icon: waitingIcon(), title: person.name })
+      .addTo(map)
+      .bindPopup(`<strong>${person.name}</strong><br>${person.label || ''}<br><em>waiting for a ride</em>`)
+    bounds.push([person.lat, person.lon])
   })
 
   if (venue) {

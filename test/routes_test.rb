@@ -259,20 +259,69 @@ class RoutesTest < AbidTest
   end
 
   # "Nothing to draw" with no cause is indistinguishable from a broken page,
-  # which is exactly how this was reported.
-  def test_an_empty_map_says_which_of_the_reasons_it_is
-    assert_includes get_ok("/board/#{@event.id}/map").body, 'Nobody is driving'
+  # which is exactly how this was reported — twice. The first fix explained
+  # itself but still showed no map; a map page with no map reads as broken
+  # however good the sentence above it is.
+  def test_an_empty_map_still_draws_the_basemap_and_says_why_there_are_no_routes
+    # Nothing anywhere has coordinates yet — not even a venue.
+    body = get_ok("/board/#{@event.id}/map").body
+    assert_includes body, 'nobody is driving this one'
+    assert_includes body, 'nothing to put on a map'
+    refute_includes body, 'data-route-map'
 
-    # A driver with an empty car has only the destination, which draws nothing.
-    # Twenty of those rendered one dot and a legend of twenty names.
+    # Give it somewhere to go and the map appears, with no routes on it.
+    there = Location.create!(name: 'Church', zone: Location::ZONES.first, lat: 40.4521, lon: -86.9720)
+    @event.update!(location: there)
+
+    body = get_ok("/board/#{@event.id}/map").body
+    assert_includes body, 'data-route-map', 'the venue alone is worth a map'
+    assert_includes body, 'nobody is driving this one'
+  end
+
+  # A driver with an empty car has only the destination, which draws no line —
+  # but the map itself still belongs on the page.
+  def test_a_driver_with_an_empty_car_draws_no_route_but_keeps_the_map
+    there = Location.create!(name: 'Church', zone: Location::ZONES.first, lat: 40.4521, lon: -86.9720)
+    @event.update!(location: there)
     here = Location.create!(name: 'Cary', zone: Location::ZONES.first, lat: 40.4278, lon: -86.9210)
     driver = User.create!(name: 'Caleb', username: 'cbm3', discord_id: next_discord_id,
                           password: 'x' * 10, capacity: 4, location: here)
     @event.rides.create!(user: driver, role: 'driver', status: 'confirmed', seats: 4)
 
     body = get_ok("/board/#{@event.id}/map").body
-    assert_includes body, 'No rider has been seated'
-    refute_includes body, 'data-route-map', 'an empty car is not a route, so there is nothing to draw'
+    assert_includes body, 'nobody has been seated'
+    assert_includes body, 'data-route-map'
+    assert_includes body, '&quot;routes&quot;' if body.include?('&quot;routes&quot;')
+  end
+
+  # Before anyone is seated, where people are WAITING is the whole value of the
+  # page — it is what tells you which car they belong in.
+  def test_waiting_riders_are_pinned_on_the_map
+    there = Location.create!(name: 'Church', zone: Location::ZONES.first, lat: 40.4521, lon: -86.9720)
+    @event.update!(location: there)
+    here = Location.create!(name: 'Cary', zone: Location::ZONES.first, lat: 40.4278, lon: -86.9210)
+    rider = User.create!(name: 'Waiting Person', username: 'wp', discord_id: next_discord_id,
+                         password: 'x' * 10, location: here)
+    @event.rides.create!(user: rider, role: 'rider', status: 'requested', pickup_location: here)
+
+    body = get_ok("/board/#{@event.id}/map").body
+
+    assert_includes body, 'data-waiting'
+    assert_includes body, 'Waiting Person'
+    assert_includes body, 'waiting for a ride'
+  end
+
+  # A rider pointing at a driver who is no longer driving was in no car and in
+  # no queue: invisible on the board, and still counted as seated.
+  def test_a_rider_whose_driver_withdrew_goes_back_to_the_queue
+    driver_ride = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    rider = make_rider(@event, 'caitlin', zone: ZONE_1, driver: driver_ride)
+
+    driver_ride.update!(status: 'cancelled')
+    board = RideBoard.new(@event.reload)
+
+    assert_includes board.pool.map(&:id), rider.id, 'the rider vanished from the board'
+    assert_equal 0, board.seated_count, 'nobody is collecting them, so they are not seated'
   end
 
   def test_a_stop_with_no_location_is_named_rather_than_dropped

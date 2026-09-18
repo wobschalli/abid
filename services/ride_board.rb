@@ -36,8 +36,23 @@ class RideBoard
     @cars ||= driver_rides.select(&:active?).map { |d| Car.new(d, passengers_for(d)) }
   end
 
+  # Everyone who still needs a seat.
+  #
+  # Not simply "driver_ride_id is nil". A rider can point at a driver who is no
+  # longer driving — marked out, or switched back to being a rider — and those
+  # riders were in no car AND in no queue: invisible on the board, still counted
+  # as seated, and silently left behind. `unrouted_riders` is the same set and
+  # is what the map draws as waiting.
   def pool
-    @pool ||= rider_rides.select { |r| r.active? && r.driver_ride_id.nil? }
+    @pool ||= unrouted_riders
+  end
+
+  # Active riders who are not in any car that is actually driving.
+  def unrouted_riders
+    @unrouted_riders ||= begin
+      driving = cars.map(&:id).to_set
+      rider_rides.select { |r| r.active? && !driving.include?(r.driver_ride_id) }
+    end
   end
 
   def out_riders
@@ -130,8 +145,11 @@ class RideBoard
     pool.size
   end
 
+  # Seated in a car that is going, which is the only kind of seated that helps
+  # anyone. Counting a rider attached to a withdrawn driver made the header read
+  # "3 seated" for three people nobody was collecting.
   def seated_count
-    rider_rides.count { |r| r.active? && r.driver_ride_id.present? }
+    cars.sum { |car| car.passengers.size }
   end
 
   def seats_left

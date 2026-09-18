@@ -54,11 +54,41 @@ class RouteMap
     @drawn_routes ||= routes.select { |r| r.pickups.any? }
   end
 
-  def any? = drawn_routes.any?
+  # Riders with a known pickup who are not in any drawn route: the waiting queue,
+  # plus anyone attached to a driver who is no longer driving.
+  #
+  # These are the people the map is most useful for. Seeing that four of them are
+  # on the same street is what tells you which car to put them in — and that is
+  # the state the board is in *before* you have seated anyone, which is exactly
+  # when this page used to show a paragraph of text instead of a map.
+  def waiting
+    @waiting ||= begin
+      drawn = drawn_routes.flat_map { |r| r.plan.pickups.map(&:ride_id) }.compact.to_set
+      @board.unrouted_riders.reject { |ride| drawn.include?(ride.id) }
+            .select { |ride| ride.pickup&.coords? }
+    end
+  end
 
+  def waiting_payload
+    waiting.map do |ride|
+      { lat: ride.pickup.lat.to_f, lon: ride.pickup.lon.to_f,
+        name: ride.display_name, label: ride.address.to_s }
+    end
+  end
+
+  # Anything worth putting a basemap under. Deliberately not "are there routes":
+  # a map showing the venue and six waiting riders answers a real question, and
+  # replacing it with a sentence was the bug — the page looked broken, because a
+  # map page with no map IS broken as far as anyone reading it is concerned.
+  def any?
+    drawn_routes.any? || venue_payload.present? || waiting.any?
+  end
+
+  # Still worth saying why there are no LINES, even with the map drawn.
   def empty_reason
+    return nil if drawn_routes.any?
     return :no_drivers if @board.cars.empty?
-    return :nobody_seated if @board.cars.any? && routes.none? { |r| r.pickups.any? }
+    return :nobody_seated if routes.none? { |r| r.pickups.any? }
 
     :no_locations
   end
@@ -76,11 +106,15 @@ class RouteMap
     end
   end
 
+  # Straight off the event, not out of `plans`. Derived from the routes it
+  # vanished the moment there were no cars — so a board with drivers but nobody
+  # seated, which is every board before you press Auto-fill, had no venue, no
+  # pins, and therefore no map at all.
   def venue_payload
-    stop = plans.map { |_, plan| plan.destination }.compact.find(&:coords?)
-    return nil if stop.nil?
+    venue = @board.event.location
+    return nil unless venue&.coords?
 
-    { lat: stop.lat.to_f, lon: stop.lon.to_f, name: stop.name }
+    { lat: venue.lat.to_f, lon: venue.lon.to_f, name: venue.name }
   end
 
   # Categorical identity, assigned in fixed order and never cycled. Resolved to
