@@ -653,6 +653,106 @@ class RoutesTest < AbidTest
     assert_equal 0, record.reload.options.count
   end
 
+  # --- the emoji catalogue --------------------------------------------------
+
+  def test_the_catalogue_covers_the_whole_unicode_set
+    body = get_ok('/emoji.json').body
+    entries = JSON.parse(body)
+
+    assert_operator entries.size, :>, 1500, 'the picker is still a short hand-picked list'
+
+    chars = entries.map { |e| e['c'] }
+    # A few a rides coordinator would plausibly reach for, none of which were in
+    # the 28 hand-picked ones.
+    ['🚌', '🛻', '🧭', '🎉', '🥐'].each do |char|
+      assert_includes chars, char, "#{char} is not offered"
+    end
+  end
+
+  # Five near-identical copies of every gesture is a worse list, not a more
+  # complete one — and typing a toned emoji has always worked anyway.
+  def test_skin_tone_variants_are_left_out
+    entries = JSON.parse(get_ok('/emoji.json').body)
+    toned = entries.count { |e| e['c'].match?(/[\u{1F3FB}-\u{1F3FF}]/) }
+
+    assert_equal 0, toned, 'the grid is padded with skin-tone duplicates'
+  end
+
+  # Searching is why the list exists, so the keywords have to carry more than
+  # the short name.
+  def test_entries_carry_search_keywords
+    entries = JSON.parse(get_ok('/emoji.json').body)
+    car = entries.find { |e| e['c'] == '🚗' }
+
+    refute_nil car
+    assert_includes car['k'], 'car'
+    assert_operator entries.count { |e| e['k'].include?('church') }, :>=, 1
+  end
+
+  # A custom emoji has no character to draw, so it carries its image and the
+  # <:name:id> form the server already knows how to parse.
+  def test_the_servers_own_emoji_come_first_and_carry_their_image
+    server = Server.create!(name: "S#{next_discord_id}", discord_id: next_discord_id)
+    Emoji.create!(name: 'blobwave', discord_id: next_discord_id, server: server)
+
+    entries = JSON.parse(get_ok('/emoji.json').body)
+    custom = entries.find { |e| e['n'] == 'blobwave' }
+
+    refute_nil custom, "the server's own emoji are not offered"
+    assert_equal entries.first['n'], 'blobwave', 'buried below 1,900 unicode ones'
+    assert_includes custom['u'], 'cdn.discordapp.com'
+    assert_equal '<:blobwave:', custom['v'][0, 11]
+  end
+
+  # Everything the picker offers must survive the round trip the form takes.
+  # All of it, not a sample: this caught 30% of the catalogue being rejected by
+  # the parser, and a sample would have caught it only some of the time.
+  def test_every_catalogue_entry_parses_back_to_an_emoji
+    entries = JSON.parse(get_ok('/emoji.json').body)
+
+    unparsed = entries.reject { |entry| Signup::EmojiKey.parse(entry['v'] || entry['c']) }
+
+    assert_empty unparsed.first(10).map { |e| e['n'] },
+                 "#{unparsed.size} of #{entries.size} offered emoji are rejected by the parser"
+  end
+
+  # The shapes that were rejected before: a country flag is two characters, a
+  # subdivision flag is a tag sequence, and ☘️ ↙️ ♾️ are text characters
+  # promoted by a variation selector rather than emoji by default.
+  def test_flags_and_variation_selector_emoji_are_readable
+    {
+      '🇨🇷' => 'u:flag_cr',
+      '🏴󠁧󠁢󠁥󠁮󠁧󠁿' => 'u:flag_england',
+      '☘️' => 'u:shamrock',
+      '↙️' => 'u:arrow_lower_left',
+      '♾️' => 'u:infinity',
+      '👨‍👩‍👦' => 'u:family_man_woman_boy'
+    }.each do |char, key|
+      parsed = Signup::EmojiKey.parse(char)
+      refute_nil parsed, "#{char} is rejected"
+      assert_equal key, parsed[:emoji_key]
+    end
+  end
+
+  def test_the_catalogue_needs_a_leader
+    plain = User.create!(name: 'Nobody', username: "nb#{next_discord_id}",
+                         discord_id: next_discord_id, password: 'x' * 10)
+    env 'rack.session', { user_id: plain.id }
+    get '/emoji.json'
+
+    refute_equal 200, last_response.status
+  end
+
+  def test_the_signup_page_offers_the_full_picker
+    signup = make_posted_signup
+    signup.update!(status: 'draft', discord_message_id: nil)
+
+    body = get_ok("/signups/#{signup.id}").body
+
+    assert_includes body, 'Browse all emoji'
+    assert_includes body, 'data-emoji-picker'
+  end
+
   # --- revoking a sent sign-up ---------------------------------------------
 
   def make_posted_signup

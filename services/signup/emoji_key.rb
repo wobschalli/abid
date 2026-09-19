@@ -19,9 +19,25 @@ module Signup
     CUSTOM_PATTERN = /<(a)?:(\w{2,32}):(\d{15,25})>/
     # Digit/#/* keycaps: the variation selector is optional.
     KEYCAP_PATTERN = /[0-9#*]\u{FE0F}?\u{20E3}/
-    # Everything with default emoji presentation, plus skin tones and ZWJ
-    # sequences so a compound emoji is captured whole rather than in pieces.
-    UNICODE_PATTERN = /\p{Emoji_Presentation}(?:\p{Emoji_Modifier})?(?:\u{200D}\p{Emoji}(?:\u{FE0F})?)*/
+    # A country flag is a PAIR of regional indicators (🇨🇷 is two characters),
+    # and a subdivision flag is 🏴 followed by tag characters (🏴󠁧󠁢󠁥󠁮󠁧󠁿). Neither
+    # is one base character, so both have to be matched before the general case
+    # or a flag comes apart into halves.
+    REGIONAL_FLAG_PATTERN = /[\u{1F1E6}-\u{1F1FF}]{2}/
+    TAG_FLAG_PATTERN = /\u{1F3F4}[\u{E0020}-\u{E007E}]+\u{E007F}/
+    # An emoji base is either a character that is emoji by default, OR one that
+    # is text by default and carries U+FE0F to ask for the emoji form.
+    #
+    # That second half is what was missing. ☘️ ↙️ ♾️ ☠️ 🗣️ are all
+    # `\p{Emoji}` but NOT `\p{Emoji_Presentation}` — they are text characters
+    # promoted by the variation selector — so a pattern built only on
+    # Emoji_Presentation rejected every one of them, and typing any of them into
+    # the box got "Could not read that as an emoji".
+    EMOJI_BASE = /(?:\p{Emoji_Presentation}|\p{Emoji}\u{FE0F})/
+    # Base, optional skin tone, then any number of ZWJ-joined parts, so a
+    # compound emoji is captured whole rather than in pieces.
+    EMOJI_SEQUENCE = /#{EMOJI_BASE}(?:\p{Emoji_Modifier})?(?:\u{200D}\p{Emoji}\u{FE0F}?(?:\p{Emoji_Modifier})?)*/
+    UNICODE_PATTERN = /#{TAG_FLAG_PATTERN}|#{REGIONAL_FLAG_PATTERN}|#{EMOJI_SEQUENCE}/
     # A bare :alpha_code: typed by a coordinator.
     ALPHA_PATTERN = /\A:?([a-z0-9_+-]{1,64}):?\z/i
 

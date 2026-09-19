@@ -256,16 +256,46 @@ class SignupShow < Phlex::HTML
         SUGGESTED.each { |char| emoji_choice(char) { plain char } }
       end
 
-      next if @server_emojis.empty?
-
-      span(class: 'board-label pt-1') { "This server's emoji" }
-      div(class: 'flex flex-wrap gap-1 max-h-40 overflow-y-auto') do
-        @server_emojis.each do |emoji|
-          # `<:name:id>` is exactly what Discord puts in message content, and
-          # what EmojiKey.parse already understands.
-          emoji_choice("<:#{emoji.name}:#{emoji.discord_id}>", title: ":#{emoji.name}:") do
-            custom_emoji_image(emoji.discord_id, emoji.name)
+      if @server_emojis.any?
+        span(class: 'board-label pt-1') { "This server's emoji" }
+        div(class: 'flex flex-wrap gap-1 max-h-40 overflow-y-auto') do
+          @server_emojis.each do |emoji|
+            # `<:name:id>` is exactly what Discord puts in message content, and
+            # what EmojiKey.parse already understands.
+            emoji_choice("<:#{emoji.name}:#{emoji.discord_id}>", title: ":#{emoji.name}:") do
+              custom_emoji_image(emoji.discord_id, emoji.name)
+            end
           end
+        end
+      end
+
+      browse_all
+    end
+  end
+
+  # The other 1,900.
+  #
+  # Typing any emoji has always worked — the box below this takes the character,
+  # `:alpha_code:` or `<:custom:id>`. What was missing was a way to find one
+  # without already knowing its name, which is not much use to someone who wants
+  # a bus and cannot remember whether it is :bus:, :oncoming_bus: or :trolleybus:.
+  #
+  # Collapsed, and the list is fetched only when it is opened: it is 161KB and
+  # the usual interaction here is pressing 1️⃣.
+  def browse_all
+    details(class: 'pt-1', data_emoji_picker: true) do
+      summary(class: 'cursor-pointer text-[12px] text-accent select-none') do
+        'Browse all emoji…'
+      end
+
+      div(class: 'flex flex-col gap-2 pt-2') do
+        input(type: 'search', data_emoji_search: true, autocomplete: 'off',
+              placeholder: 'Search — car, church, clock, 1…',
+              class: 'board-input text-[12.5px] py-1.5')
+        div(data_emoji_results: true,
+            class: 'flex flex-wrap gap-1 max-h-56 overflow-y-auto content-start')
+        span(data_emoji_status: true, class: 'text-[11.5px] text-ink/55') do
+          'Loading the full list…'
         end
       end
     end

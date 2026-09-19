@@ -1,5 +1,7 @@
 require_relative 'config/environment'
 
+require 'digest'
+require 'json'
 require 'uri'
 require 'sinatra/activerecord'
 require 'phlex-sinatra'
@@ -397,6 +399,23 @@ class App < Sinatra::Base
     halt 422, "Nothing is happening on #{date.strftime('%-d %b')}" if post.nil?
 
     redirect to("/signups/#{post.id}")
+  end
+
+  # Every emoji the picker can offer.
+  #
+  # Its own endpoint rather than inlined in the sign-up page: ~150KB, identical
+  # for everyone, and most of the time nobody opens the picker at all. Cached
+  # hard — the Unicode set does not change between page loads, and the server's
+  # own emoji are in the ETag so adding one busts it.
+  get '/emoji.json' do
+    require_leader!
+    emojis = Emoji.order(:name).to_a
+    catalogue = Signup::EmojiCatalogue.all(emojis)
+
+    etag Digest::MD5.hexdigest("#{catalogue.size}-#{emojis.map(&:discord_id).join(',')}")
+    cache_control :private, max_age: 86_400
+    content_type :json
+    catalogue.to_json
   end
 
   # --- sign-up posts --------------------------------------------------------
