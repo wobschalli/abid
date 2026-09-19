@@ -50,6 +50,7 @@ class Components::BoardShell < Phlex::HTML
       slot_tabs
       div(class: 'flex-1')
       undo_button
+      add_drivers_button if @leader && @board.cars.any?
       sync_button if @leader
       a(
         href: "/board/#{@event.id}/map",
@@ -227,21 +228,42 @@ class Components::BoardShell < Phlex::HTML
     end
   end
 
-  # The app already knows who drives: an active member with a seat count. This
-  # saves adding the same handful of people by hand on every board, every week.
+  # The app already knows who drives: an active member with a seat count, and —
+  # when the series says so — carrying that day's tag. This saves adding the
+  # same handful of people by hand on every board, every week.
+  #
+  # The tag is named on the button rather than left implicit, because "add 6
+  # drivers" and "add the 6 Friday-Usual drivers" are different promises and
+  # only one of them can be checked before pressing.
+  #
   # Confirmed, because it writes a row for every driver in one press. It fired
   # twice on this board without a deliberate click and the cause was never
   # pinned down — a bulk write should need a yes regardless.
   def add_drivers_button
     count = @board.regular_driver_count
+    return untagged_hint if count.zero? && @board.driver_tag && @board.untagged_driver_count.positive?
     return if count.zero?
+
+    who = @board.driver_tag ? "#{count} #{@board.driver_tag}" : "#{count} regular"
 
     action_form('drivers', class: 'contents') do
       button(type: 'submit', class: 'board-btn-solid',
-             data_confirm: "Add #{count} regular drivers to this board?") do
-        "Add the #{count} regular drivers"
+             data_confirm: "Add the #{who} drivers to this board?") do
+        "Add the #{who} drivers"
       end
     end
+  end
+
+  # Zero tagged drivers is the normal state on day one, and a button that simply
+  # vanishes teaches nobody anything. Say which tag is empty and where to fix it,
+  # rather than silently falling back to adding everybody — that fallback is what
+  # the tag exists to stop.
+  def untagged_hint
+    a(
+      href: "/users?filter=drivers",
+      title: "no active driver is tagged #{@board.driver_tag} yet",
+      class: 'board-btn no-underline text-ink/70 whitespace-nowrap'
+    ) { "Tag the #{@board.driver_tag} drivers" }
   end
 
   # The dark bar that appears while a rider is selected for seating.

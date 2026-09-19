@@ -86,6 +86,17 @@ class Event < ApplicationRecord
     end_time || (start_time && start_time + 2.hours) || Time.zone.now
   end
 
+  # Which driver tag this occurrence draws from.
+  #
+  # Inherited from the series rather than copied down at generation, so renaming
+  # the tag on "Abide" applies to the occurrences that already exist — the
+  # alternative silently left three weeks of already-generated Fridays pointing
+  # at the old name. The column on events is an override for a one-off, where
+  # nil means "whatever the series says".
+  def driver_tag_for_board
+    driver_tag.presence || series&.driver_tag.presence
+  end
+
   def past?
     end_time_or_estimate <= Time.zone.now
   end

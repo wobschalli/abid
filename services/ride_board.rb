@@ -184,10 +184,37 @@ class RideBoard
                              .to_a
   end
 
-  # Active members with a seat count who are not already on this board — what
-  # "add the regular drivers" would create.
+  # The tag this occurrence draws its drivers from — "Friday-Usual" on a Friday
+  # board. Set on the series and copied down; nil on a one-off nobody has said
+  # anything about.
+  def driver_tag
+    event.driver_tag_for_board
+  end
+
+  # Who "add the regular drivers" would put on this board.
+  #
+  # Scoped to the tag when there is one. Without it this was every active member
+  # with a seat count — the same list on a Friday as on a Sunday, which is not
+  # the same list in real life, so the button added people who were not coming.
+  #
+  # Untagged falls back to all of them rather than to nobody: a board whose
+  # series has no tag yet should keep working exactly as it did.
+  def regular_drivers
+    @regular_drivers ||= begin
+      scope = User.active.drivers.where.not(id: rides.map(&:user_id))
+      driver_tag ? scope.tagged(driver_tag) : scope
+    end
+  end
+
   def regular_driver_count
-    @regular_driver_count ||= User.active.drivers.where.not(id: rides.map(&:user_id)).count
+    @regular_driver_count ||= regular_drivers.count
+  end
+
+  # How many drivers there would be if the tag were ignored. Lets the board tell
+  # "nobody carries this tag yet" apart from "everyone is already on the board",
+  # which look identical from a count of zero and need opposite responses.
+  def untagged_driver_count
+    @untagged_driver_count ||= User.active.drivers.where.not(id: rides.map(&:user_id)).count
   end
 
   # --- stepping to the occurrence either side --------------------------------

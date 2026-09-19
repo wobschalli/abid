@@ -653,6 +653,124 @@ class RoutesTest < AbidTest
     assert_equal 0, record.reload.options.count
   end
 
+  # --- driver tags ---------------------------------------------------------
+
+  def test_tags_are_canonicalised_so_one_tag_does_not_become_three
+    a = make_user('ian', capacity: 4)
+    a.update!(tags: ['Friday-Usual'])
+    b = make_user('caleb', capacity: 4)
+    # Different case and a space instead of a hyphen — the same tag to a human.
+    b.update!(tags: ['friday usual'])
+
+    assert_equal ['Friday-Usual'], b.reload.tags
+    assert_equal 2, User.tagged('Friday-Usual').count
+    assert_equal ['Friday-Usual'], User.known_tags
+  end
+
+  def test_blank_and_duplicate_tags_are_dropped
+    u = make_user('ian', capacity: 4)
+    u.update!(tags: ['Friday-Usual', '  ', 'friday-usual', ''])
+
+    assert_equal ['Friday-Usual'], u.reload.tags
+  end
+
+  # The point of the whole feature: a Friday board offers Friday drivers.
+  def test_add_drivers_is_scoped_to_the_events_tag
+    friday = make_user('friday driver', capacity: 4)
+    friday.update!(active: true, tags: ['Friday-Usual'])
+    sunday = make_user('sunday driver', capacity: 4)
+    sunday.update!(active: true, tags: ['Sunday-Usual'])
+
+    @event.update!(driver_tag: 'Friday-Usual')
+
+    assert_equal 1, RideBoard.new(@event).regular_driver_count
+
+    as_leader
+    post "/board/#{@event.id}/drivers"
+
+    names = @event.reload.rides.map(&:display_name)
+    assert_includes names, 'friday driver'
+    refute_includes names, 'sunday driver', 'a Sunday driver was added to a Friday board'
+  end
+
+  # An occurrence with no tag of its own uses its series', so renaming the tag
+  # on the series reaches the weeks already generated.
+  def test_an_occurrence_inherits_the_tag_from_its_series
+    series = EventSeries.create!(name: 'Abide', weekday: 5, start_time_of_day: '18:30',
+                                 driver_tag: 'Friday-Usual')
+    @event.update!(series: series, driver_tag: nil)
+
+    assert_equal 'Friday-Usual', @event.reload.driver_tag_for_board
+
+    series.update!(driver_tag: 'Renamed-Tag')
+    assert_equal 'Renamed-Tag', @event.reload.driver_tag_for_board
+  end
+
+  # Nobody tagged yet is the normal state on day one. It must not silently add
+  # everybody — that fallback is what the tag exists to prevent.
+  def test_an_untagged_roster_adds_nobody_rather_than_everybody
+    driver = make_user('somebody', capacity: 4)
+    driver.update!(active: true, tags: [])
+    @event.update!(driver_tag: 'Friday-Usual')
+
+    as_leader
+    post "/board/#{@event.id}/drivers"
+
+    assert_equal 0, @event.reload.rides.count
+  end
+
+  # With no tag set at all the button behaves as it always did.
+  def test_a_board_with_no_tag_still_adds_every_regular_driver
+    driver = make_user('somebody', capacity: 4)
+    driver.update!(active: true)
+    @event.update!(driver_tag: nil, series: nil)
+
+    as_leader
+    post "/board/#{@event.id}/drivers"
+
+    assert_equal 1, @event.reload.rides.count
+  end
+
+  def test_tagging_one_person_from_the_members_list
+    u = make_user('ian', capacity: 4)
+    u.update!(active: true)
+
+    as_leader
+    post "/users/#{u.id}/tag", tag: 'Friday-Usual', filter: 'drivers'
+    assert_includes u.reload.tags, 'Friday-Usual'
+
+    # Same button again takes it off.
+    as_leader
+    post "/users/#{u.id}/tag", tag: 'Friday-Usual', filter: 'drivers'
+    refute_includes u.reload.tags, 'Friday-Usual'
+  end
+
+  # Picking a tag is a tagging MODE, not a filter. Everyone stays on screen —
+  # otherwise the first person can never be tagged, because on day one nobody
+  # carries the tag and the list would come back empty.
+  def test_choosing_a_tag_keeps_everyone_on_screen_with_a_toggle
+    tagged = make_user('tagged one', capacity: 4)
+    tagged.update!(active: true, tags: ['Friday-Usual'])
+    plain = make_user('untagged one', capacity: 4)
+    plain.update!(active: true)
+
+    body = get_ok('/users?filter=drivers&tag=Friday-Usual').body
+
+    assert_includes body, 'tagged one'
+    assert_includes body, 'untagged one', 'the people you are about to tag vanished'
+    assert_includes body, '+ Friday-Usual', 'no way to add the tag to someone without it'
+  end
+
+  # A tag a series asks for is real before anybody carries it, or the very first
+  # one could never be applied from this page.
+  def test_a_series_tag_is_offered_before_anyone_carries_it
+    EventSeries.create!(name: 'Abide', weekday: 5, start_time_of_day: '18:30',
+                        driver_tag: 'Friday-Usual')
+
+    assert_includes User.known_tags, 'Friday-Usual'
+    assert_includes get_ok('/users?filter=drivers').body, 'Friday-Usual'
+  end
+
   # --- past events ---------------------------------------------------------
 
   def test_a_past_board_offers_no_send_button_and_says_it_is_past

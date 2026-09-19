@@ -12,9 +12,10 @@ class UserShow < Phlex::HTML
   # Must match App::NEW_LOCATION — the sentinel the "Other…" option submits.
   OTHER = '__new__'.freeze
 
-  def initialize(user:, locations:, load:, history:, leader: false, error: nil)
+  def initialize(user:, locations:, load:, history:, known_tags: [], leader: false, error: nil)
     @user = user
     @locations = locations
+    @known_tags = known_tags
     @load = load
     @history = history
     @leader = leader
@@ -87,6 +88,8 @@ class UserShow < Phlex::HTML
         end
       end
 
+      field('Tags') { tags_field }
+
       div(class: 'grid grid-cols-2 gap-3') do
         field('Car seats') do
           number_field('capacity', @user.capacity, min: 0, max: 20)
@@ -114,6 +117,40 @@ class UserShow < Phlex::HTML
         end
       end
     end
+  end
+
+  # Free text, comma separated, with the tags already in use offered as chips.
+  #
+  # Deliberately not a fixed list: the point is that inventing "Van-Driver" or
+  # "Retreat-2026" costs one keystroke rather than a migration. The chips exist
+  # so the common case is a click and so nobody has to remember whether it was
+  # "Friday-Usual" or "friday usual" — though the model folds those together
+  # anyway, because they will not remember.
+  def tags_field
+    input(type: 'text', name: 'tags', value: @user.tags.join(', '),
+          placeholder: 'Friday-Usual, Sunday-Usual', disabled: !@leader,
+          class: 'board-input', data_tag_input: @leader ? true : nil)
+
+    if @leader && @known_tags.any?
+      div(class: 'flex flex-wrap gap-1.5 pt-1') do
+        @known_tags.each { |tag| tag_chip(tag) }
+      end
+    end
+
+    span(class: 'text-[11.5px] text-ink/60') do
+      'Which boards offer this person as a regular driver. A Friday board adds ' \
+      'the Friday-Usual drivers; Sunday adds Sunday-Usual. Type anything to make a new one.'
+    end
+  end
+
+  def tag_chip(tag)
+    on = @user.tagged?(tag)
+    button(
+      type: 'button',
+      data_tag_chip: tag,
+      class: 'border cursor-pointer text-[11px] font-medium px-2 py-[3px] rounded-full ' \
+             "#{on ? 'bg-accent-tint text-accent border-accent/30' : 'bg-transparent text-ink/60 border-line hover:border-accent/40'}"
+    ) { tag }
   end
 
   # Hidden until "Other…" is chosen. Kept in the same form as everything else so

@@ -39,12 +39,51 @@ class User < ApplicationRecord
   # offering one. This is the roster a rides coordinator actually works from.
   scope :riders, -> { where(capacity: nil).or(where(capacity: ..0)) }
   scope :by_name, -> { order(Arel.sql('lower(coalesce(name, username))')) }
+  # Everyone carrying a tag. `@>` is the array-contains operator, which the GIN
+  # index on tags serves directly.
+  scope :tagged, ->(tag) { where('tags @> ARRAY[?]::varchar[]', tag.to_s) }
   # Somebody the coordinator cannot fully plan around yet.
   scope :missing_details, -> { where(location_id: nil).or(where(phone: [nil, ''])) }
   scope :search, lambda { |query|
     key = "%#{query.to_s.strip.downcase}%"
     where('lower(coalesce(name, \'\')) LIKE :k OR lower(coalesce(username, \'\')) LIKE :k', k: key)
   }
+
+  before_validation :tidy_tags
+
+  # What a tag looks like once it is stored: trimmed, spaces to hyphens, and
+  # matched case-insensitively against tags that already exist.
+  #
+  # The last part is the one that matters. Without it "friday-usual" typed on a
+  # Tuesday is a different tag from "Friday-Usual", the board quietly finds
+  # nobody, and the only clue is a count of zero. Canonicalising to the existing
+  # spelling means the first person to use a tag names it and everyone after
+  # them joins it, however they type it.
+  def self.canonical_tag(value)
+    tag = value.to_s.strip.gsub(/\s+/, '-')
+    return nil if tag.empty?
+
+    known.find { |existing| existing.casecmp?(tag) } || tag
+  end
+
+  # Every tag the app knows about: the ones people already carry, plus the ones
+  # the schedule asks for.
+  #
+  # The second half matters on day one. Tags only existed on users, so before
+  # anybody was tagged the list was empty — no chips, nothing to click, and no
+  # way to apply the first tag from the members list. "Friday-Usual" is a real
+  # tag the moment a series asks for it, whether or not a person has it yet.
+  def self.known_tags
+    from_users = connection.select_values('SELECT DISTINCT unnest(tags) FROM users')
+    from_series = EventSeries.where.not(driver_tag: [nil, '']).distinct.pluck(:driver_tag)
+
+    (from_users + from_series).uniq { |t| t.downcase }.sort
+  end
+
+  def self.known
+    known_tags
+  end
+  private_class_method :known
 
   def display_name
     name.presence || username.presence || "user #{discord_id}"
@@ -80,7 +119,21 @@ class User < ApplicationRecord
     missing_details.any?
   end
 
+  def tagged?(tag)
+    tags.any? { |t| t.casecmp?(tag.to_s) }
+  end
+
   def to_s
     display_name
+  end
+
+  private
+
+  # Blank entries come from an empty box in the tag form; duplicates come from
+  # adding a tag somebody already has. Neither is an error worth showing anyone.
+  def tidy_tags
+    return if tags.nil?
+
+    self.tags = tags.filter_map { |t| self.class.canonical_tag(t) }.uniq(&:downcase)
   end
 end

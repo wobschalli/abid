@@ -139,6 +139,10 @@ class App < Sinatra::Base
 
   get '/users' do
     filter = %w[active other drivers riders missing].include?(params[:filter]) ? params[:filter] : 'active'
+    # Not a filter: picking a tag turns each row into a toggle for it, so the
+    # people you are about to tag are still on screen. Filtering to a tag nobody
+    # has yet would show an empty list and no way out of it.
+    tag = User.known_tags.find { |t| t.casecmp?(params[:tag].to_s) }
     users = users_for(filter, params[:q])
 
     phlex UsersIndex.new(
@@ -147,6 +151,8 @@ class App < Sinatra::Base
       filter: filter,
       query: params[:q],
       counts: user_counts,
+      tags: User.known_tags,
+      tag: tag,
       leader: leader?
     )
   end
@@ -166,6 +172,22 @@ class App < Sinatra::Base
 
     back = URI.encode_www_form(
       { filter: params[:filter].presence, q: params[:q].presence }.compact
+    )
+    redirect to(back.empty? ? '/users' : "/users?#{back}")
+  end
+
+  # Toggle one tag from the members list. Tagging six Friday drivers should be
+  # six clicks in one place, not six visits to six member pages.
+  post '/users/:id/tag' do
+    require_leader!
+    user = User.find_by(id: params[:id]) or halt 404, 'No such member'
+    tag = User.canonical_tag(params[:tag]) or halt 422, 'No tag given'
+
+    user.tags = user.tagged?(tag) ? user.tags.reject { |t| t.casecmp?(tag) } : user.tags + [tag]
+    user.save!
+
+    back = URI.encode_www_form(
+      { filter: params[:filter].presence, q: params[:q].presence, tag: params[:tag].presence }.compact
     )
     redirect to(back.empty? ? '/users' : "/users?#{back}")
   end
@@ -580,8 +602,8 @@ class App < Sinatra::Base
   # they are — an active member with a seat count.
   post '/board/:event_id/drivers' do
     with_board do |event, _history|
-      already = event.rides.pluck(:user_id)
-      User.active.drivers.where.not(id: already).find_each do |driver|
+      # Same scope the button counted, so the number on it is the number added.
+      RideBoard.new(event).regular_drivers.each do |driver|
         # Symbol keys: `create_for` reads `params[:user_id]`, and Sinatra's
         # indifferent access does not come with a plain Hash.
         RideDetails.create_for(event, user_id: driver.id, role: 'driver')
@@ -834,11 +856,19 @@ class App < Sinatra::Base
   # can never collide with one.
   NEW_LOCATION = '__new__'.freeze
 
+  # Comma or newline separated, straight out of a text box. Parsed here rather
+  # than accepting an array param, so the form stays a single field somebody can
+  # type into — which is what makes inventing a new tag cost nothing.
+  def parse_tags(raw)
+    raw.to_s.split(/[,\n]/).filter_map { |t| User.canonical_tag(t) }.uniq(&:downcase)
+  end
+
   def user_params
     attrs = permitted(USER_FIELDS).merge(
       'leader' => params[:leader] == '1',
       'active' => params[:active] == '1'
     )
+    attrs['tags'] = parse_tags(params[:tags]) if params.key?('tags')
 
     # Resolved here rather than by bouncing through POST /locations, so adding a
     # place and saving the member is one press and a half-filled form is never
@@ -864,6 +894,7 @@ class App < Sinatra::Base
     UserShow.new(
       user: user,
       locations: Location.order(:name).to_a,
+      known_tags: User.known_tags,
       load: DriverLoad.new,
       history: user.rides.includes(:event).joins(:event)
                    .where.not(events: { start_time: nil })

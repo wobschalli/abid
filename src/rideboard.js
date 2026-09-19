@@ -187,3 +187,31 @@ document.addEventListener('drop', event => {
 
   post(`${board.dataset.endpoint}/assign`, body)
 })
+
+// --- driver tags -----------------------------------------------------------
+//
+// The chips on the member page toggle a value in the comma-separated tag box
+// rather than being their own field, so there is exactly one place the tags
+// live and typing a brand new one still works.
+document.addEventListener('click', event => {
+  const chip = event.target.closest('[data-tag-chip]')
+  if (!chip) return
+
+  const box = chip.closest('form')?.querySelector('[data-tag-input]')
+  if (!box) return
+
+  const tag = chip.dataset.tagChip
+  const tags = box.value.split(',').map(t => t.trim()).filter(Boolean)
+  const at = tags.findIndex(t => t.toLowerCase() === tag.toLowerCase())
+
+  if (at === -1) tags.push(tag)
+  else tags.splice(at, 1)
+
+  box.value = tags.join(', ')
+  chip.dispatchEvent(new CustomEvent('tag:toggled', { bubbles: true }))
+  // Re-style without a round trip.
+  chip.classList.toggle('bg-accent-tint', at === -1)
+  chip.classList.toggle('text-accent', at === -1)
+  chip.classList.toggle('border-accent/30', at === -1)
+  chip.classList.toggle('text-ink/60', at !== -1)
+})
