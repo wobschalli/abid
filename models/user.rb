@@ -74,10 +74,11 @@ class User < ApplicationRecord
   # way to apply the first tag from the members list. "Friday-Usual" is a real
   # tag the moment a series asks for it, whether or not a person has it yet.
   def self.known_tags
+    registered = DriverTag.pluck(:name)
     from_users = connection.select_values('SELECT DISTINCT unnest(tags) FROM users')
     from_series = EventSeries.where.not(driver_tag: [nil, '']).distinct.pluck(:driver_tag)
 
-    (from_users + from_series).uniq { |t| t.downcase }.sort
+    (registered + from_users + from_series).uniq { |t| t.downcase }.sort
   end
 
   def self.known

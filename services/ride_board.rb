@@ -200,10 +200,7 @@ class RideBoard
   # Untagged falls back to all of them rather than to nobody: a board whose
   # series has no tag yet should keep working exactly as it did.
   def regular_drivers
-    @regular_drivers ||= begin
-      scope = User.active.drivers.where.not(id: rides.map(&:user_id))
-      driver_tag ? scope.tagged(driver_tag) : scope
-    end
+    @regular_drivers ||= driver_tag ? drivers_tagged(driver_tag) : addable_drivers
   end
 
   def regular_driver_count
@@ -214,7 +211,36 @@ class RideBoard
   # "nobody carries this tag yet" apart from "everyone is already on the board",
   # which look identical from a count of zero and need opposite responses.
   def untagged_driver_count
-    @untagged_driver_count ||= User.active.drivers.where.not(id: rides.map(&:user_id)).count
+    @untagged_driver_count ||= addable_drivers.count
+  end
+
+  # Everyone who could be added to this board, whatever their tags.
+  def addable_drivers
+    @addable_drivers ||= User.active.drivers.where.not(id: rides.map(&:user_id)).to_a
+  end
+
+  # Every tag with how many people it would add HERE — not how many carry it.
+  #
+  # The distinction matters once half a car list is already on the board: a tag
+  # of six that would add one is the honest number, and the other reading turns
+  # the button into a lie the second time you press it.
+  #
+  # This day's own tag first, then the rest, so the common case is the leftmost
+  # button without hiding the others — which is the point: a one-off, a retreat,
+  # or a Friday where the Sunday people are covering is a real Tuesday problem.
+  def driver_tag_options
+    @driver_tag_options ||= begin
+      counts = User.known_tags.to_h do |tag|
+        [tag, addable_drivers.count { |d| d.tagged?(tag) }]
+      end
+
+      ordered = counts.keys.sort_by { |tag| [tag.casecmp?(driver_tag.to_s) ? 0 : 1, tag.downcase] }
+      ordered.map { |tag| { tag: tag, count: counts[tag], preferred: tag.casecmp?(driver_tag.to_s) } }
+    end
+  end
+
+  def drivers_tagged(tag)
+    addable_drivers.select { |d| d.tagged?(tag) }
   end
 
   # --- stepping to the occurrence either side --------------------------------

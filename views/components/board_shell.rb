@@ -10,6 +10,9 @@ class Components::BoardShell < Phlex::HTML
   include BoardHelpers
 
   ROOT_ID = 'ride-board'.freeze
+  # Sent by the "All drivers" button. A sentinel rather than a blank tag, so
+  # "add everybody" can never be what an absent field happens to mean.
+  ALL_DRIVERS = '__all__'.freeze
 
   def initialize(board:, can_undo: false, leader: false, tab: :details)
     @board = board
@@ -240,16 +243,52 @@ class Components::BoardShell < Phlex::HTML
   # twice on this board without a deliberate click and the cause was never
   # pinned down — a bulk write should need a yes regardless.
   def add_drivers_button
-    count = @board.regular_driver_count
-    return untagged_hint if count.zero? && @board.driver_tag && @board.untagged_driver_count.positive?
+    options = @board.driver_tag_options.select { |o| o[:count].positive? }
+    return untagged_hint if options.empty? && @board.untagged_driver_count.positive?
+    return if options.empty? && @board.untagged_driver_count.zero?
+
+    div(class: 'flex items-center gap-1.5 flex-wrap') do
+      options.each { |option| add_tagged_button(option) }
+      add_everyone_button if options.none? { |o| o[:preferred] } || options.size > 1
+    end
+  end
+
+  # One button per tag, so the choice is visible rather than implied by which
+  # day it happens to be. The day's own tag is the solid one; the rest are there
+  # because a retreat, a one-off, or a Friday the Sunday people are covering is
+  # a real problem and guessing wrong costs a round of apologetic DMs.
+  #
+  # The count is how many this press would ADD, not how many carry the tag —
+  # otherwise pressing it twice shows the same number and the second press
+  # silently does nothing.
+  def add_tagged_button(option)
+    action_form('drivers', class: 'contents') do
+      input(type: 'hidden', name: 'tag', value: option[:tag])
+      button(
+        type: 'submit',
+        data_confirm: "Add the #{option[:count]} #{option[:tag]} drivers to this board?",
+        class: option[:preferred] ? 'board-btn-solid whitespace-nowrap' : 'board-btn whitespace-nowrap'
+      ) do
+        plain option[:tag]
+        whitespace
+        span(class: 'opacity-70') { option[:count].to_s }
+      end
+    end
+  end
+
+  # The escape hatch for a board whose tags do not describe who is actually
+  # driving tonight.
+  def add_everyone_button
+    count = @board.untagged_driver_count
     return if count.zero?
 
-    who = @board.driver_tag ? "#{count} #{@board.driver_tag}" : "#{count} regular"
-
     action_form('drivers', class: 'contents') do
-      button(type: 'submit', class: 'board-btn-solid',
-             data_confirm: "Add the #{who} drivers to this board?") do
-        "Add the #{who} drivers"
+      input(type: 'hidden', name: 'tag', value: ALL_DRIVERS)
+      button(type: 'submit', class: 'board-btn whitespace-nowrap',
+             data_confirm: "Add all #{count} available drivers to this board?") do
+        plain 'All drivers'
+        whitespace
+        span(class: 'opacity-70') { count.to_s }
       end
     end
   end
@@ -259,11 +298,14 @@ class Components::BoardShell < Phlex::HTML
   # rather than silently falling back to adding everybody — that fallback is what
   # the tag exists to stop.
   def untagged_hint
-    a(
-      href: "/users?filter=drivers",
-      title: "no active driver is tagged #{@board.driver_tag} yet",
-      class: 'board-btn no-underline text-ink/70 whitespace-nowrap'
-    ) { "Tag the #{@board.driver_tag} drivers" }
+    div(class: 'flex items-center gap-1.5') do
+      a(
+        href: '/users?filter=drivers' + (@board.driver_tag ? "&tag=#{@board.driver_tag}" : ''),
+        title: @board.driver_tag ? "no available driver is tagged #{@board.driver_tag}" : 'no driver tags yet',
+        class: 'board-btn no-underline text-ink/70 whitespace-nowrap'
+      ) { @board.driver_tag ? "Tag the #{@board.driver_tag} drivers" : 'Tag some drivers' }
+      add_everyone_button
+    end
   end
 
   # The dark bar that appears while a rider is selected for seating.

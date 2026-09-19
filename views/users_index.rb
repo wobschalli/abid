@@ -111,12 +111,41 @@ class UsersIndex < Phlex::HTML
     div(class: 'flex items-center gap-1.5 flex-wrap') do
       span(class: 'board-label') { 'Tagging' }
       tag_link(nil, 'off')
-      @tags.each { |t| tag_link(t, t) }
+      @tags.each { |t| tag_link(t.name, t.name) }
+      new_tag_form
       if @tag
         span(class: 'text-[11.5px] text-ink/55') do
           "— click a row's #{@tag} button to add or remove it"
         end
+        retire_form
       end
+    end
+  end
+
+  # Tags are invented, not configured. This is the whole of "make a new one":
+  # type it, and you land in tagging mode for it with every driver listed.
+  def new_tag_form
+    form(method: 'post', action: '/tags', class: 'flex items-center gap-1') do
+      input(type: 'hidden', name: 'filter', value: @filter.to_s)
+      input(type: 'text', name: 'name', placeholder: '+ new tag', required: true,
+            class: 'w-28 px-2 py-[3px] text-[11px] rounded-full border border-dashed ' \
+                   'border-line bg-transparent text-ink placeholder:text-ink/45 focus:border-accent')
+    end
+  end
+
+  def retire_form
+    current = @tags.find { |t| t.name.casecmp?(@tag.to_s) }
+    return if current.nil?
+
+    form(method: 'post', action: "/tags/#{current.id}", class: 'contents') do
+      input(type: 'hidden', name: '_method', value: 'delete')
+      input(type: 'hidden', name: 'filter', value: @filter.to_s)
+      button(
+        type: 'submit',
+        data_confirm: "Delete the #{current.name} tag? It comes off everyone who has it.",
+        title: "delete the #{current.name} tag",
+        class: 'border-0 bg-transparent cursor-pointer text-[11px] text-ink/40 hover:text-danger px-1'
+      ) { 'delete tag' }
     end
   end
 
@@ -158,7 +187,7 @@ class UsersIndex < Phlex::HTML
         span(class: 'board-meta') { meta(user) }
       end
       span(class: 'font-mono text-[11px] text-ink/70 text-right whitespace-nowrap') { load_label(user) }
-      tag_toggle(user) if @leader && @tag
+      tag_toggle(user) if @leader && @tag && user.can_drive?
       active_toggle(user) if @leader
     end
   end
@@ -209,7 +238,7 @@ class UsersIndex < Phlex::HTML
     pill('leader', 'bg-accent-tint text-accent') if user.leader
     pill("#{user.capacity} seats", 'bg-ink/[.07] text-ink/70') if user.can_drive?
     # Not while filtering by one: every row would carry the same pill.
-    user.tags.each { |t| pill(t, 'bg-ink/[.07] text-ink/70') } if @tag.nil?
+    user.tags.each { |t| pill(t, 'bg-ink/[.07] text-ink/70') } if @tag.nil? && user.can_drive?
     if user.missing_details?
       pill("no #{user.missing_details.join(', no ')}", 'bg-warn-tint text-warn-ink')
     end

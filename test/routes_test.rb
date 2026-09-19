@@ -719,6 +719,20 @@ class RoutesTest < AbidTest
     assert_equal 0, @event.reload.rides.count
   end
 
+  # "All drivers" is a deliberate press, and says so explicitly.
+  def test_adding_every_driver_takes_an_explicit_all
+    friday = make_user('friday driver', capacity: 4)
+    friday.update!(active: true, tags: ['Friday-Usual'])
+    other = make_user('untagged driver', capacity: 4)
+    other.update!(active: true)
+    @event.update!(driver_tag: 'Friday-Usual')
+
+    as_leader
+    post "/board/#{@event.id}/drivers", tag: Components::BoardShell::ALL_DRIVERS
+
+    assert_equal 2, @event.reload.rides.count
+  end
+
   # With no tag set at all the button behaves as it always did.
   def test_a_board_with_no_tag_still_adds_every_regular_driver
     driver = make_user('somebody', capacity: 4)
@@ -763,6 +777,86 @@ class RoutesTest < AbidTest
 
   # A tag a series asks for is real before anybody carries it, or the very first
   # one could never be applied from this page.
+  def test_creating_a_tag_nobody_carries_yet
+    as_leader
+    post '/tags', name: 'van drivers', filter: 'drivers'
+
+    # Spaces become hyphens, and it lands in tagging mode for the new tag.
+    assert_includes DriverTag.pluck(:name), 'van-drivers'
+    assert_includes last_response.location, 'tag=van-drivers'
+    assert_includes User.known_tags, 'van-drivers'
+  end
+
+  def test_deleting_a_tag_takes_it_off_everyone
+    tag = DriverTag.register('Friday-Usual')
+    driver = make_user('ian', capacity: 4)
+    driver.update!(active: true, tags: ['Friday-Usual'])
+
+    as_leader
+    delete "/tags/#{tag.id}", filter: 'drivers'
+
+    assert_empty driver.reload.tags, 'the tag is gone from the list but still on a person'
+    refute_includes User.known_tags, 'Friday-Usual'
+  end
+
+  # Tags say which board offers somebody as a driver, so they mean nothing on a
+  # member with no seats.
+  def test_a_rider_cannot_be_tagged
+    rider = make_user('caitlin')
+    rider.update!(active: true)
+
+    as_leader
+    post "/users/#{rider.id}/tag", tag: 'Friday-Usual'
+
+    assert_equal 422, last_response.status
+    assert_empty rider.reload.tags
+  end
+
+  # Every tag is offered, not just the day's own — a Friday the Sunday people
+  # are covering is a real problem.
+  def test_the_board_offers_every_tag_with_a_count
+    friday = make_user('friday driver', capacity: 4)
+    friday.update!(active: true, tags: ['Friday-Usual'])
+    sunday = make_user('sunday driver', capacity: 4)
+    sunday.update!(active: true, tags: ['Sunday-Usual'])
+    @event.update!(driver_tag: 'Friday-Usual')
+
+    options = RideBoard.new(@event).driver_tag_options
+    friday_option = options.find { |o| o[:tag] == 'Friday-Usual' }
+    sunday_option = options.find { |o| o[:tag] == 'Sunday-Usual' }
+
+    assert_equal 1, friday_option[:count]
+    assert friday_option[:preferred], "the day's own tag should lead"
+    assert_equal 1, sunday_option[:count]
+    refute sunday_option[:preferred]
+  end
+
+  # Counts are what the press would ADD, so pressing twice does not show the
+  # same number and quietly do nothing.
+  def test_the_count_drops_once_a_driver_is_on_the_board
+    driver = make_user('friday driver', capacity: 4)
+    driver.update!(active: true, tags: ['Friday-Usual'])
+    @event.update!(driver_tag: 'Friday-Usual')
+
+    as_leader
+    post "/board/#{@event.id}/drivers", tag: 'Friday-Usual'
+
+    options = RideBoard.new(@event.reload).driver_tag_options
+    assert_equal 0, options.find { |o| o[:tag] == 'Friday-Usual' }[:count]
+  end
+
+  # Picking a tag on the board overrides the day's default.
+  def test_adding_a_different_tag_than_the_days_own
+    sunday = make_user('sunday driver', capacity: 4)
+    sunday.update!(active: true, tags: ['Sunday-Usual'])
+    @event.update!(driver_tag: 'Friday-Usual')
+
+    as_leader
+    post "/board/#{@event.id}/drivers", tag: 'Sunday-Usual'
+
+    assert_includes @event.reload.rides.map(&:display_name), 'sunday driver'
+  end
+
   def test_a_series_tag_is_offered_before_anyone_carries_it
     EventSeries.create!(name: 'Abide', weekday: 5, start_time_of_day: '18:30',
                         driver_tag: 'Friday-Usual')

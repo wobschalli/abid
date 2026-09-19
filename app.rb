@@ -139,6 +139,10 @@ class App < Sinatra::Base
 
   get '/users' do
     filter = %w[active other drivers riders missing].include?(params[:filter]) ? params[:filter] : 'active'
+    # Anything a person or a series already refers to becomes manageable here,
+    # so a tag from before the registry existed is not stuck being uneditable.
+    User.known_tags.each { |t| DriverTag.register(t) }
+
     # Not a filter: picking a tag turns each row into a toggle for it, so the
     # people you are about to tag are still on screen. Filtering to a tag nobody
     # has yet would show an empty list and no way out of it.
@@ -151,7 +155,7 @@ class App < Sinatra::Base
       filter: filter,
       query: params[:q],
       counts: user_counts,
-      tags: User.known_tags,
+      tags: DriverTag.by_name.to_a,
       tag: tag,
       leader: leader?
     )
@@ -176,12 +180,35 @@ class App < Sinatra::Base
     redirect to(back.empty? ? '/users' : "/users?#{back}")
   end
 
+  # Make a tag that nobody carries yet, then drop straight into tagging mode for
+  # it — creating a tag and having nothing to do with it is never the intent.
+  post '/tags' do
+    require_leader!
+    tag = DriverTag.register(params[:name]) or halt 422, 'A tag needs a name'
+
+    back = { filter: params[:filter].presence || 'drivers', tag: tag.name }.compact
+    redirect to("/users?#{URI.encode_www_form(back)}")
+  end
+
+  # Retiring a tag takes it off everyone carrying it, so it cannot linger as an
+  # invisible scope on a board.
+  delete '/tags/:id' do
+    require_leader!
+    tag = DriverTag.find_by(id: params[:id]) or halt 404, 'No such tag'
+    tag.retire!
+
+    redirect to("/users?filter=#{params[:filter].presence || 'drivers'}")
+  end
+
   # Toggle one tag from the members list. Tagging six Friday drivers should be
   # six clicks in one place, not six visits to six member pages.
   post '/users/:id/tag' do
     require_leader!
     user = User.find_by(id: params[:id]) or halt 404, 'No such member'
     tag = User.canonical_tag(params[:tag]) or halt 422, 'No tag given'
+    # Tags say which board offers somebody as a driver, so they mean nothing on
+    # a member with no seats. The button is not rendered for them either.
+    halt 422, "#{user.display_name} has no car seats" unless user.can_drive?
 
     user.tags = user.tagged?(tag) ? user.tags.reject { |t| t.casecmp?(tag) } : user.tags + [tag]
     user.save!
@@ -602,8 +629,22 @@ class App < Sinatra::Base
   # they are — an active member with a seat count.
   post '/board/:event_id/drivers' do
     with_board do |event, _history|
-      # Same scope the button counted, so the number on it is the number added.
-      RideBoard.new(event).regular_drivers.each do |driver|
+      board = RideBoard.new(event)
+      # The button says which tag it is adding, so obey that rather than the
+      # day's default — the whole point of showing every tag is being able to
+      # pick a different one.
+      # Explicit ALL, never implicit. A request with no tag falls back to the
+      # day's own, so a stale form or a missing field adds the usual handful
+      # rather than the entire roster.
+      chosen = if params[:tag] == Components::BoardShell::ALL_DRIVERS
+                 board.addable_drivers
+               elsif params[:tag].present?
+                 board.drivers_tagged(User.canonical_tag(params[:tag]))
+               else
+                 board.regular_drivers
+               end
+
+      chosen.each do |driver|
         # Symbol keys: `create_for` reads `params[:user_id]`, and Sinatra's
         # indifferent access does not come with a plain Hash.
         RideDetails.create_for(event, user_id: driver.id, role: 'driver')

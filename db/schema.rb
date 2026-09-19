@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 3600) do
+ActiveRecord::Schema[8.0].define(version: 3700) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -81,6 +81,13 @@ ActiveRecord::Schema[8.0].define(version: 3600) do
     t.index ["event_id"], name: "index_dispatches_on_event_id"
     t.index ["requested_by_id"], name: "index_dispatches_on_requested_by_id"
     t.index ["status", "requested_at"], name: "index_dispatches_on_status_and_requested_at"
+  end
+
+  create_table "driver_tags", force: :cascade do |t|
+    t.string "name", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index "lower((name)::text)", name: "index_driver_tags_on_lower_name", unique: true
   end
 
   create_table "emojis", force: :cascade do |t|

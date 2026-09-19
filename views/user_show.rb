@@ -88,7 +88,10 @@ class UserShow < Phlex::HTML
         end
       end
 
-      field('Tags') { tags_field }
+      # Tags say which board offers this person as a driver, so they are
+      # meaningless on somebody with no seats — and an empty box inviting you to
+      # tag a rider is a question with no right answer.
+      field('Driver tags') { tags_field } if @user.can_drive?
 
       div(class: 'grid grid-cols-2 gap-3') do
         field('Car seats') do
@@ -138,8 +141,8 @@ class UserShow < Phlex::HTML
     end
 
     span(class: 'text-[11.5px] text-ink/60') do
-      'Which boards offer this person as a regular driver. A Friday board adds ' \
-      'the Friday-Usual drivers; Sunday adds Sunday-Usual. Type anything to make a new one.'
+      'Which boards offer them as a regular driver. A Friday board adds the ' \
+      'Friday-Usual drivers; Sunday adds Sunday-Usual. Type anything to make a new one.'
     end
   end
 
