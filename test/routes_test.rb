@@ -862,6 +862,27 @@ class RoutesTest < AbidTest
 
   # A tag a series asks for is real before anybody carries it, or the very first
   # one could never be applied from this page.
+  # Deleting the last tag used to hide the row that creates tags, which made it
+  # a one-way door: no chips, no "+ new tag", no way back.
+  def test_the_tagging_row_survives_having_no_tags_at_all
+    assert_empty DriverTag.all
+    assert_empty User.known_tags
+
+    body = get_ok('/users?filter=drivers').body
+
+    assert_includes body, 'Tagging'
+    assert_includes body, '+ new tag', 'no way to make a tag once the last one is gone'
+  end
+
+  # And the box still works from that state.
+  def test_a_tag_can_be_made_again_after_deleting_them_all
+    as_leader
+    post '/tags', name: 'Friday-Usual', filter: 'drivers'
+
+    assert_includes DriverTag.pluck(:name), 'Friday-Usual'
+    assert_includes get_ok('/users?filter=drivers').body, 'Friday-Usual'
+  end
+
   def test_creating_a_tag_nobody_carries_yet
     as_leader
     post '/tags', name: 'van drivers', filter: 'drivers'

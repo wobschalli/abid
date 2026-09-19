@@ -105,14 +105,24 @@ class UsersIndex < Phlex::HTML
   # people you are about to tag have to stay on screen, and on day one nobody
   # carries the tag at all, so filtering by it would show an empty page and no
   # way to get out of it.
+  # Always rendered for a leader, even with no tags at all.
+  #
+  # It used to return early on an empty list, which made deleting the last tag a
+  # dead end: the row vanished, and the box that creates tags went with it. The
+  # one state where you most need "+ new tag" was the one state that hid it.
   def tag_filter
-    return if @tags.empty?
+    return unless @leader || @tags.any?
 
     div(class: 'flex items-center gap-1.5 flex-wrap') do
       span(class: 'board-label') { 'Tagging' }
-      tag_link(nil, 'off')
+      tag_link(nil, 'off') if @tags.any?
       @tags.each { |t| tag_link(t.name, t.name) }
-      new_tag_form
+      new_tag_form if @leader
+      if @tags.empty?
+        span(class: 'text-[11.5px] text-ink/55') do
+          '— no driver tags yet. Name one and every driver gets a button for it.'
+        end
+      end
       if @tag
         span(class: 'text-[11.5px] text-ink/55') do
           "— click a row's #{@tag} button to add or remove it"
