@@ -20,13 +20,27 @@ class DriverTag < ApplicationRecord
     find_by('lower(name) = ?', canonical.downcase) || create(name: canonical)
   end
 
-  # Removing the name also takes it off everyone carrying it. The alternative
-  # is a tag that is gone from every list but still quietly scoping a board.
+  # Delete the name AND every reference to it.
+  #
+  # Three places refer to a tag, and `known_tags` unions all three so that a tag
+  # from before this table existed is still manageable. That union is also why
+  # deleting the row alone does not work: the series still said "Friday-Usual",
+  # so the next page load re-registered it and the tag came back from the dead.
+  # Friday-Usual and Sunday-Usual were the only two tags a series pointed at,
+  # which is exactly why those two were the ones that would not delete.
+  #
+  # Clearing the series is the honest consequence: the tag does not exist, so
+  # nothing can be scoped to it. That board goes back to offering every driver
+  # until a new tag is set on the series.
   def retire!
     transaction do
       User.tagged(name).find_each do |user|
         user.update!(tags: user.tags.reject { |t| t.casecmp?(name) })
       end
+
+      EventSeries.where('lower(driver_tag) = ?', name.downcase).update_all(driver_tag: nil)
+      Event.where('lower(driver_tag) = ?', name.downcase).update_all(driver_tag: nil)
+
       destroy
     end
   end

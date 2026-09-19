@@ -799,6 +799,44 @@ class RoutesTest < AbidTest
     refute_includes User.known_tags, 'Friday-Usual'
   end
 
+  # A tag a series points at used to come back: the row was deleted, then the
+  # next page load saw the series still asking for it and re-registered it.
+  # Friday-Usual and Sunday-Usual were the only two tags any series referenced,
+  # which is why exactly those two would not delete.
+  def test_deleting_a_tag_a_series_uses_does_not_resurrect_it
+    tag = DriverTag.register('Friday-Usual')
+    series = EventSeries.create!(name: 'Abide', weekday: 5, start_time_of_day: '18:30',
+                                 driver_tag: 'Friday-Usual')
+    @event.update!(series: series, driver_tag: 'Friday-Usual')
+
+    as_leader
+    delete "/tags/#{tag.id}", filter: 'drivers'
+
+    refute_includes User.known_tags, 'Friday-Usual'
+    assert_nil series.reload.driver_tag, 'the series still scopes a board to a tag that is gone'
+    assert_nil @event.reload.driver_tag
+
+    # And it stays gone after the page that re-registers known tags is loaded.
+    get_ok('/users?filter=drivers')
+    refute_includes DriverTag.pluck(:name), 'Friday-Usual'
+  end
+
+  # Losing the tag returns that board to offering every driver, rather than
+  # offering nobody.
+  def test_a_board_whose_tag_was_deleted_falls_back_to_all_drivers
+    tag = DriverTag.register('Friday-Usual')
+    driver = make_user('ian', capacity: 4)
+    driver.update!(active: true, tags: ['Friday-Usual'])
+    @event.update!(driver_tag: 'Friday-Usual')
+
+    as_leader
+    delete "/tags/#{tag.id}"
+
+    board = RideBoard.new(@event.reload)
+    assert_nil board.driver_tag
+    assert_equal 1, board.regular_driver_count
+  end
+
   # Tags say which board offers somebody as a driver, so they mean nothing on a
   # member with no seats.
   def test_a_rider_cannot_be_tagged
