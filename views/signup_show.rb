@@ -386,7 +386,9 @@ class SignupShow < Phlex::HTML
         post_button('post-now', 'Post now', 'board-btn-solid')
         post_button('unschedule', 'Back to draft', 'board-btn')
       when 'posted'
-        if @post.closed_at
+        if @post.revoking?
+          revoking_note
+        elsif @post.closed_at
           post_button('reopen', 'Reopen', 'board-btn')
         else
           post_button('close', 'Stop tracking', 'board-btn')
@@ -396,6 +398,7 @@ class SignupShow < Phlex::HTML
 
       div(class: 'flex-1')
       delete_post if @post.editable?
+      revoke_post if @post.discord_message_id.present? && !@post.revoking?
     end
   end
 
@@ -413,6 +416,43 @@ class SignupShow < Phlex::HTML
   def post_button(path, label, style)
     form(method: 'post', action: "/signups/#{@post.id}/#{path}", class: 'contents') do
       button(type: 'submit', class: style) { label }
+    end
+  end
+
+  # Take it back down and edit it again — for the post that went out wrong.
+  #
+  # The confirmation names what it costs, because that is the fact that decides
+  # whether you press it. Drivers and hand-added riders are safe: `detach_ride`
+  # will not touch a coordinator's row and will not delete a driver, and a rider
+  # already seated is marked no-show with their seat freed rather than vanishing
+  # from a car somebody planned around.
+  def revoke_post
+    form(method: 'post', action: "/signups/#{@post.id}/revoke", class: 'contents') do
+      button(type: 'submit', data_confirm: revoke_warning,
+             title: 'delete the message from Discord and edit it again',
+             class: 'border border-danger/25 bg-surface text-danger font-semibold text-xs px-3 py-[9px] rounded-[7px] cursor-pointer hover:bg-danger-tint') do
+        'Revoke & edit'
+      end
+    end
+  end
+
+  def revoke_warning
+    reacted = @post.live_reaction_count
+    base = 'Delete this message from Discord and put the sign-up back to draft?'
+    return "#{base} Nobody has reacted yet." if reacted.zero?
+
+    "#{base} #{reacted} #{reacted == 1 ? 'person has' : 'people have'} reacted — " \
+      'their sign-ups go with it. Anyone already seated is kept as a no-show ' \
+      'with their seat freed; drivers and riders you added by hand stay.'
+  end
+
+  # The bot does the deletion, so there is a gap between pressing and the
+  # message disappearing. Saying so beats a button that looks like it did
+  # nothing.
+  def revoking_note
+    span(class: 'text-[12.5px] text-ink/65 py-2') do
+      'Revoking — the bot removes the message from Discord within 15 seconds, ' \
+      'then this comes back as a draft.'
     end
   end
 

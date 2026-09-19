@@ -653,6 +653,67 @@ class RoutesTest < AbidTest
     assert_equal 0, record.reload.options.count
   end
 
+  # --- revoking a sent sign-up ---------------------------------------------
+
+  def make_posted_signup
+    server = Server.create!(name: "S#{next_discord_id}", discord_id: next_discord_id)
+    channel = Channel.create!(name: 'rides', discord_id: next_discord_id, server: server)
+    signup = SignupPost.create!(channel: channel, service_date: @event.start_time.to_date,
+                                status: 'posted', discord_message_id: next_discord_id,
+                                posted_at: Time.zone.now)
+    signup.options.create!(Signup::EmojiKey.parse('1️⃣').merge(event: @event, position: 0))
+    signup.reload
+  end
+
+  # The button only asks. The post must stay `posted` until the bot has really
+  # removed the message — otherwise Post now sends a second one alongside it.
+  def test_revoking_only_flags_it_and_leaves_the_post_posted
+    signup = make_posted_signup
+
+    as_leader
+    post "/signups/#{signup.id}/revoke"
+
+    signup.reload
+    refute_nil signup.revoke_requested_at
+    assert_equal 'posted', signup.status, 'went editable before the message was gone'
+    refute_nil signup.discord_message_id
+  end
+
+  def test_the_signup_page_offers_revoke_once_sent_and_says_so_while_it_runs
+    signup = make_posted_signup
+
+    assert_includes get_ok("/signups/#{signup.id}").body, 'Revoke &amp; edit'
+
+    signup.update!(revoke_requested_at: Time.zone.now)
+    body = get_ok("/signups/#{signup.id}").body
+    assert_includes body, 'Revoking'
+    refute_includes body, 'Revoke &amp; edit', 'offered to revoke something already being revoked'
+  end
+
+  # A draft has no message in the channel, so there is nothing to take down.
+  def test_revoking_a_draft_is_refused
+    server = Server.create!(name: "S#{next_discord_id}", discord_id: next_discord_id)
+    channel = Channel.create!(name: 'rides', discord_id: next_discord_id, server: server)
+    draft = SignupPost.create!(channel: channel, service_date: Time.zone.today, status: 'draft')
+
+    as_leader
+    post "/signups/#{draft.id}/revoke"
+
+    assert_equal 409, last_response.status
+    assert_nil draft.reload.revoke_requested_at
+  end
+
+  def test_a_non_leader_cannot_revoke
+    signup = make_posted_signup
+
+    plain = User.create!(name: 'Nobody', username: "nb#{next_discord_id}",
+                         discord_id: next_discord_id, password: 'x' * 10)
+    env 'rack.session', { user_id: plain.id }
+    post "/signups/#{signup.id}/revoke"
+
+    assert_nil signup.reload.revoke_requested_at
+  end
+
   # --- the schedule calendar ------------------------------------------------
 
   # The window used to be six weeks, so a retreat in January was in the database

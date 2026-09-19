@@ -12,6 +12,8 @@ module Signup
   # user-list fetch. In the steady state that is one request per post, not one
   # per option.
   class Reconciler
+    include MessageLookup
+
     Report = Struct.new(:post, :status, :added, :removed, :checked, :fetched, keyword_init: true)
 
     def initialize(bot, sink: nil)
@@ -79,49 +81,6 @@ module Signup
     end
 
     private
-
-    # Discord says "this will never exist again" with these. Everything else —
-    # a 500, a timeout, a severed socket — is transient and must NOT stop us
-    # tracking the post.
-    #
-    # Resolved lazily rather than as a constant: `load_services` loads this file
-    # into the *web* process too, which does not require discordrb, and naming
-    # those classes in a class body would turn every page into a NameError.
-    def definitively_gone?(error)
-      return false unless defined?(Discordrb::Errors)
-
-      [Discordrb::Errors::UnknownMessage,
-       Discordrb::Errors::UnknownChannel].any? { |klass| error.is_a?(klass) }
-    end
-
-    # nil means the message is gone or unreachable. Never fall through to the
-    # diff loop on a transient API failure — that would mass-cancel every ride.
-    # Sets @vanished when the failure is permanent, so the caller can stop
-    # polling without also treating a network blip as a deletion.
-    def load_message(post)
-      @vanished = false
-      channel = @bot.channel(post.channel.discord_id)
-
-      if channel.nil?
-        # `@bot.channel` returns nil rather than raising for a channel the bot
-        # cannot see, so this used to surface as `NoMethodError: undefined
-        # method 'load_message' for nil` — which reads like a code bug and says
-        # nothing about the actual cause.
-        @vanished = true
-        warn "channel #{post.channel.discord_id} (##{post.channel.name}) is not visible to the bot"
-        return nil
-      end
-
-      channel.load_message(post.discord_message_id)
-    rescue StandardError => e
-      if definitively_gone?(e)
-        @vanished = true
-        warn "message #{post.discord_message_id} is gone: #{e.class}"
-      else
-        warn "could not load message #{post.discord_message_id}: #{e.class}: #{e.message}"
-      end
-      nil
-    end
 
     # Closing stops the polling and shows up in the dashboard as closed. It
     # deliberately leaves every existing reaction, signup and ride alone: the

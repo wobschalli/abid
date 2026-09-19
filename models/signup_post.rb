@@ -31,6 +31,14 @@ class SignupPost < ApplicationRecord
   scope :reconcile_requested, lambda {
     tracking.where('reconcile_requested_at > COALESCE(reconciled_at, to_timestamp(0))')
   }
+  # Asked to be unsent and not yet unsent. Includes `closed` because stopping
+  # tracking does not remove the message from the channel — a closed post is
+  # still something you might need to take down.
+  scope :revoke_requested, lambda {
+    where.not(revoke_requested_at: nil)
+         .where(status: %w[posted closed])
+         .where.not(discord_message_id: nil)
+  }
 
   def draft?      = status == 'draft'
   def scheduled?  = status == 'scheduled'
@@ -94,6 +102,34 @@ class SignupPost < ApplicationRecord
     return false unless status == 'closed'
 
     update!(status: 'posted', closed_at: nil)
+  end
+
+  # Back to an editable draft, with every trace of the message that was sent.
+  #
+  # Called by the bot AFTER the message is confirmed gone, never before — see
+  # the migration for why that ordering is the whole design.
+  #
+  # The options' discord_message_id has to go too. It is the key every reaction
+  # lookup uses (`SignupOption.for_reaction`), so leaving it would point the
+  # next reaction at a message that no longer exists.
+  def revoke!
+    transaction do
+      update!(status: 'draft', discord_message_id: nil, posted_at: nil,
+              rendered_body: nil, closed_at: nil, revoke_requested_at: nil,
+              last_error: nil)
+      options.update_all(discord_message_id: nil, updated_at: Time.zone.now)
+    end
+  end
+
+  def revoking?
+    revoke_requested_at.present?
+  end
+
+  # How many people would lose their sign-up if this were revoked now. Named in
+  # the confirmation, because "3 people have reacted" is the fact that decides
+  # whether you press it.
+  def live_reaction_count
+    SignupReaction.live.where(signup_option_id: options.select(:id)).count
   end
 
   def message_link

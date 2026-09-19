@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 3700) do
+ActiveRecord::Schema[8.0].define(version: 3800) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -258,6 +258,7 @@ ActiveRecord::Schema[8.0].define(version: 3700) do
     t.datetime "updated_at", null: false
     t.string "reconcile_note"
     t.boolean "reconcile_ok"
+    t.datetime "revoke_requested_at"
     t.index ["channel_id"], name: "index_signup_posts_on_channel_id"
     t.index ["created_by_id"], name: "index_signup_posts_on_created_by_id"
     t.index ["discord_message_id"], name: "index_signup_posts_on_discord_message_id", unique: true

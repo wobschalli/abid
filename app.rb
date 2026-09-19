@@ -556,6 +556,21 @@ class App < Sinatra::Base
     redirect to("/signups/#{params[:id]}")
   end
 
+  # Take a posted sign-up back down so it can be fixed and sent again.
+  #
+  # Only sets the flag. The bot deletes the message and then returns the post to
+  # draft — the post deliberately stays `posted` until the message is really
+  # gone, so a bot that is down cannot leave you editing a draft whose original
+  # is still live in the channel.
+  post '/signups/:id/revoke' do
+    require_leader!
+    post = find_signup(params[:id])
+    halt 409, 'That sign-up has not been sent.' if post.discord_message_id.blank?
+
+    post.update!(revoke_requested_at: Time.zone.now)
+    redirect to("/signups/#{post.id}")
+  end
+
   # Ask the bot for a sweep. It polls for this every 15 seconds.
   post '/signups/:id/resync' do
     require_leader!

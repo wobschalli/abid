@@ -33,6 +33,10 @@ class Bot
       # from the dashboard is picked up within 15 seconds.
       @scheduler.every '15s', overlap: false do
         with_connection { reconcile(SignupPost.reconcile_requested) }
+        # Same cadence: both are "the dashboard asked for something", and a
+        # coordinator who has just realised the post is wrong is watching the
+        # channel while they wait.
+        with_connection { revoke_requested }
       end
 
       @scheduler.every RECONCILE_TICK, overlap: false do
@@ -85,6 +89,12 @@ class Bot
       Signup::Reconciler.new(@bot).run_all(scope)
     rescue StandardError => e
       warn "signup reconcile failed: #{e.class}: #{e.message}"
+    end
+
+    def revoke_requested
+      Signup::Revoker.new(@bot).run_all
+    rescue StandardError => e
+      warn "signup revoke failed: #{e.class}: #{e.message}"
     end
 
     # Materialise upcoming occurrences once a day rather than every 30 seconds,

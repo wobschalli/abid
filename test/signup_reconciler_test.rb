@@ -27,15 +27,18 @@ class SignupReconcilerTest < AbidTest
   # `visible: false` makes `bot.channel` return nil, which is what discordrb
   # really does for a channel the bot cannot see — it does not raise.
   class FakeBot
-    def initialize(raise_with: nil, visible: true)
+    def initialize(raise_with: nil, visible: true, message: :default)
       @raise_with = raise_with
       @visible = visible
+      # `message: nil` is how the real library reports a message that does not
+      # exist — see the test at the bottom of this file.
+      @message = message == :default ? FakeMessage.new : message
     end
 
     def channel(_id)
       return nil unless @visible
 
-      FakeChannel.new(FakeMessage.new, @raise_with)
+      FakeChannel.new(@message, @raise_with)
     end
   end
 
@@ -94,4 +97,19 @@ class SignupReconcilerTest < AbidTest
     assert_equal 'posted', @post.reload.status
     refute_nil @post.reconciled_at
   end
+  # The real Discordrb::Channel#load_message rescues UnknownMessage and returns
+  # nil, so the exception this class waits for never escapes in production.
+  # Every "message is gone" test here raises instead, which is why the branch
+  # could not fire against a live bot and still tested green.
+  def test_a_message_discord_returns_as_nil_stops_the_polling
+    bot = FakeBot.new(message: nil)
+
+    capture_io { @report = Signup::Reconciler.new(bot).run(@post) }
+
+    assert_equal :message_gone, @report.status
+    @post.reload
+    assert_equal 'closed', @post.status, 'kept polling a message that does not exist'
+    assert_equal false, @post.reconcile_ok
+  end
+
 end
