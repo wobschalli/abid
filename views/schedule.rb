@@ -75,20 +75,33 @@ class Schedule < Phlex::HTML
 
   DAY_INITIALS = %w[S M T W T F S].freeze
 
-  def calendar
-    return if @dates.empty?
+  # Five months ahead, which spans six month grids: the rest of this one
+  # through the month five months out.
+  MONTHS_AHEAD = 5
 
+  def calendar
     by_date = @dates.index_by(&:date)
-    div(class: 'flex flex-col gap-3 lg:sticky lg:top-4') do
+    # Scrollable, not just sticky. Five month grids are taller than a laptop
+    # viewport, so pinning the container left January and February rendered but
+    # unreachable — you could scroll the list past them and never see them.
+    div(class: 'flex flex-col gap-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1') do
       months.each { |first| month_grid(first, by_date) }
       legend
     end
   end
 
-  # First day of each month covered by the upcoming dates.
+  # Every month the five-month window touches, so the calendar covers exactly
+  # what the list below it covers. Anything less and a date is in the list with
+  # no cell to click.
+  #
+  # It used to run to the month of the LAST loaded date, so the calendar was
+  # however long the query happened to be — three weeks of generated Fridays
+  # meant a one-month calendar, and it looked like the term ended in October.
+  # The span is the point: it should show the shape of the term whether or not
+  # anything is on a given week yet.
   def months
     first = Time.zone.today.beginning_of_month
-    last = @dates.last.date.beginning_of_month
+    last = (Time.zone.today + MONTHS_AHEAD.months).beginning_of_month
     out = []
     while first <= last
       out << first
@@ -114,18 +127,55 @@ class Schedule < Phlex::HTML
     end
   end
 
+  # Three cases, all the same size so the seven-column grid never shifts.
+  #
+  # A day with rides goes to that day's sign-up, because that is the thing you
+  # open a calendar to reach. It used to be an in-page anchor that scrolled to
+  # the card below — fine when the list was six weeks long, useless once it is
+  # five months and the card you want is forty rows down.
   def day_cell(date, day)
-    today = date == Time.zone.today
-    base = 'flex items-center justify-center h-7 text-[11.5px] rounded-md no-underline ' \
-           "#{today ? 'ring-1 ring-accent font-bold' : ''}"
+    return blank_cell(date) if day.nil?
+    return post_link(date, day) if day.post
 
-    if day.nil?
-      span(class: "#{base} #{date < Time.zone.today ? 'text-ink/25' : 'text-ink/55'}") { date.day.to_s }
-    else
-      a(href: "##{anchor(date)}", title: day_title(day),
-        class: "#{base} bg-accent-tint text-accent font-semibold hover:bg-accent-tint-strong") do
-        date.day.to_s
-      end
+    create_cell(date, day)
+  end
+
+  def cell_classes(date, tone)
+    today = date == Time.zone.today
+    'flex items-center justify-center h-7 w-full text-[11.5px] rounded-md no-underline ' \
+      "#{today ? 'ring-1 ring-accent font-bold' : ''} #{tone}"
+  end
+
+  def blank_cell(date)
+    span(class: cell_classes(date, date < Time.zone.today ? 'text-ink/25' : 'text-ink/55')) do
+      date.day.to_s
+    end
+  end
+
+  def post_link(date, day)
+    a(href: "/signups/#{day.post.id}", title: "#{day_title(day)} — open the sign-up",
+      class: cell_classes(date, 'bg-accent-tint text-accent font-semibold hover:bg-accent-tint-strong')) do
+      date.day.to_s
+    end
+  end
+
+  # No sign-up for that date yet, so set one up and open it — seeded with that
+  # day's emoji rows and scheduled for the usual send time, which is exactly
+  # what the automation would do when the date came into range.
+  #
+  # A form rather than a link because it writes a row, and a GET that writes
+  # gets fired by a browser prefetching what it thinks you are about to click.
+  # Idempotent, so clicking twice opens the same post.
+  def create_cell(date, day)
+    return blank_cell(date) unless @leader
+
+    form(method: 'post', action: "/schedule/#{date.strftime('%Y-%m-%d')}/signup", class: 'contents') do
+      button(
+        type: 'submit',
+        title: "#{day_title(day)} — start the sign-up",
+        class: "#{cell_classes(date, 'text-accent font-semibold border border-dashed border-accent/45 hover:bg-accent-tint')} " \
+               'cursor-pointer bg-transparent'
+      ) { date.day.to_s }
     end
   end
 
@@ -135,9 +185,15 @@ class Schedule < Phlex::HTML
   end
 
   def legend
-    div(class: 'flex items-center gap-2 px-1 text-[11px] text-ink/60') do
-      span(class: 'w-4 h-4 rounded bg-accent-tint border border-accent/30 shrink-0')
-      plain 'has rides'
+    div(class: 'flex flex-col gap-1 px-1 text-[11px] text-ink/60') do
+      div(class: 'flex items-center gap-2') do
+        span(class: 'w-4 h-4 rounded bg-accent-tint border border-accent/30 shrink-0')
+        plain 'sign-up ready — click to open'
+      end
+      div(class: 'flex items-center gap-2') do
+        span(class: 'w-4 h-4 rounded border border-dashed border-accent/45 shrink-0')
+        plain 'rides, no sign-up yet — click to make one'
+      end
     end
   end
 

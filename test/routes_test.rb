@@ -653,6 +653,91 @@ class RoutesTest < AbidTest
     assert_equal 0, record.reload.options.count
   end
 
+  # --- the schedule calendar ------------------------------------------------
+
+  # The window used to be six weeks, so a retreat in January was in the database
+  # and simply never fetched. It looked missing; it was never asked for.
+  def test_the_schedule_shows_events_months_out
+    far = make_event(name: 'Winter Retreat', starts: Time.zone.now + 4.months)
+
+    body = get_ok('/schedule').body
+
+    assert_includes body, 'Winter Retreat', "an event #{far.start_time.to_date} away was dropped"
+  end
+
+  # The calendar must cover the same span as the list, or a date sits in the
+  # list with no cell to click.
+  def test_the_calendar_covers_every_month_the_list_does
+    far = make_event(name: 'Five Months Out', starts: Time.zone.now + 4.months + 3.weeks)
+    body = get_ok('/schedule').body
+
+    assert_includes body, 'Five Months Out'
+    assert_includes body, far.start_time.strftime('%B %Y'), 'the list reached a month the calendar does not'
+
+    # This month through the month five months out, inclusive.
+    this_month = Time.zone.today.beginning_of_month
+    last_month = (Time.zone.today + 5.months).beginning_of_month
+    month = this_month
+    while month <= last_month
+      assert_includes body, month.strftime('%B %Y'), "no grid for #{month.strftime('%B %Y')}"
+      month = month.next_month
+    end
+
+    refute_includes body, last_month.next_month.strftime('%B %Y'), 'the calendar ran past the window'
+  end
+
+  # A day with a sign-up goes straight to it.
+  def test_a_calendar_day_with_a_signup_links_to_it
+    channel = Channel.create!(name: 'rides', discord_id: next_discord_id,
+                              server: Server.create!(name: "S#{next_discord_id}", discord_id: next_discord_id))
+    post = SignupPost.create!(channel: channel, service_date: @event.start_time.to_date,
+                              status: 'draft')
+
+    assert_includes get_ok('/schedule').body, "/signups/#{post.id}"
+  end
+
+  # A day with rides but no sign-up sets one up and opens it.
+  def test_clicking_a_day_with_no_signup_creates_and_opens_one
+    channel = Channel.create!(name: 'rides', discord_id: next_discord_id,
+                              server: Server.create!(name: "S#{next_discord_id}", discord_id: next_discord_id))
+    series = EventSeries.create!(name: 'Sunday Service', weekday: 0, start_time_of_day: '09:30',
+                                 channel: channel, signup_lead_days: 3, signup_post_time: '20:00')
+    date = Time.zone.today + 3.weeks
+    series.ensure_occurrence(date)
+
+    as_leader
+    post "/schedule/#{date.strftime('%Y-%m-%d')}/signup"
+
+    created = SignupPost.find_by(service_date: date)
+    refute_nil created, 'no sign-up was made'
+    assert_includes last_response.location, "/signups/#{created.id}"
+    assert created.options.any?, 'opened a sign-up with no emoji rows'
+  end
+
+  # Clicking the same day twice opens the same post.
+  def test_setting_a_date_up_twice_reuses_the_same_signup
+    channel = Channel.create!(name: 'rides', discord_id: next_discord_id,
+                              server: Server.create!(name: "S#{next_discord_id}", discord_id: next_discord_id))
+    series = EventSeries.create!(name: 'Sunday Service', weekday: 0, start_time_of_day: '09:30',
+                                 channel: channel, signup_lead_days: 3, signup_post_time: '20:00')
+    date = Time.zone.today + 3.weeks
+    series.ensure_occurrence(date)
+
+    as_leader
+    post "/schedule/#{date.strftime('%Y-%m-%d')}/signup"
+    as_leader
+    post "/schedule/#{date.strftime('%Y-%m-%d')}/signup"
+
+    assert_equal 1, SignupPost.where(service_date: date).count
+  end
+
+  def test_setting_up_a_date_with_nothing_on_it_is_refused
+    as_leader
+    post "/schedule/#{(Time.zone.today + 2.days).strftime('%Y-%m-%d')}/signup"
+
+    assert_equal 422, last_response.status
+  end
+
   # --- driver tags ---------------------------------------------------------
 
   def test_tags_are_canonicalised_so_one_tag_does_not_become_three

@@ -105,4 +105,55 @@ class SignupAutoScheduleTest < AbidTest
 
     assert_equal 'React by 8am Sunday', run_it.first.post.outro
   end
+  # --- setting one date up early, from the calendar ------------------------
+
+  def test_ensure_for_creates_seeds_and_schedules_a_single_date
+    s = series
+    occurrence(s)
+
+    post = Signup::AutoSchedule.new.ensure_for(@sunday)
+
+    assert_equal 'scheduled', post.status
+    assert_equal s.signup_post_at(@sunday), post.post_at
+    assert post.options.any?, 'no emoji rows to react to'
+  end
+
+  # Clicking the same day twice must not make a second post.
+  def test_ensure_for_is_idempotent
+    occurrence(series)
+
+    first = Signup::AutoSchedule.new.ensure_for(@sunday)
+    second = Signup::AutoSchedule.new.ensure_for(@sunday)
+
+    assert_equal first.id, second.id
+    assert_equal 1, SignupPost.where(service_date: @sunday).count
+  end
+
+  # And it hands back a draft somebody is already writing rather than
+  # scheduling it out from under them.
+  def test_ensure_for_returns_an_existing_draft_untouched
+    occurrence(series)
+    mine = SignupPost.create!(channel: @channel, service_date: @sunday,
+                              status: 'draft', intro: 'hand-written')
+
+    assert_equal mine.id, Signup::AutoSchedule.new.ensure_for(@sunday).id
+    assert_equal 'draft', mine.reload.status
+    assert_equal 'hand-written', mine.intro
+  end
+
+  def test_ensure_for_does_nothing_for_a_date_with_no_events
+    assert_nil Signup::AutoSchedule.new.ensure_for(@sunday)
+  end
+
+  # Reaches past the three-week automation window on purpose — that is the
+  # whole point of setting a date up by hand.
+  def test_ensure_for_reaches_beyond_the_automatic_horizon
+    s = series
+    far = @sunday + 12.weeks
+    s.ensure_occurrence(far)
+
+    assert_nil run_it.find { |r| r.post.service_date == far }, 'automation should not reach that far'
+    refute_nil Signup::AutoSchedule.new.ensure_for(far)
+  end
+
 end

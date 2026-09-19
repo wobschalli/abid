@@ -209,4 +209,41 @@ class SignupPublisherTest < AbidTest
     assert post.schedule!
     assert_equal 'scheduled', post.reload.status
   end
+  # --- a date that was cancelled -------------------------------------------
+
+  # Cancelling an occurrence never touched its sign-up, so a cancelled Friday
+  # still asked the whole server who wanted a lift to it.
+  def test_a_post_whose_events_are_all_cancelled_is_closed_rather_than_sent
+    post = make_post
+    @event.update!(disabled: true)
+    bot = FakeBot.new
+
+    assert_equal 0, Signup::Publisher.new(bot).run_once
+
+    assert_empty bot.sent, 'messaged the server about a cancelled date'
+    assert_equal 'closed', post.reload.status
+    refute_nil post.closed_at
+  end
+
+  # One cancelled service out of two is not a cancelled date.
+  def test_a_post_still_sends_when_one_of_its_events_survives
+    post = make_post
+    other = make_event(name: 'Sunday Service')
+    post.options.create!(Signup::EmojiKey.parse('2️⃣').merge(event: other, position: 1))
+    @event.update!(disabled: true)
+
+    assert_equal 1, Signup::Publisher.new(FakeBot.new).run_once
+    assert_equal 'posted', post.reload.status
+  end
+
+  # Refusing to send is destructive, so an unbound post is sent rather than
+  # guessed about.
+  def test_a_post_with_no_events_bound_is_left_to_send
+    post = make_post
+    post.options.update_all(event_id: nil)
+
+    assert_equal 1, Signup::Publisher.new(FakeBot.new).run_once
+    assert_equal 'posted', post.reload.status
+  end
+
 end

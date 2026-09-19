@@ -22,6 +22,26 @@ module Signup
       uncovered_dates.filter_map { |date, events| create_for(date, events) }
     end
 
+    # Set a single date up now, rather than waiting for it to come into the
+    # three-week window: create the post, seed its emoji rows, and schedule it
+    # for the series' usual send time. What the calendar click calls.
+    #
+    # Idempotent by design — clicking the same day twice reaches the same post.
+    # It deliberately does NOT reach through `@horizon_weeks`: the point is to
+    # set up a date that is further out than the automation would reach yet.
+    #
+    # @return [SignupPost, nil] nil when the date has no events, or no channel
+    def ensure_for(date)
+      date = date.to_date
+      existing = SignupPost.where.not(status: 'failed').find_by(service_date: date)
+      return existing if existing
+
+      events = Event.active.where(start_time: date.all_day).chronological.to_a
+      return nil if events.empty?
+
+      create_for(date, events)&.post
+    end
+
     # Upcoming dates that have active events and no sign-up post yet.
     #
     # Shared with the schedule page so the list you are shown and the list that

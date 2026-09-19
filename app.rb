@@ -384,6 +384,21 @@ class App < Sinatra::Base
     redirect to("/series/#{series.id}")
   end
 
+  # Set one date's sign-up up from the calendar, and open it.
+  #
+  # Reaches past the three-week window the automation works to, which is the
+  # point: the calendar shows five months, and a date you can see is a date you
+  # should be able to prepare. Idempotent, so clicking the same day twice opens
+  # the same post rather than making a second one.
+  post '/schedule/:date/signup' do
+    require_leader!
+    date = Date.parse(params[:date].to_s) rescue halt(422, 'Not a date')
+    post = Signup::AutoSchedule.new.ensure_for(date)
+    halt 422, "Nothing is happening on #{date.strftime('%-d %b')}" if post.nil?
+
+    redirect to("/signups/#{post.id}")
+  end
+
   # --- sign-up posts --------------------------------------------------------
 
   post '/signups' do
@@ -797,9 +812,15 @@ class App < Sinatra::Base
     warn "catch-up generation failed: #{e.class}: #{e.message}"
   end
 
-  def schedule_page(error: nil, weeks: 6)
+  # Five months, matching the calendar beside the list. It used to be six weeks,
+  # which is why one-off events further out — a retreat in January — were in the
+  # database and simply never fetched: they were not missing, they were not
+  # asked for.
+  CALENDAR_MONTHS = 5
+
+  def schedule_page(error: nil, months: CALENDAR_MONTHS)
     events = Event.includes(:location, :series, :channel, rides: :user)
-                  .where(start_time: Time.zone.now..(Time.zone.now + weeks.weeks))
+                  .where(start_time: Time.zone.now..(Time.zone.today + months.months).end_of_day)
                   .chronological.to_a
     by_date = events.group_by { |event| event.start_time.to_date }
 

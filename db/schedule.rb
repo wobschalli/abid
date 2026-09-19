@@ -85,7 +85,13 @@ module Abid
         signup_lead_days: lead_days, signup_post_time: post_time,
         pickup_source: pickup,
         driver_tag: tag,
-        interval_weeks: 1, horizon_weeks: 3, disabled: false,
+        # Five months, so the calendar on /schedule shows the shape of a term
+        # rather than the next fortnight. Cheap: an occurrence is a row, and
+        # occurrence_dates skips the academic breaks, so this does not invent
+        # rides over Christmas. Sign-up posts are NOT created this far out —
+        # Signup::AutoSchedule keeps its own three-week horizon, because a post
+        # queued months ahead would still send for a date you later cancelled.
+        interval_weeks: 1, horizon_weeks: 22, disabled: false,
         channel: series.channel || default_channel
       )
       series.save!

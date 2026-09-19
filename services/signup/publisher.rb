@@ -27,6 +27,8 @@ module Signup
       sent = 0
       limit.times do
         post = claim or break
+        next if abandon_cancelled(post)
+
         publish(post)
         sent += 1
       end
@@ -66,6 +68,34 @@ module Signup
                   LIMIT 1)
         RETURNING *
       SQL
+    end
+
+    # A sign-up whose every event has been cancelled.
+    #
+    # Cancelling an occurrence switches the event off but never touched its
+    # post, so a cancelled Friday still asked 271 people who wanted a lift to
+    # it. The window for that used to be small because posts were only made
+    # three days out; it is worth closing now that a date can be set up months
+    # ahead from the calendar.
+    #
+    # Judged by the events the post's own options point at, NOT by matching
+    # service_date against the day's events. The date version silently closed
+    # any post whose date had drifted from its events — refusing to send is a
+    # destructive answer to "I am not sure", so this only fires when the post
+    # itself says which events it is for and every one of them is off.
+    #
+    # Closed rather than deleted: the post is the record that the date was once
+    # planned, and `closed_at` already means "stop polling this".
+    #
+    # @return [true, false] whether the post was abandoned
+    def abandon_cancelled(post)
+      bound = post.options.filter_map(&:event)
+      return false if bound.empty?
+      return false if bound.any? { |event| !event.disabled }
+
+      warn "signup post #{post.id} skipped — every event it covers is cancelled"
+      post.update!(status: 'closed', closed_at: Time.zone.now)
+      true
     end
 
     def publish(post)
