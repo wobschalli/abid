@@ -46,6 +46,7 @@ class Components::BoardShell < Phlex::HTML
     div(class: 'flex items-center gap-3.5 px-5 py-3.5 border-b border-line flex-none flex-wrap') do
       event_nav
       div(class: 'font-display font-bold text-lg -tracking-[.015em]') { header_date }
+      past_pill if past?
       slot_tabs
       div(class: 'flex-1')
       undo_button
@@ -60,6 +61,22 @@ class Components::BoardShell < Phlex::HTML
       ) { 'Export .csv' }
       autofill_form if @leader
     end
+  end
+
+  def past?
+    @event.past?
+  end
+
+  # Last week's board and this week's are the same screen with a different date
+  # in a corner, and the date alone is easy to read straight past — especially
+  # on a Sunday morning when you are looking for the one you just opened. This
+  # says it in words, next to the thing it is qualifying.
+  def past_pill
+    span(
+      title: @event.start_time ? "finished #{@event.start_time.strftime('%-d %b')}" : nil,
+      class: 'font-mono text-[9.5px] font-semibold tracking-[.06em] px-[7px] py-[3px] ' \
+             'rounded-[5px] uppercase bg-ink/[.07] text-ink/60'
+    ) { 'past' }
   end
 
   def header_date

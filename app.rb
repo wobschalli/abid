@@ -610,6 +610,11 @@ class App < Sinatra::Base
   post '/board/:event_id/dispatch' do
     require_leader!
     event = find_event(params[:event_id]) or halt 404, 'No such event'
+    # The buttons are gone from a finished board, but a tab left open since
+    # Sunday still has them. Refuse here too: a DM about a lift that already
+    # happened is confusing at best, and the board it was sent from looks
+    # identical to this week's.
+    halt 422, 'That event has already happened — nothing to send.' if event.past?
 
     dispatch = DispatchPlanner.new(
       RideBoard.new(event),

@@ -653,6 +653,42 @@ class RoutesTest < AbidTest
     assert_equal 0, record.reload.options.count
   end
 
+  # --- past events ---------------------------------------------------------
+
+  def test_a_past_board_offers_no_send_button_and_says_it_is_past
+    past = make_event(name: 'Last Sunday', starts: 8.days.ago)
+    make_driver(past, 'ian', seats: 4, zone: ZONE_1)
+
+    body = get_ok("/board?event_id=#{past.id}").body
+
+    refute_includes body, 'Send to', 'a finished event must not offer to DM drivers'
+    refute_includes body, 'Resend to all'
+    assert_includes body, 'already happened'
+    assert_includes body, '>past<'
+  end
+
+  def test_an_upcoming_board_still_offers_the_send_button
+    make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+
+    body = get_ok("/board?event_id=#{@event.id}").body
+
+    assert_includes body, 'Send to'
+    refute_includes body, '>past<'
+  end
+
+  # The button is gone, but a tab left open since Sunday still has one.
+  def test_dispatching_a_past_event_is_refused
+    past = make_event(name: 'Last Sunday', starts: 8.days.ago)
+    driver = make_driver(past, 'ian', seats: 4, zone: ZONE_1)
+    make_rider(past, 'caitlin', zone: ZONE_1, driver: driver)
+
+    as_leader
+    post "/board/#{past.id}/dispatch", scope: 'all'
+
+    assert_equal 422, last_response.status
+    assert_equal 0, past.dispatches.count, 'a DM was queued for an event that already happened'
+  end
+
   # --- things that broke silently because nothing covered them ------------
 
   def test_the_board_map_renders_for_an_event_with_no_rides

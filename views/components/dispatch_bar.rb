@@ -20,12 +20,25 @@ class Components::DispatchBar < Phlex::HTML
       last_sent
       buttons if @leader
     end
-    findings if @readiness.findings.any?
+    findings if @readiness.findings.any? && !past?
   end
 
   private
 
+  def past?
+    @board.event.past?
+  end
+
+  # Readiness is a question about a ride that has not happened. Once it has,
+  # "2 things to fix before sending" is noise about a Sunday that is over.
   def state
+    if past?
+      return div(class: 'flex items-center gap-2 text-[12.5px] font-medium text-ink/55') do
+        span(class: 'w-1.5 h-1.5 rounded-full bg-ink/30 flex-none')
+        plain 'This one has already happened — kept as a record.'
+      end
+    end
+
     if @readiness.ready?
       div(class: 'flex items-center gap-2 text-[12.5px] font-medium text-accent') do
         span(class: 'w-1.5 h-1.5 rounded-full bg-accent flex-none')
@@ -69,18 +82,25 @@ class Components::DispatchBar < Phlex::HTML
     span(class: 'font-mono text-[11px] text-ink/70') { bits.join(' · ') }
   end
 
+  # No send buttons on a finished event. A DM telling somebody who they are
+  # collecting at 9:30 is worse than useless the morning after — and the most
+  # likely way to send one is landing on last week's board, which looks exactly
+  # like this week's. The Log stays: who was told what is the whole reason to
+  # open an old board.
   def buttons
+    log_link if @status.anything_sent?
+    return if past?
+
     count = @status.stale_driver_rides.size
-
-    a(href: "/events/#{@board.event.id}/dispatches",
-      class: 'board-btn no-underline') { 'Log' } if @status.anything_sent?
-
     send_form('changed', count.zero? ? 'Nothing to send' : "Send to #{count} #{'driver'.pluralize(count)}",
               primary: @readiness.ready?, disabled: count.zero?)
 
-    if @status.anything_sent?
-      send_form('all', 'Resend to all', primary: false, disabled: false)
-    end
+    send_form('all', 'Resend to all', primary: false, disabled: false) if @status.anything_sent?
+  end
+
+  def log_link
+    a(href: "/events/#{@board.event.id}/dispatches",
+      class: 'board-btn no-underline') { 'Log' }
   end
 
   def send_form(scope, label, primary:, disabled:)
