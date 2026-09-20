@@ -1034,8 +1034,8 @@ class App < Sinatra::Base
   end
 
   # No `section`: a pickup time is identified by its time, which display_name
-  # now says outright. No `end_time`: nothing asked for it except the form, and
-  # `end_time_or_estimate` has always covered its absence.
+  # now says outright. No `end_time`: a ride is over when its day is, so there
+  # is nothing for it to decide.
   EVENT_FIELDS = %w[name start_time pickup_source channel_id location_id].freeze
 
   SERIES_FIELDS = %w[name weekday interval_weeks start_time_of_day end_time_of_day

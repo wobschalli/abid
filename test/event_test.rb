@@ -1,38 +1,67 @@
 require_relative 'test_helper'
 
 class EventTest < AbidTest
-  # Discord-created events frequently have no end_time. Before the coalesce they
-  # never appeared under Past, which made the browser untrustworthy.
-  def test_past_includes_events_with_no_end_time
-    stale = Event.create!(name: 'No end', start_time: 4.hours.ago)
+  # A ride is over when its day is. The old rule guessed an end two hours after
+  # the start whenever none was recorded, which made a 7am–5pm retreat "past" at
+  # 9am — PAST pill up and no way to dispatch, on the morning of the retreat.
 
-    assert_includes Event.past, stale
-    assert stale.past?
+  def test_an_event_earlier_today_is_not_past
+    this_morning = Event.create!(name: 'Sunday School', start_time: Time.zone.now.beginning_of_day + 8.hours)
+
+    refute_includes Event.past, this_morning
+    refute this_morning.past?
+    assert_includes Event.upcoming, this_morning
   end
 
-  def test_an_event_that_started_recently_is_not_past_yet
-    fresh = Event.create!(name: 'Just started', start_time: 30.minutes.ago)
+  # The case that prompted this: no end time, and still running long.
+  def test_an_all_day_event_with_no_end_time_stays_open_all_day
+    retreat = Event.create!(name: 'Fall Retreat', start_time: Time.zone.now.beginning_of_day + 7.hours)
 
-    refute_includes Event.past, fresh
-    refute fresh.past?
+    travel_to(Time.zone.now.beginning_of_day + 15.hours) do
+      refute retreat.past?, 'went past while people were still being collected'
+      refute_includes Event.past, retreat
+    end
   end
 
-  def test_past_respects_an_explicit_end_time
-    long = Event.create!(name: 'Long', start_time: 5.hours.ago, end_time: 1.hour.from_now)
+  def test_yesterdays_event_is_past
+    yesterday = Event.create!(name: 'Last night', start_time: 1.day.ago)
 
-    refute_includes Event.past, long
+    assert_includes Event.past, yesterday
+    assert yesterday.past?
+    refute_includes Event.upcoming, yesterday
   end
 
-  # Ruby and SQL must agree, or the index and the detail page disagree.
-  def test_end_time_or_estimate_matches_the_past_scope
+  # An end time still counts when it is there, so something spanning two days
+  # stays live until the second one is over.
+  def test_an_event_running_into_another_day_is_not_past_until_that_day_ends
+    overnight = Event.create!(name: 'Lock-in', start_time: 1.day.ago, end_time: Time.zone.now + 2.hours)
+
+    refute_includes Event.past, overnight
+    refute overnight.past?
+  end
+
+  # Ruby and SQL must agree, or the list and the detail page disagree.
+  def test_past_in_ruby_matches_past_in_sql
     [
       Event.create!(name: 'a', start_time: 3.hours.ago),
-      Event.create!(name: 'b', start_time: 1.hour.ago),
-      Event.create!(name: 'c', start_time: 3.hours.ago, end_time: 2.hours.ago),
-      Event.create!(name: 'd', start_time: 1.hour.from_now)
+      Event.create!(name: 'b', start_time: 2.days.ago),
+      Event.create!(name: 'c', start_time: 3.days.ago, end_time: 2.days.ago),
+      Event.create!(name: 'd', start_time: 1.day.from_now),
+      Event.create!(name: 'e', start_time: 2.days.ago, end_time: 1.hour.from_now)
     ].each do |event|
       in_sql = Event.past.exists?(event.id)
       assert_equal in_sql, event.past?, "#{event.name} disagrees: SQL=#{in_sql} ruby=#{event.past?}"
+    end
+  end
+
+  # Nothing may fall between the two — the series page lists upcoming and past
+  # side by side, and an event in neither would simply vanish from it.
+  def test_every_event_is_either_upcoming_or_past
+    [3.hours.ago, 2.days.ago, 1.day.from_now, Time.zone.now].each do |at|
+      event = Event.create!(name: "at #{at}", start_time: at)
+
+      assert_equal 1, [Event.past.exists?(event.id), Event.upcoming.exists?(event.id)].count(true),
+                   "#{event.name} is in both lists or neither"
     end
   end
 

@@ -25,7 +25,7 @@ class EventShow < Phlex::HTML
   private
 
   def past?
-    @event.end_time_or_estimate <= Time.zone.now
+    @event.past?
   end
 
   def breadcrumb

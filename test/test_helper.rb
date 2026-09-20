@@ -7,11 +7,16 @@ Abid.load_models
 Abid.load_services
 
 require 'minitest/autorun'
+require 'active_support/testing/time_helpers'
 
 # Base case for the ride board logic. Each test runs inside a transaction that
 # is rolled back afterwards, so tests can build whatever data they need without
 # cleaning up after each other.
 class AbidTest < Minitest::Test
+  # `travel_to`, for the rules that hinge on what time it is — "is this ride
+  # over?" cannot be tested honestly from whatever o'clock the suite runs at.
+  include ActiveSupport::Testing::TimeHelpers
+
   DISCORD_ID_BASE = 800_000_000
 
   # Positional, not semantic. Almost every test needs "a zone" or "a different

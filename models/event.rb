@@ -36,12 +36,25 @@ class Event < ApplicationRecord
   self.ignored_columns += %w[repeats_every scheduled send_schedule_id collect_schedule_id]
 
   scope :active, -> { where(disabled: false) }
-  scope :current, -> { where("start_time <= :now AND end_time >= :now", now: Time.zone.now) }
   scope :inactive, -> { where(disabled: true) }
-  # Events created through the Discord modal often have no end_time, and would
-  # never appear under Past without the fallback.
-  scope :past, -> { where("coalesce(end_time, start_time + interval '2 hours') <= ?", Time.zone.now) }
-  scope :upcoming, -> { where("start_time >= ?", Time.zone.now) }
+
+  # A ride is finished when its DAY is, not two hours after it starts.
+  #
+  # The old rule guessed an end two hours in whenever none was recorded, and
+  # that guess decided whether the board still offered to dispatch. A 7am–5pm
+  # retreat was therefore "over" at 9am — PAST pill up and Send to drivers gone,
+  # on the morning of the retreat, while people were still being collected.
+  #
+  # Ending at midnight needs no end time at all, and is wrong in the harmless
+  # direction: a board that stays open a few hours too long costs nothing, where
+  # one that closes early costs a dispatch you cannot send.
+  #
+  # `end_time` is still honoured when it is there, so something genuinely
+  # spanning two days stays live until the second one is over.
+  scope :past, -> { where('coalesce(end_time, start_time) < ?', Time.zone.now.beginning_of_day) }
+  # The complement, at the same day granularity — so an event earlier today is
+  # in exactly one of these, not in neither.
+  scope :upcoming, -> { where('coalesce(end_time, start_time) >= ?', Time.zone.now.beginning_of_day) }
 
   scope :recurring, -> { where.not(series_id: nil) }
   scope :one_off, -> { where(series_id: nil) }
@@ -79,13 +92,6 @@ class Event < ApplicationRecord
     signup_posts.any?(&:posted?)
   end
 
-  # Mirrors the coalesce in `scope :past`, so Ruby and SQL agree on when an
-  # occurrence is over. Events created through the Discord modal often have no
-  # end_time.
-  def end_time_or_estimate
-    end_time || (start_time && start_time + 2.hours) || Time.zone.now
-  end
-
   # Which driver tag this occurrence draws from.
   #
   # Inherited from the series rather than copied down at generation, so renaming
@@ -97,8 +103,12 @@ class Event < ApplicationRecord
     driver_tag.presence || series&.driver_tag.presence
   end
 
+  # Mirrors `scope :past`, so Ruby and SQL agree on when a ride is over.
   def past?
-    end_time_or_estimate <= Time.zone.now
+    finish = end_time || start_time
+    return false if finish.nil?
+
+    finish.to_date < Time.zone.today
   end
 
   def to_h #this allows for the object to be passed directly into Discordrb methods
