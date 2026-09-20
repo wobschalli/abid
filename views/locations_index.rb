@@ -38,8 +38,9 @@ class LocationsIndex < Phlex::HTML
 
   def note
     div(class: 'p-3.5 rounded-lg border border-line bg-surface-sunk text-[12.5px] leading-[1.6] text-ink/75') do
-      plain 'Pickup areas around Purdue. The board groups the waiting queue by zone, '
-      plain 'auto-fill prefers a driver in the same zone, and a driver collects one zone at a time. '
+      plain 'Pickup areas around Purdue. The board groups the waiting queue by zone, and '
+      plain 'Optimize routes between these places by real driving time — so an address here '
+      plain 'is not decoration, it is what decides who rides with whom. '
       plain 'The shared list lives in '
       code(class: 'font-mono text-[11.5px]') { 'db/locations.rb' }
       plain ', and you can add your own below. Anything marked '

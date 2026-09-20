@@ -671,6 +671,63 @@ class RoutesTest < AbidTest
     assert_equal was, record.reload.options.first.emoji_key
   end
 
+  # --- optimize and export placement ---------------------------------------
+
+  # The button was renamed from Auto-fill; the route went with it, and nothing
+  # covered it at HTTP level before.
+  def test_optimize_seats_the_waiting_queue
+    driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    rider = make_rider(@event, 'caitlin', zone: ZONE_1)
+
+    as_leader
+    post "/board/#{@event.id}/optimize"
+
+    assert_equal 302, last_response.status
+    assert_equal driver.id, rider.reload.driver_ride_id
+  end
+
+  def test_the_board_offers_optimize_not_autofill
+    make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    body = get_ok("/board?event_id=#{@event.id}").body
+
+    assert_includes body, 'Optimize'
+    refute_includes body, 'Auto-fill'
+    assert_includes body, "/board/#{@event.id}/optimize"
+  end
+
+  # Export sits beside the dispatch buttons now, and stays reachable for
+  # someone who is not a leader — reading the roster is not an edit.
+  def test_export_is_offered_beside_the_dispatch_buttons
+    make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+
+    body = get_ok("/board?event_id=#{@event.id}").body
+    assert_includes body, "/board/#{@event.id}.csv"
+
+    # Position, not presence: it must sit in the dispatch bar at the bottom,
+    # not back up in the header beside Map.
+    bar_at = body.index('border-t border-line bg-surface flex-wrap')
+    csv_at = body.index("/board/#{@event.id}.csv")
+    map_at = body.index("/board/#{@event.id}/map")
+
+    refute_nil bar_at, 'dispatch bar not found'
+    assert_operator csv_at, :>, bar_at, 'export is still above the dispatch bar'
+    assert_operator csv_at, :>, map_at, 'export should no longer sit beside Map'
+  end
+
+  def test_a_non_leader_can_still_export
+    make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    plain = User.create!(name: 'Nobody', username: "nb#{next_discord_id}",
+                         discord_id: next_discord_id, password: 'x' * 10)
+
+    env 'rack.session', { user_id: plain.id }
+    get "/board?event_id=#{@event.id}"
+    assert_includes last_response.body, "/board/#{@event.id}.csv"
+
+    env 'rack.session', { user_id: plain.id }
+    get "/board/#{@event.id}.csv"
+    assert last_response.ok?
+  end
+
   # --- the emoji catalogue --------------------------------------------------
 
   def test_the_catalogue_covers_the_whole_unicode_set

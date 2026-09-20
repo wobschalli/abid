@@ -32,7 +32,8 @@ class AssignmentHistoryTest < AbidTest
     assert_equal 'requested', rider.reload.status
   end
 
-  def test_one_autofill_is_a_single_undo_step
+  # One press of Optimize, one press of Undo — however many people it seated.
+  def test_one_optimize_is_a_single_undo_step
     event = make_event
     make_driver(event, 'ian', seats: 6, zone: ZONE_1)
     riders = 3.times.map { |i| make_rider(event, "rider #{i}", zone: ZONE_1) }
@@ -40,7 +41,7 @@ class AssignmentHistoryTest < AbidTest
     session = {}
     history = AssignmentHistory.new(session, event)
     history.record(event.rides.unassigned.to_a)
-    AutoFiller.new(event).call
+    Rides::Optimizer.call(RideBoard.new(event))
 
     restored = AssignmentHistory.new(session, event).undo!
 

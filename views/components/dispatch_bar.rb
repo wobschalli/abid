@@ -18,6 +18,7 @@ class Components::DispatchBar < Phlex::HTML
       state
       div(class: 'flex-1')
       last_sent
+      export_link
       buttons if @leader
     end
     findings if @readiness.findings.any? && !past?
@@ -87,6 +88,15 @@ class Components::DispatchBar < Phlex::HTML
   # likely way to send one is landing on last week's board, which looks exactly
   # like this week's. The Log stays: who was told what is the whole reason to
   # open an old board.
+  # The sheet that gets printed and handed round. It sits here rather than up
+  # in the header because it is the same kind of act as dispatching: the board
+  # is settled, now get it out of the app. Not gated on @leader — reading the
+  # roster is not an edit.
+  def export_link
+    a(href: "/board/#{@board.event.id}.csv",
+      class: 'board-btn no-underline text-ink whitespace-nowrap') { 'Export .csv' }
+  end
+
   def buttons
     log_link if @status.anything_sent?
     return if past?

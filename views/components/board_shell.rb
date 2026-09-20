@@ -59,11 +59,7 @@ class Components::BoardShell < Phlex::HTML
         href: "/board/#{@event.id}/map",
         class: 'board-btn no-underline text-ink'
       ) { 'Map' }
-      a(
-        href: "/board/#{@event.id}.csv",
-        class: 'board-btn no-underline text-ink'
-      ) { 'Export .csv' }
-      autofill_form if @leader
+      optimize_form if @leader
     end
   end
 
@@ -154,14 +150,15 @@ class Components::BoardShell < Phlex::HTML
     end
   end
 
-  # Auto-fill is always closest-first. There used to be a strategy dropdown
-  # next to this button; it made you answer a question before you could press
-  # the thing you came to press, and the alternative only differed once zones
-  # already matched.
-  def autofill_form
-    action_form('autofill', class: 'contents') do
-      button(type: 'submit', class: 'board-btn-solid whitespace-nowrap') do
-        plain 'Auto-fill'
+  # Named for what it does now. It was "Auto-fill" when it greedily matched
+  # zones; it solves a vehicle-routing problem for minimum driving time, and
+  # calling that auto-fill undersold it — and mislabelled the thing people
+  # press when a board already looks full but badly routed.
+  def optimize_form
+    action_form('optimize', class: 'contents') do
+      button(type: 'submit', class: 'board-btn-solid whitespace-nowrap',
+             title: 'Seat everyone waiting for the least total driving time') do
+        plain 'Optimize'
         whitespace
         plain @board.pool_count.to_s
       end

@@ -4,8 +4,8 @@ require_relative 'components/master'
 #
 # It answers one question the car columns cannot: does this look sane, or is a
 # driver crossing town twice to collect someone who is plainly on another
-# driver's way? Auto-fill sorts by zone, which is a coarse proxy for geography,
-# so this is where you catch it doing something daft.
+# driver's way? The optimizer works in driving minutes it cannot show you, so
+# this is where its answer becomes something you can actually judge.
 #
 # This began as a server-rendered SVG — dots and lines on blank white. The
 # geometry was right and it was still useless: with no streets underneath there
@@ -57,7 +57,7 @@ class BoardMap < Phlex::HTML
     no_drivers: 'No routes yet — nobody is driving this one. The pins below are where people ' \
                 'are waiting, and where you are all going.',
     nobody_seated: 'No routes yet — nobody has been seated in a car. The pins below are where ' \
-                   'people are waiting; seat them on the board, or press Auto-fill.',
+                   'people are waiting; seat them on the board, or press Optimize.',
     no_locations: 'No routes yet — none of the pickups have a location on file. Add a street ' \
                   'address on Locations.'
   }.freeze

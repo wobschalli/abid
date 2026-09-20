@@ -607,7 +607,7 @@ class App < Sinatra::Base
     end
   end
 
-  post '/board/:event_id/autofill' do
+  post '/board/:event_id/optimize' do
     with_board do |event, history|
       history.record(event.rides.unassigned.to_a)
       # Time-optimal via OR-Tools; falls back to the greedy zone matcher inside
@@ -721,8 +721,9 @@ class App < Sinatra::Base
     render_board(event)
   end
 
-  # The routes, drawn. Answers "does this look sane?", which the car columns
-  # cannot: auto-fill sorts by zone, a coarse proxy for geography.
+  # The routes, drawn. Answers "does this look sane?", which a column of names
+  # cannot — and shows what the optimizer decided, which is worth seeing before
+  # twenty people are told to stand outside.
   get '/board/:event_id/map' do
     event = find_event(params[:event_id]) or halt 404, 'No such event'
     board = RideBoard.new(event)
