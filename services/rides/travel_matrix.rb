@@ -29,8 +29,12 @@ module Rides
 
     Point = Struct.new(:location_id, :lat, :lon, keyword_init: true)
 
-    def initialize(api_key: nil)
-      @api_key = api_key || Abid.google_maps_key
+    # `api_key: nil` means NO key, on purpose — it is how tests guarantee they
+    # never speak to Google. Only an omitted argument reaches for the real one;
+    # an `||` here once let the suite pick up the production key from
+    # config.yml and spend live quota from inside a unit test.
+    def initialize(api_key: :configured)
+      @api_key = api_key == :configured ? Abid.google_maps_key : api_key
       @cache = {}
     end
 
