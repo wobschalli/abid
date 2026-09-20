@@ -297,7 +297,7 @@ class App < Sinatra::Base
 
   get '/schedule' do
     catch_up_on_occurrences
-    phlex schedule_page
+    phlex schedule_page(only: params[:only])
   end
 
   get('/series') { redirect to('/schedule') }
@@ -847,10 +847,16 @@ class App < Sinatra::Base
   # asked for.
   CALENDAR_MONTHS = 5
 
-  def schedule_page(error: nil, months: CALENDAR_MONTHS)
+  def schedule_page(error: nil, months: CALENDAR_MONTHS, only: nil)
     events = Event.includes(:location, :series, :channel, rides: :user)
                   .where(start_time: Time.zone.now..(Time.zone.today + months.months).end_of_day)
                   .chronological.to_a
+    # Five months of a weekly schedule is ~40 near-identical Fridays and
+    # Sundays, and the one retreat in the middle is what you were looking for.
+    # Filtering drops the whole date when nothing one-off happens on it, so the
+    # calendar thins out too rather than showing tinted days with empty cards.
+    only_one_off = only.to_s == 'one_off'
+    events = events.reject(&:recurring?) if only_one_off
     by_date = events.group_by { |event| event.start_time.to_date }
 
     posts = SignupPost.includes(:options)
@@ -864,6 +870,7 @@ class App < Sinatra::Base
       series: EventSeries.order(:weekday, :start_time_of_day).to_a,
       breaks: AcademicBreak.chronological.to_a,
       past: Event.past.includes(rides: :user).order(start_time: :desc).limit(25).to_a,
+      only_one_off: only_one_off,
       leader: leader?,
       error: error
     )

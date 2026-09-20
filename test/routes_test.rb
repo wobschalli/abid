@@ -728,6 +728,49 @@ class RoutesTest < AbidTest
     assert last_response.ok?
   end
 
+  # --- schedule filter, and zone on add -------------------------------------
+
+  def test_the_schedule_can_hide_recurring_dates
+    series = EventSeries.create!(name: 'Abide', weekday: 5, start_time_of_day: '18:30')
+    weekly = make_event(name: 'Abide', starts: Time.zone.now + 2.days)
+    weekly.update!(series: series)
+    one_off = make_event(name: 'Fall Retreat', starts: Time.zone.now + 3.days)
+
+    all = get_ok('/schedule').body
+    assert_includes all, 'Abide'
+    assert_includes all, 'Fall Retreat'
+
+    filtered = get_ok('/schedule?only=one_off').body
+    assert_includes filtered, 'Fall Retreat'
+    refute_includes filtered, weekly.start_time.strftime('%A %-d %B'),
+                    'a date with only recurring events should drop out entirely'
+  end
+
+  # Adding someone uses the zone their home address already implies. Asking
+  # again invited a different answer, and a stray pick would override the
+  # address the optimizer routes from.
+  def test_adding_someone_takes_their_own_zone
+    member = User.create!(name: 'Priya', username: "pr#{next_discord_id}",
+                          discord_id: next_discord_id, password: 'x' * 10,
+                          location: location_in(ZONE_3))
+
+    as_leader
+    post "/board/#{@event.id}/rides", user_id: member.id, role: 'rider'
+
+    ride = @event.rides.find_by(user_id: member.id)
+    refute_nil ride
+    assert_equal ZONE_3, ride.zone
+  end
+
+  def test_the_add_form_no_longer_asks_for_a_zone
+    # The add form lives in the Roster tab, not Details.
+    body = get_ok("/board?event_id=#{@event.id}&tab=roster").body
+    add_form = body[/Add someone.*?<\/form>/m]
+
+    refute_nil add_form, 'add-someone form not found'
+    refute_includes add_form, 'name="zone"', 'the add form still asks for a zone'
+  end
+
   # --- the emoji catalogue --------------------------------------------------
 
   def test_the_catalogue_covers_the_whole_unicode_set

@@ -228,15 +228,15 @@ class Components::BoardRail < Phlex::HTML
       span(class: 'board-label') { 'Add someone' }
       action_form('rides', class: 'flex flex-col gap-2.5') do
         user_select
-        div(class: 'flex gap-[7px]') do
-          select(name: 'role', class: 'board-input flex-1 text-[12.5px]') do
-            option(value: 'rider') { 'Rider' }
-            option(value: 'driver') { 'Driver' }
-          end
-          select(name: 'zone', class: 'board-input flex-1 text-[12.5px]') do
-            option(value: '') { 'Zone' }
-            Location::ZONES.each { |z| option(value: z) { z } }
-          end
+        # No zone picker: the person already has one, from the home address on
+        # their member page, and `RideDetails.create_for` uses it. Asking again
+        # invited a different answer for no reason — and a zone typed here
+        # would quietly override the address the optimizer actually routes
+        # from. If someone is somewhere unusual this week, the details rail to
+        # the left is where you say so, on the ride rather than in passing.
+        select(name: 'role', class: 'board-input w-full text-[12.5px]') do
+          option(value: 'rider') { 'Rider' }
+          option(value: 'driver') { 'Driver' }
         end
         button(type: 'submit', class: 'board-btn-solid w-full') { "Add to #{@board.event.name}" }
       end

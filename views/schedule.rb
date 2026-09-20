@@ -11,8 +11,9 @@ require_relative 'components/master'
 class Schedule < Phlex::HTML
   include Components
 
-  def initialize(dates:, series:, breaks:, past: [], leader: false, error: nil)
+  def initialize(dates:, series:, breaks:, past: [], only_one_off: false, leader: false, error: nil)
     @dates = dates
+    @only_one_off = only_one_off
     @series = series
     @breaks = breaks
     @past = past
@@ -50,9 +51,29 @@ class Schedule < Phlex::HTML
     div(class: 'flex items-center gap-3 flex-wrap') do
       h1(class: 'font-display font-bold text-2xl -tracking-[.015em]') { 'Schedule' }
       span(class: 'board-meta') { "#{@dates.size} dates coming up" }
+      kind_filter
       div(class: 'flex-1')
       new_event_actions if @leader
     end
+  end
+
+  # The weekly rhythm is the thing you already know; a retreat is the thing you
+  # are looking for. Hiding the recurring dates leaves just the exceptions.
+  def kind_filter
+    div(class: 'flex gap-1 p-[3px] bg-ink/5 rounded-lg') do
+      kind_tab(nil, 'All')
+      kind_tab('one_off', 'One-off only')
+    end
+  end
+
+  def kind_tab(value, label)
+    current = @only_one_off == (value == 'one_off')
+    classes = [
+      'border-0 cursor-pointer font-semibold text-[11.5px] px-[11px] py-1.5 rounded-md no-underline',
+      current ? 'bg-surface text-ink shadow-[0_1px_2px_rgba(23,32,28,.12)]' : 'bg-transparent text-ink/70 hover:text-ink'
+    ].join(' ')
+
+    a(href: value ? "/schedule?only=#{value}" : '/schedule', class: classes) { label }
   end
 
   def new_event_actions
@@ -64,7 +85,11 @@ class Schedule < Phlex::HTML
 
   def empty_note
     div(class: 'p-3.5 rounded-lg border border-line bg-surface-sunk text-[13px] text-ink/70') do
-      'Nothing coming up. Add a recurring event above and its occurrences — and their sign-ups — appear on their own.'
+      if @only_one_off
+        'No one-off events coming up — just the weekly rhythm. Switch to All to see it.'
+      else
+        'Nothing coming up. Add a recurring event above and its occurrences — and their sign-ups — appear on their own.'
+      end
     end
   end
 
