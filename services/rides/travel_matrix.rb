@@ -21,8 +21,11 @@ module Rides
     DETOUR = 1.3
     CITY_SPEED_KMH = 30.0
     EARTH_KM = 6371.0
-    # Google's server-side cap is 100 elements per request.
-    MAX_ELEMENTS = 100
+    # Google enforces two caps per request: 100 elements total AND 25 per
+    # dimension. With one origin per request the binding one is 25
+    # destinations — 41 in one call comes back MAX_DIMENSIONS_EXCEEDED, which
+    # is how this number was learned.
+    MAX_DESTINATIONS = 25
 
     Point = Struct.new(:location_id, :lat, :lon, keyword_init: true)
 
@@ -133,7 +136,7 @@ module Rides
       # the URL length limit; ~30 locations is ~30 requests, once ever.
       pairs.group_by(&:first).each do |from_id, group|
         dest_ids = group.map(&:last)
-        dest_ids.each_slice(MAX_ELEMENTS) do |slice|
+        dest_ids.each_slice(MAX_DESTINATIONS) do |slice|
           fetch_row(from_id, slice, coords)
         end
       end
