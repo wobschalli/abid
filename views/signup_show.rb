@@ -12,9 +12,8 @@ class SignupShow < Phlex::HTML
                '🚗', '🚙', '🚐', '🕐', '🕕', '🙋', '✅', '❌', '🌅', '🌆',
                '☀️', '🌙', '⛪', '🍽️', '📖', '🎒', '🙏', '💺'].freeze
 
-  def initialize(post:, candidates:, channels:, server_emojis: [], leader: false, error: nil)
+  def initialize(post:, channels:, server_emojis: [], leader: false, error: nil)
     @post = post
-    @candidates = candidates
     @channels = channels
     @server_emojis = server_emojis
     @leader = leader
@@ -33,7 +32,6 @@ class SignupShow < Phlex::HTML
           div(class: 'flex flex-col gap-5') do
             settings
             options
-            add_option if editable?
           end
           preview
         end
@@ -181,15 +179,14 @@ class SignupShow < Phlex::HTML
       div(class: 'flex items-baseline gap-2') do
         span(class: 'board-label') { 'Ride options' }
         span(class: 'text-[11.5px] text-ink/60') { @post.summary }
-        div(class: 'flex-1')
-        # For when the ride date is changed, or an event is added to that day
-        # after the post was made.
-        post_button('fill', 'Fill from this date', 'board-btn') if editable? && @leader
       end
 
+      # There was a "Fill from this date" button here. The list is a projection
+      # of that day's pickup times now — checked on every view — so there is
+      # nothing left to press.
       if @post.options.empty?
         div(class: 'px-1 py-4 text-[13px] text-ink/65') do
-          'No rides on this date yet. Change the ride date above, or add one below.'
+          'Nothing is happening on this date. Change the ride date above, or add a pickup time to the schedule.'
         end
       else
         @post.options.each { |option| option_row(option) }
@@ -197,114 +194,86 @@ class SignupShow < Phlex::HTML
     end
   end
 
+  # One row per pickup time, and the time is what the row IS — so it is printed
+  # rather than offered in a dropdown. What is yours to choose is which emoji
+  # stands for it, and the line of text beside it on the message.
   def option_row(option)
     form(method: 'post', action: "/signups/#{@post.id}/options/#{option.id}",
-         class: 'flex items-center gap-3 px-3 py-2.5 rounded-lg border border-line bg-surface flex-wrap') do
+         class: 'flex flex-col gap-2 px-3 py-2.5 rounded-lg border border-line bg-surface') do
       input(type: 'hidden', name: '_method', value: 'patch')
 
-      span(class: 'text-[22px] leading-none w-8 flex items-center justify-center shrink-0') do
-        # A custom emoji has no character to print. `option.display` falls back
-        # to ":name:", which at 22px overflowed this box as raw text.
-        if option.emoji_discord_id.present?
-          custom_emoji_image(option.emoji_discord_id, option.emoji_name)
-        else
-          plain option.display
-        end
-      end
-
-      div(class: 'flex-1 min-w-[220px] flex flex-col gap-1') do
-        select(name: 'event_id', disabled: !editable?, class: 'board-input') do
-          option(value: '', selected: option.event_id.nil?) { 'Pick the ride this books' }
-          @candidates.each do |event|
-            option(value: event.id, selected: option.event_id == event.id) { candidate_label(event) }
+      div(class: 'flex items-center gap-3 flex-wrap') do
+        span(class: 'text-[22px] leading-none w-8 flex items-center justify-center shrink-0') do
+          # A custom emoji has no character to print. `option.display` falls
+          # back to ":name:", which at 22px overflowed this box as raw text.
+          if option.emoji_discord_id.present?
+            custom_emoji_image(option.emoji_discord_id, option.emoji_name)
+          else
+            plain option.display
           end
         end
-        input(type: 'text', name: 'label', value: option.label.to_s, disabled: !editable?,
-              placeholder: 'Line text (defaults to the ride time)', class: 'board-input text-[12px] py-1.5')
+
+        span(class: 'flex-1 min-w-[200px] flex flex-col gap-0.5') do
+          span(class: 'text-[13px] font-medium') { option_time(option) }
+          span(class: 'board-meta') { option.event&.name.to_s }
+        end
+
+        if @post.posted?
+          span(class: 'font-mono text-[11px] text-ink/70 whitespace-nowrap') { "#{option.live_reaction_count} reacted" }
+        end
+
+        button(type: 'submit', class: 'board-btn') { 'Save' } if editable?
       end
 
-      if @post.posted?
-        span(class: 'font-mono text-[11px] text-ink/70 whitespace-nowrap') { "#{option.live_reaction_count} reacted" }
-      end
+      next unless editable?
 
-      if editable?
-        button(type: 'submit', class: 'board-btn') { 'Save' }
-        delete_option(option)
-      end
+      input(type: 'text', name: 'label', value: option.label.to_s,
+            placeholder: 'Line text (defaults to the ride time)', class: 'board-input text-[12px] py-1.5')
+      emoji_field(option)
     end
   end
 
-  def delete_option(option)
-    form(method: 'post', action: "/signups/#{@post.id}/options/#{option.id}", class: 'contents') do
-      input(type: 'hidden', name: '_method', value: 'delete')
-      button(type: 'submit', title: 'Remove option',
-             class: 'border border-danger/25 bg-surface text-danger font-semibold text-xs px-2.5 py-[9px] rounded-[7px] cursor-pointer hover:bg-danger-tint') { '✕' }
-    end
+  def option_time(option)
+    event = option.event
+    return 'no ride attached' if event.nil?
+
+    event.start_time&.strftime('%-l:%M %p').to_s
   end
 
-  # A grid of radio buttons rather than a JS widget. Picking an emoji is then a
-  # plain form field: it needs no build step, survives JS being off, and posts
-  # through the same route as the text box.
-  #
-  # The `peer-checked` styling is what makes a radio look like a pressed key —
-  # the input itself is visually hidden but still focusable, so keyboard and
-  # screen-reader users get a normal radio group.
-  def emoji_picker
-    div(class: 'flex flex-col gap-2') do
-      span(class: 'board-label') { 'Pick an emoji' }
-      div(class: 'flex flex-wrap gap-1') do
-        SUGGESTED.each { |char| emoji_choice(char) { plain char } }
-      end
+  # Changing which emoji books this time. The only route to a different emoji
+  # used to be deleting the row and adding it back, which is no longer possible
+  # — and should not be, since the rows are the day's times.
+  def emoji_field(option)
+    details(class: '', data_emoji_picker: true) do
+      summary(class: 'cursor-pointer text-[12px] text-accent select-none') { 'Change emoji…' }
 
-      if @server_emojis.any?
-        span(class: 'board-label pt-1') { "This server's emoji" }
-        div(class: 'flex flex-wrap gap-1 max-h-40 overflow-y-auto') do
-          @server_emojis.each do |emoji|
-            # `<:name:id>` is exactly what Discord puts in message content, and
-            # what EmojiKey.parse already understands.
-            emoji_choice("<:#{emoji.name}:#{emoji.discord_id}>", title: ":#{emoji.name}:") do
-              custom_emoji_image(emoji.discord_id, emoji.name)
+      div(class: 'flex flex-col gap-2 pt-2') do
+        div(class: 'flex flex-wrap gap-1') do
+          SUGGESTED.each { |char| emoji_choice(char) { plain char } }
+        end
+
+        if @server_emojis.any?
+          div(class: 'flex flex-wrap gap-1 max-h-32 overflow-y-auto') do
+            @server_emojis.each do |emoji|
+              emoji_choice("<:#{emoji.name}:#{emoji.discord_id}>", title: ":#{emoji.name}:") do
+                custom_emoji_image(emoji.discord_id, emoji.name)
+              end
             end
           end
         end
-      end
 
-      browse_all
-    end
-  end
-
-  # The other 1,900.
-  #
-  # Typing any emoji has always worked — the box below this takes the character,
-  # `:alpha_code:` or `<:custom:id>`. What was missing was a way to find one
-  # without already knowing its name, which is not much use to someone who wants
-  # a bus and cannot remember whether it is :bus:, :oncoming_bus: or :trolleybus:.
-  #
-  # Collapsed, and the list is fetched only when it is opened: it is 161KB and
-  # the usual interaction here is pressing 1️⃣.
-  def browse_all
-    details(class: 'pt-1', data_emoji_picker: true) do
-      summary(class: 'cursor-pointer text-[12px] text-accent select-none') do
-        'Browse all emoji…'
-      end
-
-      div(class: 'flex flex-col gap-2 pt-2') do
         input(type: 'search', data_emoji_search: true, autocomplete: 'off',
-              placeholder: 'Search — car, church, clock, 1…',
+              placeholder: 'Search all emoji — car, church, clock…',
               class: 'board-input text-[12.5px] py-1.5')
         div(data_emoji_results: true,
-            class: 'flex flex-wrap gap-1 max-h-56 overflow-y-auto content-start')
-        span(data_emoji_status: true, class: 'text-[11.5px] text-ink/55') do
-          'Loading the full list…'
-        end
+            class: 'flex flex-wrap gap-1 max-h-40 overflow-y-auto content-start')
+        span(data_emoji_status: true, class: 'text-[11.5px] text-ink/55') { 'Loading the full list…' }
+        input(type: 'text', name: 'emoji', placeholder: 'or type one',
+              class: 'board-input w-40 text-center text-[16px]')
       end
     end
   end
 
-  # The body is the literal text Discord receives, so a custom emoji appears in
-  # it as `<:name:id>`. Printing that verbatim is accurate about the content but
-  # wrong about the appearance, and this panel is captioned "what the bot will
-  # post" — so swap each token for the image Discord itself would show.
   def preview_body
     body = @post.body.to_s
     pos = 0
@@ -334,29 +303,6 @@ class SignupShow < Phlex::HTML
                   'border border-line bg-surface hover:bg-surface-sunk ' \
                   'peer-checked:border-accent peer-checked:bg-accent-tint ' \
                   'peer-focus-visible:ring-2 peer-focus-visible:ring-accent', &block)
-    end
-  end
-
-  def candidate_label(event)
-    "#{event.start_time.strftime('%a %-d %b %-l:%M %p')} — #{event.display_name}"
-  end
-
-  def add_option
-    div(class: 'flex flex-col gap-2 p-3 rounded-lg border border-line bg-surface-sunk') do
-      span(class: 'board-label') { 'Add an option' }
-      form(method: 'post', action: "/signups/#{@post.id}/options", class: 'flex flex-col gap-2') do
-        emoji_picker
-        div(class: 'flex gap-2 flex-wrap') do
-          input(type: 'text', name: 'emoji', placeholder: 'or type any emoji',
-                class: 'board-input w-40 text-center text-[16px]')
-          select(name: 'event_id', required: true, class: 'board-input flex-1 min-w-[220px]') do
-            option(value: '') { 'Pick the ride this books' }
-            @candidates.each { |e| option(value: e.id) { candidate_label(e) } }
-          end
-        end
-        input(type: 'text', name: 'label', placeholder: 'Line text (optional)', class: 'board-input text-[12px] py-1.5')
-        button(type: 'submit', class: 'board-btn-solid self-start') { 'Add option' }
-      end
     end
   end
 

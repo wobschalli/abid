@@ -80,8 +80,10 @@ class App < Sinatra::Base
   # Must precede '/events/:id', which would otherwise match "new".
   get '/events/new' do
     require_leader!
-    phlex EventForm.new(event: Event.new(start_time: prefilled_start_time),
-                        **form_collections, leader: leader?)
+    phlex EventForm.new(
+      event: Event.new(start_time: prefilled_start_time, location_id: default_venue_id),
+      **form_collections, leader: leader?
+    )
   end
 
   post '/events' do
@@ -435,17 +437,13 @@ class App < Sinatra::Base
   end
 
   # Re-fill after the ride date changes, or after an event is added to that day.
-  post '/signups/:id/fill' do
-    require_leader!
-    post = find_signup(params[:id])
-    halt 409, 'This post has already been sent.' unless post.editable?
-
-    Signup::OptionSeeder.new(post).call
-    redirect to("/signups/#{post.id}")
-  end
-
   get '/signups/:id' do
-    phlex signup_page(find_signup(params[:id]))
+    post = find_signup(params[:id])
+    # One emoji per pickup time, checked every time the page is opened rather
+    # than only when the post was made. A time added or cancelled since then is
+    # reflected here instead of drifting. No-ops unless the post is editable.
+    Signup::OptionSeeder.new(post).call
+    phlex signup_page(post.reload)
   end
 
   patch '/signups/:id' do
@@ -471,37 +469,30 @@ class App < Sinatra::Base
     redirect to('/signups')
   end
 
-  post '/signups/:id/options' do
-    require_leader!
-    post = find_signup(params[:id])
-    halt 409, 'This post has already been sent.' unless post.editable?
-
-    # The picker submits `emoji_pick`; the free-text box submits `emoji`. Typed
-    # text wins, so someone who picks one and then types another gets the one
-    # they typed last.
-    chosen = params[:emoji].presence || params[:emoji_pick].presence
-    attrs = Signup::EmojiKey.parse(chosen)
-    halt 422, "Could not read #{chosen.inspect} as an emoji." if attrs.nil?
-
-    option = post.options.build(
-      attrs.merge(
-        event_id: params[:event_id].presence,
-        label: params[:label].presence,
-        position: post.options.size
-      )
-    )
-    halt 422, option.errors.full_messages.to_sentence.presence || 'Could not add that option.' unless option.save
-    redirect to("/signups/#{post.id}")
-  end
-
+  # The row's pickup time is not editable — it is what the row IS. What can
+  # change is which emoji stands for it, and the line of text beside it.
   patch '/signups/:id/options/:option_id' do
     require_leader!
     post = find_signup(params[:id])
     halt 409, 'This post has already been sent.' unless post.editable?
 
     option = post.options.find(params[:option_id])
-    option.event_id = params[:event_id].presence
     option.label = params[:label].presence
+
+    chosen = params[:emoji].presence || params[:emoji_pick].presence
+    if chosen
+      attrs = Signup::EmojiKey.parse(chosen)
+      halt 422, "Could not read #{chosen.inspect} as an emoji." if attrs.nil?
+
+      # Uniquely indexed on [signup_post_id, emoji_key]: without this an emoji
+      # another time already uses is a 500 instead of a sentence.
+      if post.options.any? { |other| other.id != option.id && other.emoji_key == attrs[:emoji_key] }
+        halt 422, "#{chosen} is already used by another time on this sign-up."
+      end
+
+      option.assign_attributes(attrs)
+    end
+
     if option.save
       redirect to("/signups/#{post.id}")
     else
@@ -510,16 +501,6 @@ class App < Sinatra::Base
     end
   end
 
-  delete '/signups/:id/options/:option_id' do
-    require_leader!
-    post = find_signup(params[:id])
-    halt 409, 'This post has already been sent.' unless post.editable?
-
-    post.options.find(params[:option_id]).destroy
-    redirect to("/signups/#{post.id}")
-  end
-
-  # Hand the post to the bot. It polls SignupPost.due every 30 seconds.
   post '/signups/:id/schedule' do
     require_leader!
     post = find_signup(params[:id])
@@ -799,6 +780,17 @@ class App < Sinatra::Base
   # last slot already on that day — adding a third Sunday service to a 9:30 and
   # a 10:30 almost always means 11:30, and a bare date would otherwise land the
   # datetime field on midnight.
+  # Where rides go. Everything goes to the same place, so asking every time is
+  # a question with one answer.
+  #
+  # Read off the series rather than hardcoded, so it follows the day the venue
+  # moves instead of quietly pre-selecting the old one.
+  def default_venue_id
+    EventSeries.where.not(location_id: nil)
+               .group(:location_id).count
+               .max_by { |_, count| count }&.first
+  end
+
   def prefilled_start_time
     date = Date.parse(params[:date].to_s)
     last = Event.active.where(start_time: date.all_day).maximum(:start_time)
@@ -881,7 +873,6 @@ class App < Sinatra::Base
   def signup_page(post, error: nil)
     SignupShow.new(
       post: post,
-      candidates: signup_candidates(post),
       channels: Channel.order(:name).to_a,
       # The server's own emoji, synced by the bot. Previously reachable only by
       # typing :name: and knowing it existed.
@@ -895,26 +886,6 @@ class App < Sinatra::Base
   # page offers and the list the automation acts on cannot disagree.
   def dates_needing_signup(weeks: 3)
     Signup::AutoSchedule.new(horizon_weeks: weeks).uncovered_dates
-  end
-
-  # The occurrences this post could be about — normally the one or two on its
-  # own ride date.
-  #
-  # It used to be "everything from yesterday onward, limit 40", which is how a
-  # two-service Sunday ended up offering seventeen choices. The `service_date`
-  # was in the query but had no effect: `[from, Time.zone.now - 1.day].min`
-  # discarded it whenever the date was today or later, which is every normal
-  # case, since the form defaults to the coming Sunday.
-  def signup_candidates(post)
-    dated = post.service_date &&
-            Event.active.where(start_time: post.service_date.all_day).chronological.to_a
-
-    scope = dated.presence || Event.active.upcoming.chronological.limit(20).to_a
-
-    # Anything an existing option already points at, even on another day. Drop
-    # this and that option's select renders with nothing selected, then silently
-    # rebinds the ride to something else on the next Save.
-    (scope | post.options.filter_map(&:event)).sort_by { |event| event.start_time || Time.zone.now }
   end
 
   def users_for(filter, query)
@@ -1062,10 +1033,12 @@ class App < Sinatra::Base
     { channels: Channel.order(:name).to_a, locations: Location.order(:name).to_a }
   end
 
-  EVENT_FIELDS = %w[name section start_time end_time pickup_source
-                    channel_id location_id].freeze
+  # No `section`: a pickup time is identified by its time, which display_name
+  # now says outright. No `end_time`: nothing asked for it except the form, and
+  # `end_time_or_estimate` has always covered its absence.
+  EVENT_FIELDS = %w[name start_time pickup_source channel_id location_id].freeze
 
-  SERIES_FIELDS = %w[name section weekday interval_weeks start_time_of_day end_time_of_day
+  SERIES_FIELDS = %w[name weekday interval_weeks start_time_of_day end_time_of_day
                      signup_lead_days signup_post_time signup_outro pickup_source channel_id location_id
                      starts_on ends_on horizon_weeks].freeze
 

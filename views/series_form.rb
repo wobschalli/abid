@@ -38,7 +38,6 @@ class SeriesForm < Phlex::HTML
       input(type: 'hidden', name: '_method', value: 'patch') unless @series.new_record?
 
       field('Name') { text_field('name', @series.name) }
-      field('Section') { section_select }
 
       div(class: 'grid grid-cols-2 gap-3') do
         field('Day') { weekday_select }
@@ -129,15 +128,6 @@ class SeriesForm < Phlex::HTML
     select(name: 'interval_weeks', class: 'board-input') do
       { 1 => 'Every week', 2 => 'Every 2 weeks', 3 => 'Every 3 weeks', 4 => 'Every 4 weeks' }.each do |weeks, label|
         option(value: weeks, selected: @series.interval_weeks == weeks) { label }
-      end
-    end
-  end
-
-  def section_select
-    select(name: 'section', class: 'board-input') do
-      option(value: '', selected: @series.section.blank?) { '—' }
-      Event::SECTIONS.each do |section|
-        option(value: section, selected: @series.section == section) { section }
       end
     end
   end

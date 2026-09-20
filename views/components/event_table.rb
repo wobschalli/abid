@@ -51,7 +51,6 @@ class Components::EventTable < Phlex::HTML
 
   def meta(event)
     [
-      event.section.presence,
       event.location&.name,
       (event.posted? ? 'posted' : nil)
     ].compact.join(' · ')

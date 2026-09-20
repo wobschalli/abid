@@ -89,7 +89,10 @@ class DispatchPlanner
     {
       'event' => {
         'id' => @event.id,
-        'name' => @event.display_name,
+        # `name`, not display_name: the briefing headline already prints the
+        # date and time right after it, and display_name now carries the time
+        # too — "**Abide — 6:30 PM** — Friday 18 Sep, 6:30 PM".
+        'name' => @event.name,
         'starts_at' => @event.start_time&.iso8601,
         'location' => @event.location && { 'name' => @event.location.name }
       },

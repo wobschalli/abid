@@ -402,19 +402,23 @@ class RoutesTest < AbidTest
 
   def test_a_signup_post_can_be_composed_scheduled_and_becomes_publishable
     as_leader
-    post '/signups', channel_id: channel.id, service_date: Time.zone.today.to_s
+    post '/signups', channel_id: channel.id, service_date: @event.start_time.to_date.to_s
     assert_includes [200, 302], last_response.status, last_response.body.to_s[0, 400]
 
     record = SignupPost.order(:id).last
     refute_nil record, 'POST /signups created nothing'
 
-    as_leader
-    post "/signups/#{record.id}/options", emoji: '1️⃣', event_id: @event.id, label: 'Early ride'
-    assert_equal 1, record.reload.options.count, 'the option was not added'
+    # The option is not added by hand any more: one row per pickup time on the
+    # date, created with the post.
+    assert_equal 1, record.reload.options.count, 'the ride on that date got no row'
 
     option = record.options.first
     assert_equal '1️⃣', option.emoji_unicode
     assert_equal @event, option.event, 'the option must be linked to the ride it books'
+
+    as_leader
+    patch "/signups/#{record.id}/options/#{option.id}", label: 'Early ride'
+    assert_equal 'Early ride', option.reload.label
 
     # The settings form saves the send time, then a separate button schedules.
     as_leader
@@ -434,12 +438,7 @@ class RoutesTest < AbidTest
   end
 
   def test_scheduling_accepts_a_send_time_given_inline
-    as_leader
-    post '/signups', channel_id: channel.id, service_date: Time.zone.today.to_s
-    record = SignupPost.order(:id).last
-    as_leader
-    post "/signups/#{record.id}/options", emoji: '1️⃣', event_id: @event.id
-
+    record = seeded_post
     as_leader
     post "/signups/#{record.id}/schedule", post_at: 1.hour.from_now.strftime('%Y-%m-%dT%H:%M')
 
@@ -448,11 +447,9 @@ class RoutesTest < AbidTest
   end
 
   def test_the_rendered_body_contains_each_option
+    record = seeded_post
     as_leader
-    post '/signups', channel_id: channel.id, service_date: Time.zone.today.to_s
-    record = SignupPost.order(:id).last
-    as_leader
-    post "/signups/#{record.id}/options", emoji: '1️⃣', event_id: @event.id, label: 'Early ride'
+    patch "/signups/#{record.id}/options/#{record.options.first.id}", label: 'Early ride'
 
     body = record.reload.body
     assert_includes body, '1️⃣'
@@ -466,9 +463,7 @@ class RoutesTest < AbidTest
   # nothing is posted to a real server.
 
   def test_post_now_makes_a_draft_claimable_by_the_bot
-    record = draft_post
-    as_leader
-    post "/signups/#{record.id}/options", emoji: '1️⃣', event_id: @event.id
+    record = seeded_post
 
     as_leader
     post "/signups/#{record.id}/post-now"
@@ -544,36 +539,42 @@ class RoutesTest < AbidTest
     assert record.bound?
   end
 
-  def test_the_ride_dropdown_is_scoped_to_the_posts_own_date
-    # A second event on another day must not be offered.
+# One row per pickup time on the date, and the time is printed rather than
+  # chosen — there is no dropdown, no Add and no Delete, because the list is a
+  # projection of the day rather than something to assemble.
+  def test_the_option_row_states_its_time_and_cannot_be_added_to_or_removed
     other = make_event(name: 'Friday Bible Study', starts: @event.start_time + 3.days)
-    as_leader
-    post '/signups', channel_id: channel.id, service_date: @event.start_time.to_date.to_s
-    record = SignupPost.order(:id).last
+    record = seeded_post
 
     body = get_ok("/signups/#{record.id}").body
 
-    assert_includes body, "value=\"#{@event.id}\""
-    refute_includes body, "value=\"#{other.id}\"",
-                    'an event on another day must not clutter the picker'
+    assert_equal 1, record.options.count
+    assert_includes body, @event.start_time.strftime('%-l:%M %p')
+    refute_includes body, "value=\"#{other.id}\"", 'a ride on another day is being offered'
+    refute_includes body, 'Add option'
+    refute_includes body, 'Fill from this date'
+    refute_includes body, "/options/#{record.options.first.id}\" class=\"contents\"",
+                    'the delete form is still there'
   end
 
-  def test_the_dropdown_still_offers_an_event_an_option_already_points_at
-    # Narrowing the list must not orphan an existing binding: if the selected
-    # event is missing from the options, the select renders blank and the next
-    # Save silently rebinds the ride to something else.
-    other = make_event(name: 'Friday Bible Study', starts: @event.start_time + 3.days)
+  # The routes went with the buttons — a stale page must not be able to reach
+  # them either.
+  def test_options_can_no_longer_be_added_or_deleted_by_route
+    record = seeded_post
+    option = record.options.first
+
     as_leader
-    post '/signups', channel_id: channel.id, service_date: @event.start_time.to_date.to_s
-    record = SignupPost.order(:id).last
-    record.options.first.update!(event: other)
+    post "/signups/#{record.id}/options", emoji: '🚗', event_id: @event.id
+    assert_equal 404, last_response.status
 
-    body = get_ok("/signups/#{record.id}").body
+    as_leader
+    delete "/signups/#{record.id}/options/#{option.id}"
+    assert_equal 404, last_response.status
 
-    assert_includes body, "value=\"#{other.id}\""
+    assert_equal 1, record.reload.options.count
   end
 
-  def test_the_schedule_offers_to_create_a_signup_for_an_uncovered_date
+    def test_the_schedule_offers_to_create_a_signup_for_an_uncovered_date
     body = get_ok('/schedule').body
 
     assert_includes body, @event.start_time.strftime('%A %-d %B')
@@ -583,18 +584,34 @@ class RoutesTest < AbidTest
   # --- the emoji picker ----------------------------------------------------
 
   def test_an_emoji_chosen_from_the_picker_is_accepted
-    record = draft_post
+    record = seeded_post
+    option = record.options.first
 
     as_leader
-    post "/signups/#{record.id}/options", emoji_pick: '🚗', event_id: @event.id
+    patch "/signups/#{record.id}/options/#{option.id}", emoji_pick: '🚗'
 
-    assert_equal 1, record.reload.options.count
-    assert_equal '🚗', record.options.first.emoji_unicode
+    assert_equal '🚗', option.reload.emoji_unicode
+    assert_equal @event, option.event, 'changing the emoji must not move the ride'
+  end
+
+  # The rows are the day's times, so two of them cannot share an emoji — the
+  # table is uniquely indexed on it, and this used to be a 500.
+  def test_an_emoji_already_used_by_another_time_is_refused
+    make_event(name: 'Second service', starts: @event.start_time + 1.hour)
+    record = seeded_post
+    first, second = record.options.order(:position).to_a
+
+    as_leader
+    patch "/signups/#{record.id}/options/#{second.id}", emoji: first.emoji_unicode
+
+    assert_equal 422, last_response.status
+    assert_includes last_response.body, 'already used'
+    refute_equal first.emoji_key, second.reload.emoji_key
   end
 
   def test_the_picker_offers_this_servers_custom_emoji
     emoji = Emoji.create!(name: 'abide_car', discord_id: custom_emoji_id, server: channel.server)
-    record = draft_post
+    record = seeded_post
 
     body = get_ok("/signups/#{record.id}").body
 
@@ -605,11 +622,11 @@ class RoutesTest < AbidTest
 
   def test_a_custom_server_emoji_can_be_chosen
     emoji = Emoji.create!(name: 'abide_car', discord_id: custom_emoji_id, server: channel.server)
-    record = draft_post
+    record = seeded_post
 
     as_leader
-    post "/signups/#{record.id}/options",
-         emoji_pick: "<:#{emoji.name}:#{emoji.discord_id}>", event_id: @event.id
+    patch "/signups/#{record.id}/options/#{record.options.first.id}",
+          emoji_pick: "<:#{emoji.name}:#{emoji.discord_id}>"
 
     option = record.reload.options.first
     refute_nil option, 'a custom server emoji must be usable as a sign-up option'
@@ -619,10 +636,10 @@ class RoutesTest < AbidTest
 
   def test_a_custom_emoji_renders_as_an_image_not_a_raw_token
     emoji = Emoji.create!(name: 'abide_car', discord_id: custom_emoji_id, server: channel.server)
-    record = draft_post
+    record = seeded_post
     as_leader
-    post "/signups/#{record.id}/options",
-         emoji_pick: "<:#{emoji.name}:#{emoji.discord_id}>", event_id: @event.id
+    patch "/signups/#{record.id}/options/#{record.options.first.id}",
+          emoji_pick: "<:#{emoji.name}:#{emoji.discord_id}>"
 
     body = get_ok("/signups/#{record.id}").body
 
@@ -635,22 +652,23 @@ class RoutesTest < AbidTest
   end
 
   def test_typed_text_wins_over_a_picked_emoji
-    record = draft_post
+    record = seeded_post
 
     as_leader
-    post "/signups/#{record.id}/options", emoji: '✅', emoji_pick: '🚗', event_id: @event.id
+    patch "/signups/#{record.id}/options/#{record.options.first.id}", emoji: '✅', emoji_pick: '🚗'
 
     assert_equal '✅', record.reload.options.first.emoji_unicode
   end
 
   def test_a_nonsense_emoji_is_rejected_rather_than_stored
-    as_leader
-    post '/signups', channel_id: channel.id, service_date: Time.zone.today.to_s
-    record = SignupPost.order(:id).last
+    record = seeded_post
+    was = record.options.first.emoji_key
 
     as_leader
-    post "/signups/#{record.id}/options", emoji: 'garbage!!', event_id: @event.id
-    assert_equal 0, record.reload.options.count
+    patch "/signups/#{record.id}/options/#{record.options.first.id}", emoji: 'garbage!!'
+
+    assert_equal 422, last_response.status
+    assert_equal was, record.reload.options.first.emoji_key
   end
 
   # --- the emoji catalogue --------------------------------------------------
@@ -743,14 +761,16 @@ class RoutesTest < AbidTest
     refute_equal 200, last_response.status
   end
 
-  def test_the_signup_page_offers_the_full_picker
-    signup = make_posted_signup
-    signup.update!(status: 'draft', discord_message_id: nil)
+  # The picker lives on each row now — changing which emoji books a time is the
+  # only emoji decision left, and it must not have gone with the Add form.
+  def test_each_option_row_offers_the_full_picker
+    record = seeded_post
 
-    body = get_ok("/signups/#{signup.id}").body
+    body = get_ok("/signups/#{record.id}").body
 
-    assert_includes body, 'Browse all emoji'
+    assert_includes body, 'Change emoji'
     assert_includes body, 'data-emoji-picker'
+    assert_includes body, 'data-emoji-search'
   end
 
   # --- revoking a sent sign-up ---------------------------------------------
@@ -1357,6 +1377,14 @@ class RoutesTest < AbidTest
   def draft_post
     as_leader
     post '/signups', channel_id: channel.id, service_date: Time.zone.today.to_s
+    SignupPost.order(:id).last
+  end
+
+  # A post for the date @event is on, so it arrives with one option already —
+  # which is now the only way an option comes into being.
+  def seeded_post
+    as_leader
+    post '/signups', channel_id: channel.id, service_date: @event.start_time.to_date.to_s
     SignupPost.order(:id).last
   end
 

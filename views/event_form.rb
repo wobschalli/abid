@@ -50,12 +50,11 @@ class EventForm < Phlex::HTML
       input(type: 'hidden', name: '_method', value: 'patch') unless @event.new_record?
 
       field('Name') { text_field('name', @event.name) }
-      field('Section') { section_select }
 
-      div(class: 'grid grid-cols-2 gap-3') do
-        field('Starts') { datetime_field('start_time', @event.start_time) }
-        field('Ends') { datetime_field('end_time', @event.end_time) }
-      end
+      # One pickup time, so one clock. There was a Section picker here (early /
+      # late) and an Ends field; the section is now said by the time itself, and
+      # nothing ever read the end time except `past?`, which estimates it.
+      field('Starts') { datetime_field('start_time', @event.start_time) }
 
       div(class: 'grid grid-cols-2 gap-3') do
         field('Channel') { belongs_to_select('channel_id', @channels, @event.channel_id) }
@@ -104,15 +103,6 @@ class EventForm < Phlex::HTML
       value: value&.strftime('%Y-%m-%dT%H:%M').to_s,
       class: 'board-input'
     )
-  end
-
-  def section_select
-    select(name: 'section', class: 'board-input') do
-      option(value: '', selected: @event.section.blank?) { '—' }
-      Event::SECTIONS.each do |section|
-        option(value: section, selected: @event.section == section) { section }
-      end
-    end
   end
 
   def pickup_source_select

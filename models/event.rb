@@ -110,8 +110,18 @@ class Event < ApplicationRecord
   end
 
   # "Friday Bible Study — early" etc.
+  # "Abide — 6:30 PM".
+  #
+  # The qualifier used to be a `section` — early / late — which someone had to
+  # choose and which told you less than the clock does. Two services on a
+  # Sunday are told apart by the time you turn up, so that is what the name
+  # says.
+  #
+  # Callers that already print a time use `name` instead, or it appears twice.
   def display_name
-    section.present? ? "#{name} — #{section}" : name.to_s
+    return name.to_s if start_time.blank?
+
+    "#{name} — #{start_time.strftime('%-l:%M %p')}"
   end
 
   def riders

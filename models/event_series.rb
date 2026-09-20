@@ -18,8 +18,11 @@ class EventSeries < ApplicationRecord
   scope :active, -> { where(disabled: false) }
   scope :generatable, -> { active.where.not(weekday: nil).where.not(start_time_of_day: nil) }
 
+  # Matches Event#display_name: the time, not a section.
   def display_name
-    section.present? ? "#{name} — #{section}" : name.to_s
+    return name.to_s if start_time_of_day.blank?
+
+    "#{name} — #{start_time_of_day.strftime('%-l:%M %p')}"
   end
 
   def zone
@@ -86,7 +89,6 @@ class EventSeries < ApplicationRecord
 
     events.build(
       name: name,
-      section: section,
       channel: channel,
       location: location,
       pickup_source: pickup_source,

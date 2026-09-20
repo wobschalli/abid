@@ -55,7 +55,9 @@ class SignupOptionSeederTest < AbidTest
     assert_equal 2, post.reload.options.count
   end
 
-  def test_seeding_works_around_an_emoji_already_in_use
+  # A row that books nothing cannot be reacted to usefully, so it goes and its
+  # emoji comes back into circulation for the times that do exist.
+  def test_an_option_attached_to_no_ride_is_removed
     event_at(9, 30, 'Sunday School')
     post = post_for
     post.options.create!(Signup::EmojiKey.parse('1️⃣').merge(position: 0))
@@ -63,8 +65,65 @@ class SignupOptionSeederTest < AbidTest
     created = seed(post)
 
     assert_equal 1, created.size
-    refute_equal '1️⃣', created.first.emoji_unicode, 'must not reuse an emoji already on the post'
+    assert_equal 1, post.reload.options.count, 'the orphan row survived'
+    assert_equal '1️⃣', post.options.first.emoji_unicode
+    assert_equal 'Sunday School', post.options.first.event.name
+  end
+
+  # Two rows for the same time means the message offers two emoji for one ride.
+  # Real data got into this state, and nothing could get it out again — every
+  # row pointed at a live time, so pruning orphans left them all standing.
+  def test_a_time_with_two_rows_keeps_only_the_first
+    event = event_at(9, 30, 'Sunday School')
+    post = post_for
+    keep = post.options.create!(Signup::EmojiKey.parse('🙋').merge(event: event, position: 0, label: 'mine'))
+    dupe = post.options.create!(Signup::EmojiKey.parse('1️⃣').merge(event: event, position: 1))
+
+    seed(post)
+
+    assert_equal [keep.id], post.reload.options.map(&:id), 'the duplicate row survived'
+    # The survivor is the one somebody chose, not the one the machine added.
+    assert_equal 'mine', post.options.first.label
+    refute SignupOption.exists?(dupe.id)
+  end
+
+  # The rule is one row per time, which only holds if cancelling a time takes
+  # its row with it. Without this the emoji stayed on the message, collecting
+  # sign-ups for a ride that was not happening.
+  def test_a_cancelled_time_loses_its_row
+    early = event_at(9, 30, 'Sunday School')
+    event_at(10, 30, 'Sunday Service')
+    seed(post = post_for)
     assert_equal 2, post.reload.options.count
+
+    early.update!(disabled: true)
+    seed(post)
+
+    assert_equal ['Sunday Service'], post.reload.options.map { |o| o.event.name }
+  end
+
+  # And a time added to the date afterwards gains one.
+  def test_a_time_added_later_gains_a_row
+    event_at(9, 30, 'Sunday School')
+    seed(post = post_for)
+
+    event_at(10, 30, 'Sunday Service')
+    seed(post)
+
+    assert_equal ['Sunday School', 'Sunday Service'], post.reload.options.map { |o| o.event.name }
+  end
+
+  # Never on a post that has gone out: its emoji are live on a Discord message
+  # with reactions attached to them.
+  def test_a_posted_signup_is_left_alone
+    early = event_at(9, 30, 'Sunday School')
+    seed(post = post_for)
+    post.update!(status: 'posted', discord_message_id: next_discord_id, posted_at: Time.zone.now)
+
+    early.update!(disabled: true)
+    seed(post)
+
+    assert_equal 1, post.reload.options.count, 'pulled a row out from under a live message'
   end
 
   def test_ignores_events_on_other_days_and_disabled_ones

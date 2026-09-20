@@ -122,7 +122,6 @@ class EventSeriesTest < AbidTest
     event = s.ensure_occurrence(next_sunday)
 
     assert_equal 'Sunday Service', event.name
-    assert_equal 'early', event.section
     assert_equal next_sunday, event.occurrence_date
     assert_equal s.location, event.location
     assert event.recurring?
