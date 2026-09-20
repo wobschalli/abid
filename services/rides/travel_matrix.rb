@@ -27,7 +27,7 @@ module Rides
     Point = Struct.new(:location_id, :lat, :lon, keyword_init: true)
 
     def initialize(api_key: nil)
-      @api_key = api_key || ENV['GOOGLE_MAPS_KEY'].presence
+      @api_key = api_key || Abid.google_maps_key
       @cache = {}
     end
 

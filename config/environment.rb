@@ -59,6 +59,22 @@ module Abid
       ActiveRecord::Base.establish_connection(database_config)
     end
 
+    # The Distance Matrix key for the ride optimizer's travel times.
+    #
+    # ENV wins so a deploy can inject it, but the natural home is config.yml —
+    # the gitignored, chmod-600 file the Discord token already lives in. A
+    # missing key is not an error: the optimizer runs on distance estimates
+    # until one exists, and starts fetching real times the day it appears.
+    def google_maps_key
+      key = ENV['GOOGLE_MAPS_KEY'].presence
+      key ||= begin
+        YAML.load_file('config.yml')['google_maps_key'] if File.exist?('config.yml')
+      rescue StandardError
+        nil
+      end
+      key.presence
+    end
+
     # Basemap tiles for the route map.
     #
     # OpenStreetMap by default: no account, no token, no card on file, which
