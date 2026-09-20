@@ -56,6 +56,10 @@ class Location < ApplicationRecord
   scope :zoned, -> { where.not(zone: nil) }
 
   before_validation :canonicalize_zone
+  # Cached driving times are FROM somewhere — move the somewhere and they are
+  # times between places that no longer exist. TravelTime.forget! is why a
+  # corrected pin never leaves stale minutes steering the optimizer.
+  after_update :forget_travel_times, if: -> { saved_change_to_lat? || saved_change_to_lon? }
   # Gated on zone_changed?: a row written before migration 2600 stays saveable
   # for every other purpose, but no new bad value can be written. Ungated, a
   # single legacy row would roll back an entire AutoFiller transaction.
@@ -129,6 +133,10 @@ class Location < ApplicationRecord
   end
 
   private
+
+  def forget_travel_times
+    TravelTime.forget!(id)
+  end
 
   def canonicalize_zone
     self.zone = self.class.canonical_zone(zone)

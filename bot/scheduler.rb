@@ -67,6 +67,31 @@ class Bot
       generate_occurrences
       publish_signups
       send_dispatches
+      seat_late_riders
+    end
+
+    # Someone reacted after the drivers were dispatched. Seat them into the
+    # cheapest feasible car — the optimizer pins everyone already seated, so
+    # the only change is one addition, and exactly that one driver flips to
+    # "changed" for a one-person re-send.
+    #
+    # A sweep rather than a per-reaction hook: reaction bursts collapse into
+    # one solve, it is idempotent, and it catches up after a bot restart.
+    # Before the first dispatch the board belongs to the coordinator, so
+    # pre-dispatch reactions keep landing in the queue untouched.
+    def seat_late_riders
+      Event.active.upcoming.where(start_time: Time.zone.now..).find_each do |event|
+        board = RideBoard.new(event)
+        next if board.pool.none? { |ride| ride.from_discord? }
+        next unless board.dispatch_status.anything_sent?
+
+        result = Rides::Optimizer.call(board)
+        if result.seated.positive?
+          warn "late sweep seated #{result.seated} on #{event.display_name} (#{result.engine})"
+        end
+      end
+    rescue StandardError => e
+      warn "late-rider sweep failed: #{e.class}: #{e.message}"
     end
 
     # Drains the dispatch outbox. If the bot was down when a coordinator pressed

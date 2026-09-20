@@ -93,6 +93,8 @@ GEM
     nio4r (2.7.4)
     opus-ruby (1.0.1)
       ffi
+    or-tools (0.18.0)
+      rice (>= 4.8)
     passgen (1.2.0)
     pg (1.5.9)
     phlex (2.3.1)
@@ -132,6 +134,7 @@ GEM
       http-cookie (>= 1.0.2, < 2.0)
       mime-types (>= 1.16, < 4.0)
       netrc (~> 0.8)
+    rice (4.12.0)
     ruby2_keywords (0.0.5)
     rufus-scheduler (3.9.2)
       fugit (~> 1.1, >= 1.11.1)
@@ -176,6 +179,7 @@ DEPENDENCIES
   irb (~> 1.15)
   literal (~> 1.8)
   minitest (~> 5.25)
+  or-tools
   passgen (~> 1.2)
   pg (~> 1.5)
   phlex-sinatra (~> 0.5.0)

@@ -63,12 +63,14 @@ class RoutePlanner
 
   private
 
-  # Zone first, then name. Deterministic on purpose: the same board must
-  # produce the same order every time, or the dispatch digest flaps and every
-  # driver is permanently marked "changed since sent".
+  # The optimizer's order when it has run (rides.pickup_position), else zone
+  # then name. Both deterministic on purpose: the same board must produce the
+  # same order every time. (The digest is order-insensitive, so this ordering
+  # is presentation, not state — but a DM that reshuffles between two renders
+  # of the same roster would still read as caprice.)
   def pickup_stops
     @car.passengers
-        .sort_by { |p| [Location::ZONES.index(p.zone.to_s) || 99, p.display_name.to_s.downcase] }
+        .sort_by { |p| [p.pickup_position || 1 << 30, Location::ZONES.index(p.zone.to_s) || 99, p.display_name.to_s.downcase] }
         .map do |passenger|
           Stop.new(
             kind: :pickup,

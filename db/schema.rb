@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 3800) do
+ActiveRecord::Schema[8.0].define(version: 3900) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -181,6 +181,7 @@ ActiveRecord::Schema[8.0].define(version: 3800) do
     t.string "pickup_address"
     t.string "source", default: "manual", null: false
     t.datetime "dropped_at"
+    t.integer "pickup_position"
     t.index ["driver_ride_id"], name: "index_rides_on_driver_ride_id"
     t.index ["event_id", "role"], name: "index_rides_on_event_id_and_role"
     t.index ["event_id", "source"], name: "index_rides_on_event_id_and_source"
@@ -283,6 +284,18 @@ ActiveRecord::Schema[8.0].define(version: 3800) do
     t.index ["user_id"], name: "index_signup_reactions_on_user_id"
   end
 
+  create_table "travel_times", force: :cascade do |t|
+    t.bigint "from_location_id", null: false
+    t.bigint "to_location_id", null: false
+    t.integer "seconds", null: false
+    t.string "source", default: "estimate", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["from_location_id", "to_location_id"], name: "index_travel_times_on_from_location_id_and_to_location_id", unique: true
+    t.index ["from_location_id"], name: "index_travel_times_on_from_location_id"
+    t.index ["to_location_id"], name: "index_travel_times_on_to_location_id"
+  end
+
   create_table "users", force: :cascade do |t|
     t.string "name"
     t.string "username"
@@ -328,6 +341,8 @@ ActiveRecord::Schema[8.0].define(version: 3800) do
   add_foreign_key "signup_reactions", "rides"
   add_foreign_key "signup_reactions", "signup_options"
   add_foreign_key "signup_reactions", "users"
+  add_foreign_key "travel_times", "locations", column: "from_location_id"
+  add_foreign_key "travel_times", "locations", column: "to_location_id"
   add_foreign_key "users", "locations"
   add_foreign_key "users", "locations", column: "class_location_id"
 end

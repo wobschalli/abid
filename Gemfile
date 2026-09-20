@@ -25,3 +25,4 @@ group :test do
   gem "minitest", "~> 5.25"
   gem "rack-test", "~> 2.2"
 end
+gem "or-tools"
