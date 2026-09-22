@@ -43,11 +43,14 @@ class LocationsIndex < Phlex::HTML
       plain 'is not decoration, it is what decides who rides with whom. '
       plain 'The shared list lives in '
       code(class: 'font-mono text-[11.5px]') { 'db/locations.rb' }
-      plain ', and you can add your own below. Anything marked '
-      strong { 'no coords' }
-      plain ' could not be found on the map by name — apartment brands are not map '
-      plain 'features, but the streets they stand on are. Give it a street address '
-      plain 'and it is looked up when you save.'
+      plain ', and you can add your own below. Each place says how sure we are its pin is the building: '
+      strong { 'verified' }
+      plain ' means Google matched the building or street number, '
+      strong { 'approximate' }
+      plain ' means somewhere nearby — worth a look at the address — and '
+      strong { 'unverified' }
+      plain ' is a hand-placed pin nobody has checked. Press Verify to look a place up; '
+      plain 'saving a corrected address does the same.'
     end
   end
 
