@@ -97,9 +97,17 @@ module Rides
         free = car.seats.to_i - car.passengers.size
         next if free <= 0
 
+        # Only riders whose pickup has REAL coordinates. Walking is a hard
+        # physical constraint, and a rider whose location is unknown gets
+        # placed at their zone's centroid — which sits ~200m from Windsor and
+        # made people whose actual pickup (Mechanical Engineering, Lilly) is
+        # far away look like a 3-minute walk. A centroid is a fine guess for a
+        # soft driving cost; it must never send someone on an impossible walk.
+        # The tell is point.location_id: a real location carries one, a
+        # centroid does not.
         candidates = pool.filter_map do |ride|
           point = @matrix.point_for(ride)
-          next if point.nil?
+          next if point.nil? || point.location_id.nil?
 
           meters = straight_line_meters(spot, point)
           [ride, meters] if meters <= WALK_METERS

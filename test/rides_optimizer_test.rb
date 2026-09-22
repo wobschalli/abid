@@ -303,4 +303,24 @@ class RidesOptimizerTest < AbidTest
     assert_equal 1, plan.stops[0..-2].map(&:maps_token).uniq.size
   end
 
+  # A rider whose pickup has no coordinates falls to the zone centroid, which
+  # can sit close to a meeting point by accident. Walking is a hard constraint,
+  # so an unknown location must never be assigned to walk — this is the "why is
+  # someone from the Mechanical Engineering Building on the van" bug.
+  def test_a_coordless_rider_is_never_told_to_walk_to_the_van
+    windsor = Location.create!(name: 'windsor lot', zone: ZONE_1, lat: 40.4260, lon: -86.9209)
+    van = driver_at('tyler', windsor, seats: 12)
+    van.update!(meet_at_pickup: true)
+    car = driver_at('ian', @near, seats: 4)
+
+    # No pickup_location and no personal location -> centroid fallback only.
+    unknown = make_rider(@event, 'mystery', zone: ZONE_1)
+    refute unknown.pickup&.coords?, 'fixture drift: this rider was meant to be unlocatable'
+
+    Rides::Optimizer.call(RideBoard.new(@event.reload))
+
+    refute_equal van.id, unknown.reload.driver_ride_id,
+                 'someone whose location we do not know was sent to walk to the van'
+  end
+
 end
