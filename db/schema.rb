@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 3900) do
+ActiveRecord::Schema[8.0].define(version: 4000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -182,6 +182,7 @@ ActiveRecord::Schema[8.0].define(version: 3900) do
     t.string "source", default: "manual", null: false
     t.datetime "dropped_at"
     t.integer "pickup_position"
+    t.boolean "meet_at_pickup", default: false, null: false
     t.index ["driver_ride_id"], name: "index_rides_on_driver_ride_id"
     t.index ["event_id", "role"], name: "index_rides_on_event_id_and_role"
     t.index ["event_id", "source"], name: "index_rides_on_event_id_and_source"

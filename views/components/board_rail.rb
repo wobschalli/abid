@@ -78,6 +78,18 @@ class Components::BoardRail < Phlex::HTML
           div(class: 'flex-1') { labeled('Zone') { zone_select(ride) } }
         end
 
+        if ride.driver?
+          # The church van: it parks, people walk to it, it leaves. Optimize
+          # fills it first (a walked seat costs zero driving) and never asks
+          # it to tour campus.
+          label(class: 'flex items-center gap-2 text-[12.5px]') do
+            input(type: 'hidden', name: 'meet_at_pickup', value: '0')
+            input(type: 'checkbox', name: 'meet_at_pickup', value: '1',
+                  checked: ride.meet_at_pickup, disabled: !@leader, class: 'accent-accent')
+            plain 'Riders meet at the car — fills first, drives straight to the venue'
+          end
+        end
+
         labeled('Notes') { notes_field(ride) }
 
         if @leader

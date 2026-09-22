@@ -195,4 +195,112 @@ class RidesOptimizerTest < AbidTest
     assert_equal [0, 1], positions.sort, "the guard wiped the optimizer's order: #{positions.inspect}"
   end
 
+  # The failure the user actually saw: total-time alone always prefers one car
+  # snaking through every pickup, because each car's own drive to the venue is
+  # paid regardless. The route cap plus per-stop time must spread the load.
+  def test_riders_are_distributed_rather_than_snaked_into_one_car
+    driver_at('ian', @near, seats: 12)
+    driver_at('caleb', @near, seats: 12)
+    spots = 8.times.map do |i|
+      Location.create!(name: "stop #{i}", zone: ZONE_1, lat: 40.43 + (i * 0.004), lon: -86.91)
+    end
+    riders = spots.each_with_index.map { |spot, i| rider_at("r#{i}", spot) }
+
+    # Legs long enough that eight stops on one route blow the 30-minute cap,
+    # but four on each fit comfortably.
+    times = {}
+    all = spots + [@near, @venue]
+    all.each do |a|
+      all.each { |b| times[[a.id, b.id]] = a == b ? 0 : 240 }
+    end
+
+    result = optimize(times)
+
+    assert_equal 8, result.seated
+    loads = [riders.count { |r| r.reload.driver_ride_id }].then do
+      @event.reload.rides.drivers.map { |d| Ride.where(driver_ride_id: d.id).count }.sort
+    end
+    assert_operator loads.min, :>=, 2, "one car took nearly everything: #{loads.inspect}"
+  end
+
+  # A board optimized under the old objective sits in a snake the new cap
+  # forbids. The idempotence guard must not protect it.
+  def test_a_snake_from_the_old_objective_is_broken_up_on_repress
+    fast = driver_at('ian', @near, seats: 12)
+    driver_at('caleb', @near, seats: 12)
+    spots = 8.times.map { |i| Location.create!(name: "s#{i}", zone: ZONE_1, lat: 40.4 + (i * 0.004), lon: -86.9) }
+    riders = spots.each_with_index.map { |spot, i| rider_at("r#{i}", spot) }
+    # Everyone crammed into one car with stored positions, old-style.
+    riders.each_with_index { |r, i| r.update!(driver_ride_id: fast.id, status: 'assigned', pickup_position: i) }
+
+    times = {}
+    all = spots + [@near, @venue]
+    all.each { |a| all.each { |b| times[[a.id, b.id]] = a == b ? 0 : 240 } }
+
+    optimize(times)
+
+    loads = @event.reload.rides.drivers.map { |d| Ride.where(driver_ride_id: d.id).count }.sort
+    assert_operator loads.max, :<, 8, "the guard preserved the snake: #{loads.inspect}"
+  end
+
+  # --- meeting-point vehicles (the church van) ------------------------------
+
+  def test_the_van_fills_first_with_walkable_riders_and_drives_no_route
+    windsor = Location.create!(name: 'windsor lot', zone: ZONE_1, lat: 40.4260, lon: -86.9209)
+    nearby = Location.create!(name: 'next door', zone: ZONE_1, lat: 40.4262, lon: -86.9200)
+    van = driver_at('tyler', windsor, seats: 2)
+    van.update!(meet_at_pickup: true)
+    car = driver_at('ian', @near, seats: 4)
+
+    # Deliberately different distances: nearest-first must be deterministic,
+    # and three people at one point would make "which two walk" a coin toss.
+    slightly_farther = Location.create!(name: 'two blocks', zone: ZONE_1, lat: 40.4290, lon: -86.9180)
+    close_a = rider_at('walk a', nearby)
+    close_b = rider_at('walk b', nearby)
+    third = rider_at('third wheel', slightly_farther)
+
+    result = optimize(matrix(
+      [@near, @venue] => 300, [windsor, @venue] => 300, [nearby, @venue] => 300,
+      [@near, windsor] => 300, [@near, nearby] => 300, [windsor, nearby] => 60,
+      [slightly_farther, @venue] => 300, [@near, slightly_farther] => 200,
+      [windsor, slightly_farther] => 120, [nearby, slightly_farther] => 90
+    ))
+
+    assert_equal 3, result.seated
+    # Two walked to the van (nearest fill up to its seats), the overflow drove.
+    assert_equal van.id, close_a.reload.driver_ride_id
+    assert_equal van.id, close_b.reload.driver_ride_id
+    assert_equal car.id, third.reload.driver_ride_id, 'van overflow was not handed to a driving car'
+  end
+
+  def test_someone_beyond_walking_range_is_never_sent_to_the_van
+    windsor = Location.create!(name: 'windsor lot', zone: ZONE_1, lat: 40.4260, lon: -86.9209)
+    van = driver_at('tyler', windsor, seats: 12)
+    van.update!(meet_at_pickup: true)
+    car = driver_at('ian', @far, seats: 4)
+    distant = rider_at('far away', @far) # ~5km from windsor
+
+    optimize(matrix(
+      [@far, @venue] => 300, [windsor, @venue] => 300, [@far, windsor] => 600
+    ))
+
+    assert_equal car.id, distant.reload.driver_ride_id,
+                 'someone 5km away was told to walk to the van'
+  end
+
+  def test_the_vans_dm_route_is_one_stop
+    windsor = Location.create!(name: 'windsor lot', zone: ZONE_1, lat: 40.4260, lon: -86.9209)
+    van = driver_at('tyler', windsor, seats: 4)
+    van.update!(meet_at_pickup: true)
+    a = rider_at('walk a', @near, driver: van)
+    rider_at('walk b', @near, driver: van)
+
+    plan = RoutePlanner.new(RideBoard.new(@event.reload).cars.first, event: @event).call
+
+    assert_equal 2, plan.pickups.size, 'every rider still listed for the driver'
+    assert plan.pickups.all? { |stop| stop.label.include?('meets at') }
+    # One waypoint after dedup: the meeting spot itself.
+    assert_equal 1, plan.stops[0..-2].map(&:maps_token).uniq.size
+  end
+
 end

@@ -12,6 +12,8 @@ class RideDetails
   # him again — and since everyone who reacts to a sign-up arrives as a rider,
   # that was every driver, every week.
   RIDE_FIELDS = %w[role zone pickup_address note seats].freeze
+  # Checkbox param handled separately: absent must not mean false on forms
+  # that do not render it (rider rails).
 
   def initialize(ride)
     @ride = ride
@@ -21,6 +23,9 @@ class RideDetails
     Ride.transaction do
       update_user(params)
       update_ride(params)
+      if params.key?(:meet_at_pickup) && @ride.driver?
+        @ride.update!(meet_at_pickup: params[:meet_at_pickup] == '1')
+      end
       seat_a_new_driver
       geocode_pickup
     end

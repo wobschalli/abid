@@ -69,6 +69,8 @@ class RoutePlanner
   # is presentation, not state — but a DM that reshuffles between two renders
   # of the same roster would still read as caprice.)
   def pickup_stops
+    return meeting_stops if @car.ride.meet_at_pickup
+
     @car.passengers
         .sort_by { |p| [p.pickup_position || 1 << 30, Location::ZONES.index(p.zone.to_s) || 99, p.display_name.to_s.downcase] }
         .map do |passenger|
@@ -86,6 +88,23 @@ class RoutePlanner
             lon: passenger.pickup&.lon
           )
         end
+  end
+
+  # Riders walk to a meeting-point vehicle, so every stop IS the vehicle's own
+  # spot — the maps dedup collapses them to one waypoint, and the DM reads
+  # "meets at Windsor Halls" beside each name instead of a class building the
+  # van was never going to visit.
+  def meeting_stops
+    spot = @car.ride.pickup
+    label = spot ? "meets at the #{spot.name}" : 'meets at the car'
+
+    @car.passengers.sort_by { |p| p.display_name.to_s.downcase }.map do |passenger|
+      Stop.new(
+        kind: :pickup, ride_id: passenger.id, name: passenger.display_name,
+        label: label, address: spot&.maps_query,
+        lat: spot&.lat, lon: spot&.lon
+      )
+    end
   end
 
   def destination_stop
