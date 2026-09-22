@@ -323,4 +323,26 @@ class RidesOptimizerTest < AbidTest
                  'someone whose location we do not know was sent to walk to the van'
   end
 
+  # The bug the user caught: riders left in the pool with empty seats going
+  # begging. Root cause was the objective counting the shared drive to the
+  # venue, so a hard route cap (which included that drive) refused riders even
+  # with capacity to spare. Everyone locatable must now be seated.
+  def test_nobody_locatable_is_left_waiting_when_seats_exist
+    # A venue that is FAR, like the real church — the case that broke the cap.
+    far_venue = Location.create!(name: 'far church', zone: ZONE_1, lat: 40.50, lon: -87.05)
+    @event.update!(location: far_venue)
+
+    # Drivers with no pickup location: modelled at the venue, they used to be
+    # unable to collect anyone without blowing the route cap.
+    3.times { |i| make_driver(@event, "driver #{i}", seats: 4) }
+    riders = 8.times.map { |i| rider_at("rider #{i}", @near) }
+
+    result = Rides::Optimizer.call(RideBoard.new(@event.reload))
+
+    assert_equal :or_tools, result.engine
+    assert_equal 0, RideBoard.new(@event.reload).pool.size,
+                 'riders left waiting with a far venue and empty seats — the reported bug'
+    riders.each { |r| refute_nil r.reload.driver_ride_id }
+  end
+
 end

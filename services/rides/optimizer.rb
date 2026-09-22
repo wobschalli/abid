@@ -35,10 +35,12 @@ module Rides
     # wrong answer, because minutes-per-stop is what the sheet coordinator
     # was implicitly pricing in.
     STOP_SECONDS = 90
-    # No car's route may exceed this, driving plus stops. This is the arrival
-    # deadline wearing constraint clothes: pickups start ~20 minutes before
-    # the service, so a 26-stop snake is not late-ish, it is impossible.
-    MAX_ROUTE_SECONDS = 30 * 60
+    # The most time one car may spend COLLECTING — travel between pickups plus
+    # loading, not the shared drive to the venue. A campus cluster of four is a
+    # few minutes; a dozen-stop sweep across town blows past this and spills to
+    # another car. Deliberately not the whole route: the venue haul is fixed
+    # for everyone and is not a snake.
+    MAX_ROUTE_SECONDS = 20 * 60
     # Mild pressure to even routes out once the hard cap is satisfied. Small
     # on purpose: 3 means a minute of imbalance costs three minutes of
     # objective, enough to spread riders without chasing perfect symmetry.
@@ -190,21 +192,62 @@ module Rides
       manager = ORTools::RoutingIndexManager.new(points.size, driving.size, starts, ends)
       routing = ORTools::RoutingModel.new(manager)
 
-      # The gem takes callbacks as lambdas, not blocks.
+      # Real driver starts — the ones whose outbound leg is a fact worth paying
+      # for. A no-location driver is modelled at the venue, so charging their
+      # "outbound" would be charging the 15-minute haul backwards.
+      real_start = (0...driving.size).select { |v| driving[v].ride.pickup&.coords? }
+                                     .map { |v| rider_count + v }.to_set
+
+      # Minimize the DETOUR, not the drive everyone makes anyway.
+      #
+      # This is the fix for "why does it cram everyone into one car" and "why a
+      # cap at all". The old objective counted each car's shared haul to the
+      # church, so fewer cars meant a lower number and the snake genuinely won
+      # — the cap was the only thing prying riders back out. Drop the haul (and
+      # a phantom driver's outbound) and a spare driver costs nothing to use,
+      # so the optimizer spreads riders to whoever is already passing them.
+      # Distribution becomes optimal, not enforced.
       cost = routing.register_transit_callback(lambda do |from, to|
-        node = manager.index_to_node(from)
-        travel = @matrix.seconds(points[node], points[manager.index_to_node(to)])
-        # Service time rides on the outgoing arc of each pickup.
-        node < rider_count ? travel + STOP_SECONDS : travel
+        f = manager.index_to_node(from)
+        t = manager.index_to_node(to)
+        stop = f < rider_count ? STOP_SECONDS : 0
+        # The final leg home is shared and fixed; a phantom driver's outbound
+        # is fictional. Neither is a detour.
+        next stop if t == venue_node
+        next stop if f >= rider_count && !real_start.include?(f)
+
+        @matrix.seconds(points[f], points[t]) + stop
       end)
       routing.set_arc_cost_evaluator_of_all_vehicles(cost)
 
-      # The clock, as a hard per-route cap plus gentle balancing. The cap is
-      # what actually breaks up the snake: the objective alone will always
-      # prefer one long sweep, because every car's own drive to the venue is
-      # paid whether or not it carries anyone.
-      routing.add_dimension(cost, 0, MAX_ROUTE_SECONDS, true, 'time')
-      routing.mutable_dimension('time').set_global_span_cost_coefficient(SPAN_COST)
+      # The cap measures the PICKUP PHASE only — travel and loading between one
+      # pickup and the next — never the driver's outbound leg nor the shared
+      # final haul to the venue.
+      #
+      # This is the correction to a bug the user caught: the church is ~15
+      # minutes from campus, so a cap on TOTAL route time was spent almost
+      # entirely on that unavoidable haul, and started refusing riders even
+      # with 23 empty seats. Worse, a driver with no address is modelled as
+      # starting AT the venue, so collecting one campus rider was a 30-minute
+      # round trip that hit the cap alone — and those cars sat empty.
+      #
+      # "Don't snake" means "don't string too many pickups together", which is
+      # exactly the pickup-phase span. The venue is far for everyone; that is
+      # geography, not a route to shorten.
+      # A backstop, no longer the mechanism. With the haul out of the objective
+      # the optimizer distributes on its own, so this only rules out a route so
+      # long nobody would arrive — measured, like the objective, on the pickup
+      # phase alone. The span cost nudges routes even once that is satisfied.
+      pickup_time = routing.register_transit_callback(lambda do |from, to|
+        f = manager.index_to_node(from)
+        t = manager.index_to_node(to)
+        next 0 if f >= rider_count
+        next STOP_SECONDS if t == venue_node
+
+        @matrix.seconds(points[f], points[t]) + STOP_SECONDS
+      end)
+      routing.add_dimension(pickup_time, 0, MAX_ROUTE_SECONDS, true, 'pickup')
+      routing.mutable_dimension('pickup').set_global_span_cost_coefficient(SPAN_COST)
 
       demand = routing.register_unary_transit_callback(
         ->(index) { manager.index_to_node(index) < rider_count ? 1 : 0 }
@@ -303,8 +346,22 @@ module Rides
     def current_routes_overlong?
       cars.reject { |c| c.ride.meet_at_pickup }.any? do |car|
         stops = car.passengers.sort_by { |p| [p.pickup_position || 1 << 30, p.display_name.to_s] }
-        route_cost(car, stops) > MAX_ROUTE_SECONDS
+        pickup_phase_seconds(car, stops) > MAX_ROUTE_SECONDS
       end
+    end
+
+    # The same measure the cap uses: between-pickup travel plus a stop each,
+    # with neither the driver's outbound leg nor the venue haul.
+    def pickup_phase_seconds(car, stops)
+      here = nil
+      total = 0
+      stops.each do |ride|
+        there = @matrix.point_for(ride) or next
+        total += @matrix.seconds(here, there) if here
+        total += STOP_SECONDS
+        here = there
+      end
+      total
     end
 
     # Cost of the routes as they stand, in the stored (or default) order — the
@@ -320,18 +377,18 @@ module Rides
       routes.sum { |car, order| route_cost(car, order) }
     end
 
-    # Same metric the solver prices: travel plus a stop's worth of loading per
-    # pickup. Measuring the old routes in old units would make every rebalance
-    # look like a regression.
+    # The detour metric the solver now prices: a real driver's outbound leg,
+    # the between-pickup travel, and a stop each — never the shared haul home.
     def route_cost(car, stops)
-      here = @matrix.point_for(car.ride) || venue_point
+      here = car.ride.pickup&.coords? ? @matrix.point_for(car.ride) : nil
       total = 0
       stops.each do |ride|
         there = @matrix.point_for(ride) or next
-        total += @matrix.seconds(here, there) + STOP_SECONDS
+        total += @matrix.seconds(here, there) if here
+        total += STOP_SECONDS
         here = there
       end
-      total + @matrix.seconds(here, venue_point)
+      total
     end
   end
 end
