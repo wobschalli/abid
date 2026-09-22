@@ -139,6 +139,38 @@ class RideBoard
     @dispatch_status ||= DispatchStatus.new(self)
   end
 
+  # People on this board who also hold an active ride on ANOTHER event the
+  # same day — riding or driving. {user_id => ["driving Abide dinner — 5:30 PM"]}
+  #
+  # Same DAY, not a 45-minute overlap window. The old readiness check used 45
+  # minutes, and the services are 60 apart — so signing up for both Friday
+  # times, the actual mistake people make, never fired it. Someone riding to
+  # the 5:30 is already at the church for the 6:30; a second pickup for them is
+  # a seat wasted and a driver told to collect somebody who is not there.
+  def elsewhere
+    @elsewhere ||= begin
+      ids = rides.select(&:active?).map(&:user_id)
+      if ids.empty? || service_date.nil?
+        {}
+      else
+        Ride.active
+            .joins(:event)
+            .where(user_id: ids)
+            .where.not(event_id: event.id)
+            .where(events: { disabled: false, start_time: service_date.all_day })
+            .includes(:event)
+            .group_by(&:user_id)
+            .transform_values do |others|
+              others.map { |r| "#{r.driver? ? 'driving' : 'also on'} #{r.event.display_name}" }
+            end
+      end
+    end
+  end
+
+  def elsewhere_for(ride)
+    elsewhere[ride.user_id]
+  end
+
   # --- counters shown in the header and footer -----------------------------
 
   def pool_count

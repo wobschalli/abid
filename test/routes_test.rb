@@ -821,6 +821,22 @@ class RoutesTest < AbidTest
     assert_nil rider.pickup_position, 'position 0 from the old route followed them'
   end
 
+  # The double-booking mark rides on the PERSON, wherever they appear — the
+  # dispatch-bar summary is the thing nobody reads mid-drag.
+  def test_a_double_booked_person_is_marked_on_the_board_itself
+    sibling = make_event(name: 'Sunday Service', starts: @event.start_time + 1.hour)
+    driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    rider = make_rider(@event, 'caitlin', zone: ZONE_1, driver: driver)
+    sibling.rides.create!(user: rider.user, role: 'rider', status: 'requested')
+    sibling.rides.create!(user: driver.user, role: 'driver', status: 'confirmed', seats: 4)
+
+    body = get_ok("/board?event_id=#{@event.id}").body
+
+    assert_operator body.scan('2×').size, :>=, 2, 'rider and driver should both carry the mark'
+    assert_includes body, 'also on Sunday Service'
+    assert_includes body, 'driving Sunday Service'
+  end
+
   # --- the emoji catalogue --------------------------------------------------
 
   def test_the_catalogue_covers_the_whole_unicode_set

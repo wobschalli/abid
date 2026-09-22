@@ -107,24 +107,24 @@ class DispatchReadiness
   # a wide window flags Sunday School against Sunday Service every week, and a
   # warning that always fires is one nobody reads. An hour apart is two
   # services you can attend both of. Half an hour apart is a problem.
-  OVERLAP_WINDOW = 45.minutes
 
+  # Delegates to the board's same-day map, so the badge on a person and this
+  # summary line can never disagree — and so DRIVERS elsewhere count too, which
+  # the old query (Ride.active.riders, ±45 minutes) missed entirely. The
+  # services sit 60 minutes apart, so the overlap window meant the check never
+  # fired on the one mistake people actually make: signing up for both times.
   def double_booked
-    user_ids = @board.rides.select(&:active?).map(&:user_id)
-    return if user_ids.empty? || @board.event.start_time.nil?
+    map = @board.elsewhere
+    return if map.empty?
 
-    start = @board.event.start_time
-    others = Ride.active.riders
-                 .joins(:event)
-                 .where(user_id: user_ids)
-                 .where.not(event_id: @board.event.id)
-                 .where(events: { disabled: false })
-                 .where(events: { start_time: (start - OVERLAP_WINDOW)..(start + OVERLAP_WINDOW) })
-                 .includes(:user, :event)
-    return if others.empty?
+    lines = @board.rides.select(&:active?).filter_map do |ride|
+      labels = map[ride.user_id]
+      "#{ride.display_name} is #{labels.join(', and ')}" if labels
+    end.uniq
 
     Finding.new(key: :double_booked, severity: :warn,
-                message: others.map { |r| "#{r.display_name} is also on #{r.event.display_name}" }.to_sentence,
-                ride_ids: @board.rides.select { |r| others.map(&:user_id).include?(r.user_id) }.map(&:id))
+                message: lines.to_sentence,
+                ride_ids: @board.rides.select { |r| map.key?(r.user_id) }.map(&:id))
   end
+
 end

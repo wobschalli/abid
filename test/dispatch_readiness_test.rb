@@ -88,14 +88,55 @@ class DispatchReadinessTest < AbidTest
     assert readiness.ready?, 'a double booking should not block'
   end
 
-  # Sunday School and Sunday Service are meant to be different services and
-  # plenty of people attend both.
-  def test_being_on_a_sibling_slot_the_same_day_is_not_a_double_booking
+  # REVERSED from the original pin ("plenty of people attend both"). Attending
+  # both services takes ONE pickup — whoever rides to the 9:30 is already at
+  # the church for the 10:30. A second sign-up the same day is a wasted seat
+  # and a driver sent to collect somebody who is not there, which is exactly
+  # the mistake people make with two emoji on one message. Warn, not block:
+  # once in a while it is real (someone going home in between).
+  def test_signing_up_for_both_same_day_slots_warns
     sibling = make_event(name: 'Sunday Service', starts: (@event.start_time + 1.hour))
     driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
     rider = make_rider(@event, 'caitlin', zone: ZONE_1, driver: driver)
     rider.update!(pickup_address: 'x')
     sibling.rides.create!(user: rider.user, role: 'rider', status: 'requested')
+
+    finding = readiness.findings.find { |f| f.key == :double_booked }
+    refute_nil finding, 'two pickups on one day went unremarked'
+    assert_equal :warn, finding.severity
+    assert readiness.ready?
+  end
+
+  # The old query only looked for RIDERS elsewhere; a person driving another
+  # time slipped straight through.
+  def test_a_driver_on_another_slot_the_same_day_warns
+    sibling = make_event(name: 'Sunday Service', starts: (@event.start_time + 1.hour))
+    driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    rider = make_rider(@event, 'caitlin', zone: ZONE_1, driver: driver)
+    rider.update!(pickup_address: 'x')
+    sibling.rides.create!(user: rider.user, role: 'driver', status: 'confirmed', seats: 4)
+
+    finding = readiness.findings.find { |f| f.key == :double_booked }
+    refute_nil finding, 'driving elsewhere went unnoticed'
+    assert_includes finding.message, 'driving'
+  end
+
+  def test_a_ride_on_another_day_is_not_a_double_booking
+    next_week = make_event(name: 'Sunday Service', starts: (@event.start_time + 7.days))
+    driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    rider = make_rider(@event, 'caitlin', zone: ZONE_1, driver: driver)
+    rider.update!(pickup_address: 'x')
+    next_week.rides.create!(user: rider.user, role: 'rider', status: 'requested')
+
+    refute_includes keys, :double_booked
+  end
+
+  def test_a_cancelled_ride_elsewhere_does_not_warn
+    sibling = make_event(name: 'Sunday Service', starts: (@event.start_time + 1.hour))
+    driver = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    rider = make_rider(@event, 'caitlin', zone: ZONE_1, driver: driver)
+    rider.update!(pickup_address: 'x')
+    sibling.rides.create!(user: rider.user, role: 'rider', status: 'cancelled')
 
     refute_includes keys, :double_booked
   end

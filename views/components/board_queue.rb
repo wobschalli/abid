@@ -82,7 +82,10 @@ class Components::BoardQueue < Phlex::HTML
       data_draggable_rider: @leader.to_s
     ) do
       a(href: board_url(sel: (selected ? nil : rider.id), focus: rider.id), class: 'flex-1 flex flex-col gap-px min-w-0 no-underline text-inherit') do
-        span(class: 'font-semibold text-[12.5px] capitalize') { rider.display_name }
+        span(class: 'font-semibold text-[12.5px] capitalize flex items-center gap-1.5') do
+          plain rider.display_name
+          elsewhere_badge(rider)
+        end
         if rider.address.present?
           span(class: 'text-[10.5px] opacity-[.78] whitespace-nowrap overflow-hidden text-ellipsis') { rider.address }
         end

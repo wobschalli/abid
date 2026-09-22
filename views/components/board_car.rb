@@ -54,6 +54,7 @@ class Components::BoardCar < Phlex::HTML
       div(class: 'flex-1 flex flex-col gap-0.5 min-w-0') do
         div(class: 'flex items-baseline gap-[7px] flex-wrap') do
           seat_link
+          elsewhere_badge(@car.ride)
           span(class: fit_pill_class(@fit)) { BoardHelpers::FIT_LABELS[@fit] } if @fit
           dispatch_badge
         end
@@ -148,7 +149,10 @@ class Components::BoardCar < Phlex::HTML
       data_draggable_rider: @leader.to_s
     ) do
       a(href: board_url(focus: passenger.id), class: 'flex-1 flex flex-col gap-px min-w-0 no-underline text-ink') do
-        span(class: 'font-medium text-[12.5px] capitalize') { passenger.display_name }
+        span(class: 'font-medium text-[12.5px] capitalize flex items-center gap-1.5') do
+          plain passenger.display_name
+          elsewhere_badge(passenger)
+        end
         if passenger.address.present?
           span(class: 'text-[10.5px] text-ink/70 whitespace-nowrap overflow-hidden text-ellipsis') { passenger.address }
         end

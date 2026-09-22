@@ -22,6 +22,22 @@ module BoardHelpers
     "/board/#{@board.event.id}/#{path}"
   end
 
+  # "Also booked on the other service today" — shown wherever the person is,
+  # because the dispatch-bar summary at the bottom is exactly the thing you do
+  # not read while dragging riders around. Symbol plus tooltip, never colour
+  # alone.
+  def elsewhere_badge(ride)
+    labels = @board.elsewhere_for(ride)
+    return if labels.blank?
+
+    span(
+      title: "#{ride.display_name} is #{labels.join(', and ')} today",
+      aria_label: "also booked: #{labels.join(', ')}",
+      role: 'img',
+      class: 'font-mono text-[10px] font-bold text-warn-ink bg-warn-tint rounded-[4px] px-[4px] py-[1px] flex-none cursor-help'
+    ) { '2×' }
+  end
+
   FIT_PILLS = {
     full: 'bg-ink/[.07] text-ink/70',
     closest: 'bg-ink text-ink-invert',
