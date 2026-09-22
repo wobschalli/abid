@@ -17,9 +17,31 @@ module Signup
       @now = now || Time.zone.now
     end
 
-    # @return [Array<Result>] only the posts this run created
+    # @return [Array<Result>] the posts this run created or rescued
     def call
-      uncovered_dates.filter_map { |date, events| create_for(date, events) }
+      uncovered_dates.filter_map { |date, events| create_for(date, events) } +
+        rescue_own_drafts
+    end
+
+    # Drafts the automation itself created and then abandoned.
+    #
+    # A post made for a date that had no events yet is not schedulable, so it
+    # was left as a draft — and when the events appeared later, nothing ever
+    # re-attempted schedule!. The result was a fully-bound draft with a future
+    # send time that would silently never send: the sign-up for an ordinary
+    # Friday, missing, with every page implying it was handled.
+    #
+    # An earlier version of this rescue was removed because it could not tell
+    # an abandoned draft from one a human was still writing, and scheduling
+    # someone's half-edited post out from under them is worse. The
+    # discriminator that was missing then is created_by: automation's own
+    # posts carry nil, every human-created draft carries a user id. Rescuing
+    # only your own abandoned children breaks no promise to anyone.
+    def rescue_own_drafts
+      SignupPost.includes(:options)
+                .where(status: 'draft', created_by_id: nil)
+                .where(service_date: @now.to_date..(@now + @horizon_weeks.weeks).to_date)
+                .filter_map { |post| rescue_draft(post) }
     end
 
     # Set a single date up now, rather than waiting for it to come into the
@@ -64,6 +86,22 @@ module Signup
     end
 
     private
+
+    def rescue_draft(post)
+      events = Event.active.where(start_time: post.service_date.all_day).chronological.to_a
+      return nil if events.empty?
+
+      OptionSeeder.new(post).call if post.options.empty?
+      post.reload
+
+      series = events.filter_map(&:series).first
+      post.update(post_at: series.signup_post_at(post.service_date)) if post.post_at.nil? && series
+
+      return nil unless post.ready_to_send?
+      return nil if post.post_at.nil? || post.post_at <= @now
+
+      post.schedule! ? Result.new(post: post, scheduled: true) : nil
+    end
 
     def create_for(date, events)
       series = events.filter_map(&:series).first

@@ -316,12 +316,28 @@ class SignupShow < Phlex::HTML
       div(class: 'p-3 rounded-lg border border-line bg-surface-sunk') do
         pre(class: 'font-sans text-[12.5px] leading-[1.6] whitespace-pre-wrap') { preview_body }
       end
-      if @post.post_at
-        span(class: 'text-[11.5px] text-ink/60') do
-          "#{@post.posted? ? 'Posted' : 'Sends'} #{@post.post_at.strftime('%a %-d %b at %-l:%M %p')}"
-        end
-      end
+      send_caption
       send_status
+    end
+  end
+
+  # What the stored time actually means, which depends entirely on status.
+  # "Sends Tue at 8:00 PM" on a DRAFT was a promise the system would not keep —
+  # a draft never sends by itself, and that caption was the face of a sign-up
+  # silently missing its Friday.
+  def send_caption
+    at = @post.post_at&.strftime('%a %-d %b at %-l:%M %p')
+
+    case @post.status
+    when 'posted', 'closed'
+      span(class: 'text-[11.5px] text-ink/60') { "Posted #{at}" } if at
+    when 'scheduled'
+      span(class: 'text-[11.5px] text-ink/60') { "Sends #{at}" }
+    when 'draft', 'failed'
+      span(class: 'text-[11.5px] text-warn-ink') do
+        plain 'Draft — will not send by itself. Press Post now, or Schedule for later'
+        plain at ? " (the saved time is #{at})." : '.'
+      end
     end
   end
 

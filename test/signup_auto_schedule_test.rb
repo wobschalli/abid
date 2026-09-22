@@ -62,12 +62,66 @@ class SignupAutoScheduleTest < AbidTest
 
   def test_a_post_someone_already_made_is_left_alone
     occurrence(series)
+    author = User.create!(name: 'Coord', username: "c#{next_discord_id}",
+                          discord_id: next_discord_id, password: 'x' * 10)
     mine = SignupPost.create!(channel: @channel, service_date: @sunday, status: 'draft',
-                              intro: 'hand-written')
+                              intro: 'hand-written', created_by: author)
 
     assert_empty run_it
-    assert_equal 'hand-written', mine.reload.intro
+    assert_equal 'draft', mine.reload.status, "scheduled a human's draft out from under them"
+    assert_equal 'hand-written', mine.intro
     assert_equal 1, SignupPost.where(service_date: @sunday).count
+  end
+
+  # --- rescuing automation's own abandoned drafts ---------------------------
+  #
+  # A post created for a date that had no events yet was left as a draft, and
+  # nothing ever re-attempted schedule! when the events appeared. The
+  # discriminator is created_by: nil is automation's own work and fair game;
+  # a user id is a human mid-edit and untouchable. An earlier rescue without
+  # that distinction was removed for scheduling someone's half-written post.
+
+  def test_an_abandoned_automation_draft_is_scheduled
+    s = series
+    occurrence(s)
+    orphan = SignupPost.create!(channel: @channel, service_date: @sunday, status: 'draft',
+                                post_at: s.signup_post_at(@sunday))
+    Signup::OptionSeeder.new(orphan).call
+
+    results = run_it
+
+    assert_equal 'scheduled', orphan.reload.status, 'left a ready automation draft to rot'
+    assert results.any? { |r| r.post.id == orphan.id && r.scheduled }
+    assert_equal 1, SignupPost.where(service_date: @sunday).count, 'made a second post instead'
+  end
+
+  def test_a_rescued_draft_gets_options_and_a_send_time_derived
+    s = series
+    occurrence(s)
+    bare = SignupPost.create!(channel: @channel, service_date: @sunday, status: 'draft')
+    assert_empty bare.options
+    assert_nil bare.post_at
+
+    run_it
+
+    bare.reload
+    assert_equal 'scheduled', bare.status
+    assert_equal s.signup_post_at(@sunday), bare.post_at
+    assert bare.options.any?, 'scheduled with nothing to react to'
+  end
+
+  # Back-dating a send into the server is still forbidden, rescue or not.
+  def test_an_automation_draft_whose_time_has_passed_stays_a_draft
+    s = series(lead: 0)
+    today = Time.zone.today
+    s.ensure_occurrence(today)
+    stale = SignupPost.create!(channel: @channel, service_date: today, status: 'draft',
+                               post_at: 1.hour.ago)
+    Signup::OptionSeeder.new(stale).call
+
+    run_it
+
+    assert_equal 'draft', stale.reload.status
   end
 
   # A series added days before its first occurrence computes a send time that

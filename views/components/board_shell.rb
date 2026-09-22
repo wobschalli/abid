@@ -159,8 +159,11 @@ class Components::BoardShell < Phlex::HTML
       button(type: 'submit', class: 'board-btn-solid whitespace-nowrap',
              title: 'Seat everyone waiting for the least total driving time') do
         plain 'Optimize'
-        whitespace
-        plain @board.pool_count.to_s
+        # The count is how many are waiting — a task badge. Zero is not a task.
+        if @board.pool_count.positive?
+          whitespace
+          plain @board.pool_count.to_s
+        end
       end
     end
   end

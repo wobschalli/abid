@@ -771,6 +771,56 @@ class RoutesTest < AbidTest
     refute_includes add_form, 'name="zone"', 'the add form still asks for a zone'
   end
 
+  # --- workflow-audit fixes --------------------------------------------------
+
+  # The nag counted all ~270 server members; only the active roster matters.
+  def test_the_home_needs_details_nag_counts_active_members_only
+    # An inactive member with nothing filled in: alone, no nag at all.
+    User.create!(name: 'Ghost', username: "gh#{next_discord_id}",
+                 discord_id: next_discord_id, password: 'x' * 10, active: false)
+    assert_equal 0, get_ok('/').body.scan('Needs details').size,
+                 'the home page nags about inactive members'
+
+    User.create!(name: 'Realperson', username: "rp#{next_discord_id}",
+                 discord_id: next_discord_id, password: 'x' * 10, active: true)
+    body = get_ok('/').body
+    assert_includes body, 'Needs details'
+    assert_includes body, '1 person has', 'wrong count or wrong grammar'
+  end
+
+  # "not sent yet" on an event whose sign-up was posted and closed read as a
+  # failure that never happened.
+  def test_the_event_page_reports_the_real_signup_state
+    server = Server.create!(name: "S#{next_discord_id}", discord_id: next_discord_id)
+    channel = Channel.create!(name: 'rides', discord_id: next_discord_id, server: server)
+    post = SignupPost.create!(channel: channel, service_date: @event.start_time.to_date,
+                              status: 'closed', closed_at: Time.zone.now,
+                              posted_at: Time.zone.now, discord_message_id: next_discord_id)
+    post.options.create!(Signup::EmojiKey.parse('1️⃣').merge(event: @event, position: 0))
+
+    body = get_ok("/events/#{@event.id}").body
+
+    assert_includes body, 'posted, now closed'
+    refute_includes body, 'not sent yet'
+    refute_includes body, '>Section<', 'the retired Section card is still on the event page'
+  end
+
+  # Moving a rider by hand must not carry the optimizer's order into a car it
+  # was never computed for.
+  def test_a_manual_reassign_drops_the_stale_pickup_position
+    car_a = make_driver(@event, 'ian', seats: 4, zone: ZONE_1)
+    car_b = make_driver(@event, 'caleb', seats: 4, zone: ZONE_1)
+    rider = make_rider(@event, 'caitlin', zone: ZONE_1, driver: car_a)
+    rider.update!(pickup_position: 0)
+
+    as_leader
+    post "/board/#{@event.id}/assign", ride_id: rider.id, driver_ride_id: car_b.id
+
+    rider.reload
+    assert_equal car_b.id, rider.driver_ride_id
+    assert_nil rider.pickup_position, 'position 0 from the old route followed them'
+  end
+
   # --- the emoji catalogue --------------------------------------------------
 
   def test_the_catalogue_covers_the_whole_unicode_set

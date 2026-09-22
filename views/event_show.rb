@@ -68,11 +68,26 @@ class EventShow < Phlex::HTML
 
   def facts
     div(class: 'grid gap-3 grid-cols-[repeat(auto-fit,minmax(160px,1fr))]') do
-      fact('Section', @event.section.presence || '—')
       fact('Location', @event.location&.name || '—')
       fact('Channel', @event.channel&.name || '—')
       fact('Series', series_link)
-      fact('Sign-up', @event.posted? ? 'posted' : 'not sent yet')
+      fact('Sign-up', signup_state)
+    end
+  end
+
+  # The actual state of this date's sign-up post, not a binary. "not sent yet"
+  # on a finished event whose post was sent and then closed read as a failure
+  # that never happened.
+  def signup_state
+    post = @event.signup_posts.max_by { |p| p.posted_at || p.created_at }
+    return 'none' if post.nil?
+
+    case post.status
+    when 'posted' then 'posted'
+    when 'closed' then 'posted, now closed'
+    when 'scheduled' then "sends #{post.post_at&.strftime('%a %-l:%M %p')}"
+    when 'failed' then 'failed to send'
+    else 'draft — not scheduled'
     end
   end
 

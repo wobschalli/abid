@@ -74,7 +74,7 @@ class DispatchLog < Phlex::HTML
     details(class: 'rounded-md border border-line-soft') do
       summary(class: 'flex items-center gap-2 px-2.5 py-2 cursor-pointer text-[12.5px]') do
         span(class: 'font-medium capitalize flex-1') { message.driver_name.to_s }
-        span(class: 'board-meta') { "#{message.rider_names.size} riders" }
+        span(class: 'board-meta') { "#{message.rider_names.size} #{'rider'.pluralize(message.rider_names.size)}" }
         message_pill(message)
       end
       body_block(message)

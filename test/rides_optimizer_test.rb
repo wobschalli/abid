@@ -180,4 +180,19 @@ class RidesOptimizerTest < AbidTest
     assert_equal :changed, status.state_for(car_a), 'the driver gaining a rider must be re-sendable'
     assert_equal :sent, status.state_for(car_b), 'an untouched car was re-flagged'
   end
+  # The stale-position guard must not eat the optimizer's own writes: it sets
+  # driver_ride_id and pickup_position in one update, and both must land.
+  def test_the_optimizer_keeps_its_own_pickup_positions
+    driver_at('ian', @near, seats: 4)
+    a = rider_at('anna', @near)
+    b = rider_at('brian', @far)
+
+    optimize(matrix(
+      [@near, @venue] => 300, [@far, @venue] => 600, [@near, @far] => 200
+    ))
+
+    positions = [a, b].map { |r| r.reload.pickup_position }
+    assert_equal [0, 1], positions.sort, "the guard wiped the optimizer's order: #{positions.inspect}"
+  end
+
 end

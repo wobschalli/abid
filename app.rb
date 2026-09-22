@@ -45,7 +45,10 @@ class App < Sinatra::Base
       next_event: next_event,
       board: next_event && RideBoard.new(next_event),
       upcoming: upcoming.drop(1),
-      needs_setup: User.missing_details.limit(50).to_a,
+      # Active members only: the server holds ~190 people who joined once and
+      # never came, and nagging about their missing phone numbers buried the
+      # handful that actually matter.
+      needs_setup: User.active.missing_details.to_a,
       leader: leader?
     )
   end

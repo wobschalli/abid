@@ -59,7 +59,10 @@ class Components::EventTable < Phlex::HTML
   def roster(event)
     riders = event.rides.count { |r| r.rider? && r.active? }
     drivers = event.rides.count { |r| r.driver? && r.active? }
-    return 'no sign-ups' if riders.zero? && drivers.zero?
+    # "nobody yet", matching the schedule page for the identical condition.
+    # This counts the ROSTER — calling it "no sign-ups" made dates whose
+    # sign-up existed as a draft look unhandled.
+    return 'nobody yet' if riders.zero? && drivers.zero?
 
     "#{riders} riders · #{drivers} cars"
   end

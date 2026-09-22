@@ -91,7 +91,7 @@ class Home < Phlex::HTML
     div(class: 'flex flex-col gap-2 p-4 rounded-xl border border-warn/40 bg-warn-tint') do
       span(class: 'board-label !text-warn-ink') { 'Needs details' }
       span(class: 'text-[12.5px] text-warn-ink') do
-        "#{@needs_setup.size} #{'person'.pluralize(@needs_setup.size)} have no home area or phone number. " \
+        "#{@needs_setup.size} #{@needs_setup.size == 1 ? 'person has' : 'people have'} no home area or phone number. " \
         'Drivers cannot collect someone whose address nobody knows.'
       end
       a(href: '/users?filter=missing', class: 'board-btn no-underline self-start') { 'Fill them in' }

@@ -51,7 +51,6 @@ class SeriesShow < Phlex::HTML
     div(class: 'grid gap-3 grid-cols-[repeat(auto-fit,minmax(160px,1fr))]') do
       fact('Day', @series.weekday ? DAYS[@series.weekday] : '—')
       fact('Time', @series.start_time_of_day&.strftime('%-l:%M %p') || '—')
-      fact('Section', @series.section.presence || '—')
       fact('Location', @series.location&.name || '—')
       fact('Channel', @series.channel&.name || '—')
       fact('Generates ahead', "#{@series.horizon_weeks} weeks")

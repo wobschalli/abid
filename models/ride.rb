@@ -28,6 +28,14 @@ class Ride < ApplicationRecord
   has_many :signup_reactions, dependent: :nullify
 
   before_validation :canonicalize_zone
+  # A pickup order belongs to the route it was computed for. Move a rider to
+  # another car by hand and their old position came along — position 0 from the
+  # previous route, silently jumping the new car's DM order. The optimizer is
+  # unaffected: it writes driver_ride_id and pickup_position in one update, so
+  # the position is changed too and survives.
+  before_save :drop_stale_pickup_position, if: lambda {
+    driver_ride_id_changed? && !pickup_position_changed?
+  }
   # Deleting a driver puts their riders back in the waiting queue, rather than
   # taking them off the board along with the car. Somebody who dropped out of
   # driving has not told us anything about whether their passengers still need
@@ -160,6 +168,10 @@ class Ride < ApplicationRecord
   end
 
   private
+
+  def drop_stale_pickup_position
+    self.pickup_position = nil
+  end
 
   # Status first, while the riders are still linked to this car; then the link.
   #
