@@ -66,6 +66,13 @@ module Abid
     # missing key is not an error: the optimizer runs on distance estimates
     # until one exists, and starts fetching real times the day it appears.
     def google_maps_key
+      # The suite must never reach Google. Every class that talks to it takes
+      # an explicit `api_key:` for tests, but a default-constructed
+      # TravelMatrix or Map inside a route or optimizer test would otherwise
+      # find the production key in config.yml and spend live quota on
+      # fixture coordinates — silently, since the tests still pass.
+      return nil if env == 'test'
+
       key = ENV['GOOGLE_MAPS_KEY'].presence
       key ||= begin
         YAML.load_file('config.yml')['google_maps_key'] if File.exist?('config.yml')

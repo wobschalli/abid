@@ -260,13 +260,22 @@ class UsersIndex < Phlex::HTML
     end
   end
 
+  # When the resolver refused to guess, show the member's own words instead of
+  # a blank: "wrote: Either BHEE or 3rd and West" is something a coordinator
+  # can act on; "no home area" is not.
   def meta(user)
     [
-      user.location&.name,
+      user.location&.name || unresolved(user.residence_answer),
       user.location&.zone,
       user.phone.presence,
       user.class_of
     ].compact.join(' · ').presence || 'no details yet'
+  end
+
+  def unresolved(answer)
+    return nil if answer.blank?
+
+    "wrote: “#{answer.to_s.truncate(60)}”"
   end
 
   def load_label(user)

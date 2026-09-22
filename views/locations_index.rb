@@ -93,11 +93,7 @@ class LocationsIndex < Phlex::HTML
       div(class: 'flex-1 min-w-0 flex flex-col gap-0.5') do
         div(class: 'flex items-baseline gap-2 flex-wrap') do
           span(class: 'font-semibold text-[13px]') { location.name.to_s }
-          unless location.coords?
-            span(class: 'font-mono text-[9.5px] font-semibold tracking-[.06em] px-[7px] py-[3px] rounded-[5px] bg-warn-tint text-warn-ink uppercase') do
-              'no coords'
-            end
-          end
+          verification_pill(location)
         end
         if location.aliases.present?
           span(class: 'board-meta') { "also: #{location.aliases.join(', ')}" }
@@ -106,8 +102,41 @@ class LocationsIndex < Phlex::HTML
       end
       div(class: 'flex items-center gap-2 shrink-0') do
         span(class: 'font-mono text-[11px] text-ink/70 whitespace-nowrap') { usage_label(location) }
+        verify_button(location) if @leader
         delete_button(location) if @leader
       end
+    end
+  end
+
+  # How sure we are the pin is the building. "no coords" used to be the only
+  # signal, which made an eyeballed guess and a rooftop match look identical —
+  # and drivers were sent to both with equal confidence.
+  def verification_pill(location)
+    style, label, hint =
+      case location.verification
+      when 'rooftop' then ['bg-accent-tint text-accent', 'verified', 'matched to the building']
+      when 'interpolated' then ['bg-accent-tint text-accent', 'verified', 'matched to the street number']
+      when 'approximate' then ['bg-warn-tint text-warn-ink', 'approximate', 'somewhere near here — worth checking the address']
+      else
+        location.coords? ? ['bg-ink/[.07] text-ink/60', 'unverified', 'a hand-placed pin, never checked'] :
+                           ['bg-warn-tint text-warn-ink', 'no coords', 'not on the map at all']
+      end
+
+    span(title: hint,
+         class: "font-mono text-[9.5px] font-semibold tracking-[.06em] px-[7px] py-[3px] rounded-[5px] uppercase #{style}") do
+      label
+    end
+  end
+
+  # Offered for anything short of verified. One press asks Google (then OSM)
+  # and writes back the state — the way to re-pin a place after fixing its
+  # address, without a rake task.
+  def verify_button(location)
+    return if location.verified?
+
+    form(method: 'post', action: "/locations/#{location.id}/verify", class: 'contents') do
+      button(type: 'submit', title: 'Look this place up and record how well it matched',
+             class: 'board-btn whitespace-nowrap text-[11.5px] py-1') { 'Verify' }
     end
   end
 

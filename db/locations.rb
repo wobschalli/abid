@@ -98,9 +98,15 @@ module Abid
       ['McCutcheon Hall',   'On-campus', 40.4213, -86.9250, ['mccutcheon', 'mccutcehon', 'mccutcheon hall']],
       ['Frieda Parker Hall', 'On-campus', 40.4270, -86.9150, ['frieda parker', 'freida parker', 'frieda', 'freida']],
       ['Winifred Parker Hall', 'On-campus', 40.4268, -86.9152, ['winifred parker', 'winifred', 'winnifred']],
-      # Purdue's graduate and family housing, both genuinely on university land.
+      # Purdue's graduate housing, genuinely on university land.
       ['Hilltop Apartments', 'On-campus', 40.4340, -86.9190, ['hilltop', 'hill top']],
-      ['Purdue Village',    'On-campus', 40.4310, -86.9280, ['village west', 'purdue village', 'nimitz']],
+      # Village West is a private complex on Willowbrook Drive, north-west of
+      # campus. This row used to be called "Purdue Village" — a demolished
+      # family-housing site on Nimitz Drive — with "village west" as an alias,
+      # so everyone who lives at Village West was pinned 2.7km from home. No
+      # coordinates here on purpose: the old eyeballed ones were the wrong
+      # building, and `rake db:verify_locations` places it from the address.
+      ['Village West',      'Northwestern', nil, nil, ['village west', 'village west apartments', 'village west apts', 'purdue village']],
       ['Third Street Suites', 'On-campus', 40.4255, -86.9260, ['third street suites', '3rd street suites']],
 
       # --- Chauncey / the blocks just off campus ----------------------------
@@ -119,6 +125,12 @@ module Abid
       # --- Northwestern -----------------------------------------------------
       ['Alight West Lafayette', 'Northwestern', nil, nil, ['alight', 'the cottages']],
       ['Benchmark Apartments', 'Chauncey', nil, nil, ['benchmark', 'benchmark ii', 'benchmark iii']],
+
+      # --- Named in the 2026 census and not above ---------------------------
+      # Place names only — the census also holds a handful of people's own
+      # street addresses, and those stay in the database, never in this file.
+      ['Continuum',         'Chauncey', nil, nil, ['continuum', 'continuum apartments', 'continuum apts', 'the continuum']],
+      ['Granite Student Living', 'Chauncey', nil, nil, ['granite', 'granite student living', 'granite apartments']],
 
       # --- Klondike ---------------------------------------------------------
       ['Provenance',        'Klondike', nil, nil, ['provenance', 'provinence', 'provinance', 'provenance apt']]
@@ -156,8 +168,18 @@ module Abid
       ['Schleman Hall',               ['schm', 'schleman']],
       ['Stanley Coulter Hall',        ['stanley coulter', 'scc']],
       ['Wetherill Laboratory of Chemistry', ['wthr', 'wetherill']],
-      ['Wilmeth Active Learning Center', ['walc', 'wilmeth', 'active learning center']]
+      ['Wilmeth Active Learning Center', ['walc', 'wilmeth', 'active learning center']],
+      # Two more the Friday answers actually named.
+      ['Lyles-Porter Hall',           ['lyles porter', 'lyles-porter', 'lyle']],
+      ['Stewart Center',              ['stewart', 'stew']]
     ].freeze
+
+    # A place whose row is kept but whose name was wrong. Applied before the
+    # seed so the existing row — and every users.location_id pointing at it —
+    # is renamed in place rather than orphaned beside a new one.
+    RENAMES = {
+      'Purdue Village' => 'Village West'
+    }.freeze
 
     # Street addresses, verified by geocoding — every one below resolves inside
     # Tippecanoe County, and the campus entries are cross-checked against the
@@ -237,6 +259,7 @@ module Abid
       'greater lafayette chinese alliance church' => '3501 W 250 N, West Lafayette, IN 47906',
 
       # Private complexes
+      'Village West' => '2053 Willowbrook Drive',
       'lark' => '3800 Campus Suites Boulevard',
       'Alight West Lafayette' => '2243 Sagamore Parkway West',
       'Benchmark Apartments' => '421 S Chauncey Avenue',
@@ -269,7 +292,12 @@ module Abid
       'Shreve Hall' => ['shreve hall'],
       'Owen Hall' => ['owen hall'],
       'Hillenbrand Hall' => ['hillenbrand hall'],
-      'Windsor Halls' => ['windsor hall']
+      'Windsor Halls' => ['windsor hall', 'windsor dining court', 'windsor dining'],
+      # Spellings straight from the 2026 census tallies.
+      'Hub on State' => ['hub state street', 'hub state st', 'hub state'],
+      'Aspire at Discovery Park' => ['aspire building b', 'aspire b'],
+      'Meredith South' => ['mesh'],
+      'Third and West' => ['3rd and west most likely']
     }.freeze
 
     ALL = (EXISTING + PLACES + FROM_SPREADSHEET +
@@ -282,6 +310,15 @@ module Abid
     #   - coordinates are only filled when blank, so a correction survives
     #   - aliases are unioned, never replaced
     def seed!
+      RENAMES.each do |old_name, new_name|
+        stale = Location.find_by(name: old_name) or next
+        next if Location.exists?(name: new_name)
+
+        # The pin was for the wrong building; say so, and let verification
+        # place it. Coordinates are kept so nobody loses their pickup meanwhile.
+        stale.update!(name: new_name, verification: 'unverified')
+      end
+
       ALL.each do |name, zone, lat, lon, aliases|
         location = Location.find_or_initialize_by(name: name)
         location.zone = zone

@@ -187,9 +187,18 @@ module Abid
       no_home = matched.select { |r| r.row.residence.present? && r.residence_match.nil? }
       if no_home.any?
         puts
-        puts "residence not recognised (#{no_home.size}) — add to db/locations.rb if it is a real place:"
+        puts "residence not recognised (#{no_home.size}) — add an alias on the Locations page, or db/locations.rb if it is a real place:"
         no_home.map { |r| r.row.residence }.tally.sort_by { |_, n| -n }
                .each { |text, n| puts "    #{text.to_s.ljust(46)} x#{n}" }
+      end
+
+      # Answers that named more than one place. Nothing was assigned: the
+      # member sees "they wrote: …" on the Members page and a human decides.
+      undecided = matched.select { |r| r.residence_match == :ambiguous }
+      if undecided.any?
+        puts
+        puts "residence names more than one place (#{undecided.size}) — left for a human, shown on the Members page:"
+        undecided.each { |r| puts "    #{r.user.name.to_s.ljust(22)} wrote: #{r.row.residence}" }
       end
 
       return if unmatched.empty?

@@ -11,10 +11,13 @@ namespace :db do
     ruby 'db/demo_seeds.rb'
   end
 
-  desc 'Refine approximate location coordinates against OpenStreetMap'
-  task :geocode do
+  desc 'Verify every location against Google (Nominatim fallback), recording how precisely it resolved'
+  task :verify_locations do
     ruby 'db/geocode.rb'
   end
+
+  # The old name, kept so existing habits and docs still work.
+  task geocode: :verify_locations
 
   desc "Make the database match Abide's real weekly schedule (add [apply] to write)"
   task :schedule, [:mode] do |_task, args|

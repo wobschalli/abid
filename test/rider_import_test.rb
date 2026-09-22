@@ -223,4 +223,57 @@ class RiderImportTest < AbidTest
     assert_equal '7652223333', result.changes[:phone], 'dry run must still report the change'
     assert_nil user.reload.phone, 'dry run must not write'
   end
+
+  # --- what people actually type ---------------------------------------------
+  #
+  # The 2026 census answered "where do you live" 57 different ways. The
+  # resolver has to fold spelling, and it has to REFUSE an answer that names
+  # two places — "Either BHEE or 3rd and West" is a question for a human, and
+  # picking one sends a driver to the wrong building half the time.
+
+  def test_a_spelling_variant_resolves_to_the_seeded_place
+    lark = Location.create!(name: 'lark', zone: Location::ZONES[2], aliases: ['lark apartments'])
+    user = make_user(name: 'Laura Sun', username: 'laurasun0')
+
+    result = import(row(name: 'Laura Sun', handle: 'laurasun0', residence: 'Lark Apts.')).first
+
+    assert_equal :exact, result.residence_match
+    assert_equal lark.id, user.reload.location_id
+  end
+
+  def test_an_either_or_answer_is_refused_and_reported
+    Location.create!(name: 'Electrical Engineering Building', zone: Location::ZONES.first, aliases: ['bhee'])
+    Location.create!(name: 'Third and West', zone: Location::ZONES.first, aliases: ['3rd and west'])
+    user = make_user(name: 'Laura Sun', username: 'laurasun0')
+
+    result = import(row(name: 'Laura Sun', handle: 'laurasun0',
+                        residence: 'Either BHEE or 3rd and West because of lab')).first
+
+    assert_equal :ambiguous, result.residence_match
+    assert_nil user.reload.location_id, 'picked one of two places on a coin toss'
+  end
+
+  def test_noise_around_one_place_still_resolves
+    Location.create!(name: 'Earhart Hall', zone: Location::ZONES.first, aliases: ['earhart'])
+    user = make_user(name: 'Laura Sun', username: 'laurasun0')
+
+    result = import(row(name: 'Laura Sun', handle: 'laurasun0', residence: 'At or near my dorm (Earhart)')).first
+
+    assert_equal :partial, result.residence_match
+    assert_equal 'Earhart Hall', user.reload.location.name
+  end
+
+  # The member's own words survive, so the coordinator can read what the
+  # resolver could not — and a newer answer replaces an older one.
+  def test_the_raw_answers_are_kept_verbatim_and_refreshed
+    user = make_user(name: 'Laura Sun', username: 'laurasun0', residence_answer: 'old answer')
+
+    import(row(name: 'Laura Sun', handle: 'laurasun0',
+               residence: 'lark or campus', class_residence: 'Prolly my dorm'))
+
+    user.reload
+    assert_equal 'lark or campus', user.residence_answer
+    assert_equal 'Prolly my dorm', user.friday_answer
+  end
+
 end

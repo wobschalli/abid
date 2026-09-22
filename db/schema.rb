@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 4000) do
+ActiveRecord::Schema[8.0].define(version: 4100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -162,6 +162,10 @@ ActiveRecord::Schema[8.0].define(version: 4000) do
     t.datetime "updated_at", null: false
     t.string "zone"
     t.string "address"
+    t.string "place_id"
+    t.string "verification", default: "unverified", null: false
+    t.datetime "verified_at"
+    t.index ["verification"], name: "index_locations_on_verification"
     t.index ["zone"], name: "index_locations_on_zone"
   end
 
@@ -312,6 +316,8 @@ ActiveRecord::Schema[8.0].define(version: 4000) do
     t.boolean "active", default: false, null: false
     t.bigint "class_location_id"
     t.string "tags", default: [], null: false, array: true
+    t.string "residence_answer"
+    t.string "friday_answer"
     t.index ["active"], name: "index_users_on_active"
     t.index ["class_location_id"], name: "index_users_on_class_location_id"
     t.index ["location_id"], name: "index_users_on_location_id"

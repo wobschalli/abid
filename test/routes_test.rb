@@ -837,6 +837,73 @@ class RoutesTest < AbidTest
     assert_includes body, 'driving Sunday Service'
   end
 
+  # --- verified locations -----------------------------------------------------
+
+  def test_the_locations_page_grades_every_pin
+    Location.create!(name: 'Verified Place', zone: ZONE_1, lat: 40.43, lon: -86.91, verification: 'rooftop')
+    Location.create!(name: 'Guessed Place', zone: ZONE_1, lat: 40.43, lon: -86.91, verification: 'unverified')
+    Location.create!(name: 'Nowhere Place', zone: ZONE_1)
+
+    as_leader
+    body = get_ok('/locations').body
+
+    assert_includes body, '>verified<'
+    assert_includes body, '>unverified<'
+    assert_includes body, '>no coords<'
+    # Verify is offered for anything short of verified, and not for the rest.
+    assert_equal 2, body.scan('>Verify<').size, 'Verify button count'
+  end
+
+  class FakeVerifyingMap
+    def geocode(_query)
+      { lat: 40.4471, lon: -86.9391, address: '2053 Willowbrook Dr, West Lafayette, IN 47906, USA',
+        place_id: 'ChIJ-fake', verification: 'rooftop', source: :google }
+    end
+  end
+
+  def test_verify_records_state_address_and_place_id
+    require 'minitest/mock'
+    place = Location.create!(name: 'Village West', zone: ZONE_1, lat: 40.4310, lon: -86.9280)
+
+    as_leader
+    Map.stub(:new, FakeVerifyingMap.new) { post "/locations/#{place.id}/verify" }
+
+    assert_equal 302, last_response.status
+    place.reload
+    assert_equal 'rooftop', place.verification
+    assert_equal 'ChIJ-fake', place.place_id
+    assert_includes place.address, 'Willowbrook'
+    assert_in_delta 40.4471, place.lat.to_f, 0.0001, 'the pin did not move to the real building'
+    refute_nil place.verified_at
+  end
+
+  def test_an_approximate_hit_keeps_the_human_address
+    require 'minitest/mock'
+    approx = Class.new do
+      def geocode(_q) = { lat: 40.43, lon: -86.91, address: 'somewhere, IN', place_id: nil,
+                          verification: 'approximate', source: :nominatim }
+    end.new
+    place = Location.create!(name: 'Vague Place', zone: ZONE_1, address: '123 Typed By Hand St')
+
+    as_leader
+    Map.stub(:new, approx) { post "/locations/#{place.id}/verify" }
+
+    place.reload
+    assert_equal 'approximate', place.verification
+    assert_equal '123 Typed By Hand St', place.address, "overwrote a real address with Google's guess"
+  end
+
+  def test_members_missing_a_home_show_what_they_wrote
+    User.create!(name: 'Undecided', username: "und#{next_discord_id}", discord_id: next_discord_id,
+                 password: 'x' * 10, active: true, residence_answer: 'Either BHEE or 3rd and West')
+
+    as_leader
+    body = get_ok('/users?filter=missing').body
+
+    assert_includes body, 'wrote:'
+    assert_includes body, 'Either BHEE or 3rd and West'
+  end
+
   # --- the emoji catalogue --------------------------------------------------
 
   def test_the_catalogue_covers_the_whole_unicode_set

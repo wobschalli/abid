@@ -46,11 +46,61 @@ class Location < ApplicationRecord
   # The bound parameters matter — this scope previously interpolated a Discord
   # modal value straight into SQL, and a location named `x') OR ('1'='1` was a
   # working injection.
+  #
+  # Exact (case-folded) first, then the normalised form: "Lark apartments",
+  # "RISE on Chauncey" and "3rd & West" are the same places as "lark", "rise
+  # on chauncey" and "third and west", and the census proved people type all
+  # of them. The normalised pass is a Ruby scan — there are ~90 places, and a
+  # SQL expression for "strip trailing 'apartments'" is not worth its
+  # unreadability.
   scope :search_by_name, lambda { |name|
     key = name.to_s.strip.downcase
-    where('lower(name) = ?', key)
-      .or(where('EXISTS (SELECT 1 FROM unnest(aliases) a WHERE lower(a) = ?)', key))
+    exact = where('lower(name) = ?', key)
+            .or(where('EXISTS (SELECT 1 FROM unnest(aliases) a WHERE lower(a) = ?)', key))
+    next exact if exact.exists?
+
+    norm = normalize_term(name)
+    next none if norm.blank?
+
+    where(id: all.select { |place| place.terms.any? { |term| normalize_term(term) == norm } }.map(&:id))
   }
+
+  # How sure we are that the pin is the building. Anything but the first two
+  # is a guess the Locations page must show as one.
+  VERIFICATIONS = %w[rooftop interpolated approximate unverified].freeze
+  VERIFIED = %w[rooftop interpolated].freeze
+  validates :verification, inclusion: { in: VERIFICATIONS }
+
+  # Words that people bolt onto a place name without changing which place they
+  # mean. Stripped from the END only, and repeatedly: "Lark apartments" and
+  # "Owen Hall" lose one word; "Windsor Halls dorm" loses two; "South Hall"
+  # becomes "south", which is fine because nothing else normalises to that.
+  NOISE_SUFFIXES = %w[apartments apartment apts apt halls hall dorm dorms residence residences building bldg].freeze
+
+  ORDINALS = { '1st' => 'first', '2nd' => 'second', '3rd' => 'third', '4th' => 'fourth',
+               '5th' => 'fifth', '6th' => 'sixth' }.freeze
+
+  # The spelling-insensitive key for a place name. Deterministic and cheap; the
+  # goal is that every way the census spells one building lands on one string.
+  def self.normalize_term(text)
+    words = text.to_s.downcase
+                .gsub('&', ' and ')
+                .gsub(/[^a-z0-9\s]/, ' ')
+                .split
+                .map { |w| ORDINALS.fetch(w, w) }
+    words.shift if words.first == 'the'
+    words.pop while words.size > 1 && NOISE_SUFFIXES.include?(words.last)
+    words.join(' ')
+  end
+
+  # Every spelling this place answers to.
+  def terms
+    [name] + aliases.to_a
+  end
+
+  def verified?
+    VERIFIED.include?(verification)
+  end
   scope :search_by_coords, ->(lat, lon) { where(lon: lon).where(lat: lat) }
   scope :in_zone, ->(zone) { where(zone: zone) }
   scope :zoned, -> { where.not(zone: nil) }

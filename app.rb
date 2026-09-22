@@ -293,6 +293,20 @@ class App < Sinatra::Base
     redirect to('/locations')
   end
 
+  # Re-check one place against the geocoder on demand. The Locations page
+  # shows a verification state per row; this is the button next to the ones
+  # that are not "verified", and the way to re-pin a place after its address
+  # is corrected. No drift guard here — a human pressed it on purpose — but
+  # the page shows the new state and coordinates immediately, so a bad result
+  # is visible rather than silent.
+  post '/locations/:id/verify' do
+    require_leader!
+    location = Location.find_by(id: params[:id]) or halt 404, 'No such location'
+    geocode!(location)
+
+    redirect to('/locations')
+  end
+
   # --- the schedule ---------------------------------------------------------
   #
   # Events, Series and Sign-ups were three pages over the same rows. They are
@@ -1007,14 +1021,29 @@ class App < Sinatra::Base
 
   # Best-effort and never blocking: Nominatim is a third party, and a failed
   # lookup must still keep the address that was typed.
+  # Look the place up and record HOW well it resolved, not just where.
+  #
+  # A verified hit (rooftop / interpolated) also takes Google's formatted
+  # street address, because that is a better thing to hand a driver than
+  # whatever was typed — "Village West" becomes "2053 Willowbrook Dr". An
+  # approximate hit keeps the human's address text: Google's guess at the
+  # coordinates is still worth having, but its guess at the address is not
+  # worth overwriting a real one with.
   def geocode!(location)
-    coords = begin
-      Map.new.addr_to_coord(location.geocode_query)
+    result = begin
+      Map.new.geocode(location.geocode_query)
     rescue StandardError => e
       warn "geocoding #{location.name} failed: #{e.class}: #{e.message}"
       {}
     end
-    location.update(lat: coords[:lat], lon: coords[:lon]) if coords[:lat].present?
+    return if result[:lat].blank?
+
+    attrs = { lat: result[:lat], lon: result[:lon],
+              verification: result[:verification], verified_at: Time.zone.now,
+              place_id: result[:place_id] }
+    attrs[:address] = result[:address] if result[:address].present? &&
+                                          Location::VERIFIED.include?(result[:verification])
+    location.update(attrs)
   end
 
   def describe_usage(counts)

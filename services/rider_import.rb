@@ -155,32 +155,48 @@ class RiderImport
     [nil, :unmatched]
   end
 
-  # Returns [location, how]. `:none` means the text named nowhere we know, which
-  # is reported rather than papered over — a location invented from a free-text
-  # answer would land with no zone and quietly break the queue grouping.
+  # An answer that offers a choice. "Either BHEE or 3rd and West because of
+  # lab", "lark or campus", "Cary NW / Yugo / Not sure yet" — the member has
+  # not told us where they will be, and picking one for them would send a
+  # driver to the wrong building half the time.
+  CHOICE = %r{\b(?:or|either)\b|/}i
+
+  # Returns [location, how]. `nil` how means the text named nowhere we know,
+  # `:ambiguous` means it named more than one place — both are reported rather
+  # than papered over. A location invented from a free-text answer would land
+  # with no zone and quietly break the queue grouping; a place picked from an
+  # "either/or" would be wrong with a coin's confidence.
   def find_location(row, field: :residence)
     text = row[field].to_s.strip
     return [nil, :blank] if text.empty?
 
+    # search_by_name already folds spelling — "Lark apartments", "3rd & West",
+    # "RISE on chauncey" — so the exact tier catches most of the census.
     exact = Location.search_by_name(text).first
     return [exact, :exact] if exact
 
     # 'Earhart 267', 'Apt lark', 'Dorm - Meredith South', 'Riverbend apts 202 S
-    # River Rd ...' — the building name is in there with noise around it. Try
-    # the longest alias that appears as a whole word.
-    found = longest_alias_match(text)
+    # River Rd ...' — the building name is in there with noise around it. Find
+    # every place named as a whole word; two or more with a choice word between
+    # them is a question for a human, not a match.
+    named = places_named_in(text)
+    return [nil, :ambiguous] if named.size > 1 && text.match?(CHOICE)
+
+    found = named.max_by { |location| location.terms.map { |t| t.to_s.length }.max }
     found ? [found, :partial] : [nil, nil]
   end
 
-  def longest_alias_match(text)
-    key = text.downcase
-    candidates = Location.all.select do |location|
-      ([location.name] + location.aliases.to_a).any? do |term|
-        term = term.to_s.downcase
-        term.present? && key.match?(/(?<![a-z0-9])#{Regexp.escape(term)}(?![a-z0-9])/)
+  # Every place whose name or alias appears in the text as a whole word,
+  # compared on the normalised spelling so "3rd and west" finds "Third and
+  # West" and "lark apts" finds "lark".
+  def places_named_in(text)
+    key = Location.normalize_term(text)
+    Location.all.select do |location|
+      location.terms.any? do |term|
+        norm = Location.normalize_term(term)
+        norm.present? && key.match?(/(?<![a-z0-9])#{Regexp.escape(norm)}(?![a-z0-9])/)
       end
     end
-    candidates.max_by { |location| ([location.name] + location.aliases.to_a).map { |t| t.to_s.length }.max }
   end
 
   # Only ever fills a blank. Someone who has set their own home location in the
@@ -201,6 +217,15 @@ class RiderImport
     end
     changes[:capacity] = row.capacity if row.capacity.present? && user.capacity.blank?
     changes[:grad_year] = row.grad_year if row.grad_year.present? && user.grad_year.blank?
+    # The member's own words, kept verbatim and always refreshed — unlike the
+    # blank-fills above, a newer answer IS the more current statement. This is
+    # what the coordinator reads when the resolver refused to guess.
+    if row.residence.present? && user.residence_answer != row.residence
+      changes[:residence_answer] = row.residence
+    end
+    if row.class_residence.present? && user.friday_answer != row.class_residence
+      changes[:friday_answer] = row.class_residence
+    end
     return changes if changes.empty? || @dry_run
 
     user.update!(changes)
