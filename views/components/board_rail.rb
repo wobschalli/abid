@@ -198,6 +198,7 @@ class Components::BoardRail < Phlex::HTML
   def roster_pane
     div(class: 'flex-1 overflow-y-auto p-3.5 flex flex-col gap-[18px]') do
       roster_section('Drivers', @board.driver_rides) { |r| driver_meta(r) }
+      add_drivers_button if @leader
       roster_section('Riders', @board.rider_rides) { |r| r.zone_short }
       add_person if @leader
     end
