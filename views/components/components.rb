@@ -1,5 +1,5 @@
 # A root-relative path with the mount prefix applied. The app may live under
-# a prefix (abidepurdue.com/ridebot, so the domain root is free for something
+# a prefix (abidepurdue.com/abidebot, so the domain root is free for something
 # else); Rack sets SCRIPT_NAME from it and Sinatra's url() prepends it. Every
 # href/action/endpoint in the views goes through here — a bare "/board" would
 # jump out of the prefix the moment it was clicked.

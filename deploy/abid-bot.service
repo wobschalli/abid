@@ -1,6 +1,6 @@
 # The Discord bot: sign-up posting, reactions, dispatch DMs, the late-rider
 # optimizer sweep. EXACTLY ONE instance may run anywhere — a second bot posts
-# every sign-up twice. Stop the laptop's bot before starting this one.
+# every sign-up twice. Stop any other copy before starting this one.
 [Unit]
 Description=Abid Discord bot
 After=network-online.target postgresql.service
@@ -8,12 +8,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=alan
-Group=alan
+User=abid
+Group=abid
 WorkingDirectory=/opt/abid
 EnvironmentFile=/etc/abid/env
-Environment=PATH=/home/alan/.rbenv/shims:/home/alan/.rbenv/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/home/alan/.rbenv/shims/bundle exec ruby bot/run.rb
+Environment=PATH=/opt/ruby/3.3.8/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/opt/ruby/3.3.8/bin/bundle exec ruby bot/run.rb
 # bot/run.rb traps INT/TERM and closes the gateway cleanly.
 KillSignal=SIGTERM
 TimeoutStopSec=20

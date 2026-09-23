@@ -60,7 +60,7 @@ module Abid
     end
 
     # The URL prefix the dashboard is mounted under: '' at the domain root,
-    # '/ridebot' when it lives at abidepurdue.com/ridebot so the root can hold
+    # '/abidebot' when it lives at abidepurdue.com/abidebot so the root can hold
     # something else. config.ru mounts the app here (Rack::URLMap sets
     # SCRIPT_NAME), Sinatra's url()/to() prepend it, and the layout hands it to
     # the browser as data-root for the two scripts that build paths themselves.

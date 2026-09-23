@@ -18,7 +18,7 @@ let loading = null
 const load = async () => {
   if (catalogue) return catalogue
   // One request even if the details is opened and closed repeatedly.
-  // The app may be mounted under a prefix (abidepurdue.com/ridebot); the
+  // The app may be mounted under a prefix (abidepurdue.com/abidebot); the
   // layout writes it on <body> so nothing here hardcodes the root.
   const root = document.body.dataset.root || ''
   loading ||= fetch(`${root}/emoji.json`, { credentials: 'same-origin' })
