@@ -169,7 +169,7 @@ class SignupShow < Phlex::HTML
   end
 
   def default_intro_hint
-    "Rides for #{(@post.service_date || Time.zone.today).strftime('%A %-d %B')} — react below if you need one."
+    'react to this message if you would like a ride to … (the @Riders ping is always added)'
   end
 
   # --- options -------------------------------------------------------------
@@ -275,7 +275,7 @@ class SignupShow < Phlex::HTML
   end
 
   def preview_body
-    body = @post.body.to_s
+    body = @post.body.to_s.gsub(/<@&(\d+)>/) { "@#{Role.find_by(discord_id: $1)&.name || 'role'}" }
     pos = 0
 
     while (match = Signup::EmojiKey::CUSTOM_PATTERN.match(body, pos))
