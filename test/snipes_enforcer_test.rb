@@ -221,4 +221,22 @@ class SnipesEnforcerTest < AbidTest
 
     assert_includes err_text, 'Manage Messages'
   end
+
+  # --- the switch -------------------------------------------------------------
+  #
+  # The privileged Message Content intent is only requested when a snipes
+  # channel exists. A bot that asks for an intent the portal has not granted
+  # is refused at connect — so dormant code must ask for nothing.
+
+  def test_enabled_only_when_a_channel_carries_the_snipes_purpose
+    assert Snipes::Enforcer.enabled?
+
+    @channel.update!(purpose: nil)
+    refute Snipes::Enforcer.enabled?, 'asked for the privileged intent with no snipes channel'
+  end
+
+  def test_the_intent_bit_is_message_content
+    assert_equal 1 << 15, Snipes::Enforcer::MESSAGE_CONTENT_INTENT
+  end
+
 end

@@ -85,7 +85,10 @@ namespace :snipes do
 
     channel = Channel.assign_purpose!('snipes', discord_id: args[:discord_id].to_i)
     puts "snipes channel: ##{channel.name} (#{channel.discord_id})"
-    puts 'now: rake snipes:post — and make sure the bot has Manage Messages there'
+    puts 'next: 1) enable "Message Content Intent" in the developer portal (Bot → Privileged Gateway Intents)'
+    puts '      2) give the bot Manage Messages in that channel'
+    puts '      3) RESTART the bot — it only requests the intent at connect, now that a snipes channel exists'
+    puts '      4) rake snipes:post'
   end
 
   desc 'Post the opt-out message with its two buttons (or refresh it if already posted)'

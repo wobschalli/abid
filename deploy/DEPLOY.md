@@ -98,10 +98,16 @@ Two Discord-side settings the code cannot make for itself:
 2. **Give the bot "Manage Messages" in the snipes channel.** Without it every
    deletion fails with 403; the bot log says so in those words.
 
-Then, once:
+Then, once, in this order:
 
     bundle exec rake "snipes:channel[<channel id>]"   # which channel is the snipes channel
+    sudo systemctl restart abid-bot                    # it requests the Message Content intent at connect
     bundle exec rake snipes:post                       # the bot posts the opt-out message within 30s
+
+The bot only asks Discord for the privileged intent when a snipes channel is
+configured, so code with the feature dormant connects exactly as before. That
+is also why the restart comes after the portal toggle: a bot requesting an
+intent the portal has not granted is refused at connect, rides and all.
 
 `snipes:post` is safe to re-run: it refreshes the existing message rather
 than posting a second one.

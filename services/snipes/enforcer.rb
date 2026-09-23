@@ -28,6 +28,24 @@ module Snipes
     # :delete_failed       should have been removed, could not be
     STATUSES = %i[not_snipes_channel not_a_snipe ok untagged opted_out delete_failed].freeze
 
+    # Discord's MESSAGE_CONTENT gateway intent. This discordrb fork has no
+    # symbol for it; the intents calculator accepts the raw bit. Privileged:
+    # it must also be switched on in the developer portal, or the gateway
+    # refuses the connection.
+    MESSAGE_CONTENT_INTENT = 1 << 15
+
+    # The feature exists the moment a channel carries the snipes purpose, and
+    # not before. Everything that costs something — the privileged intent, the
+    # message handler doing work — keys off this, so a deploy with no snipes
+    # channel configured is indistinguishable from a deploy without the code.
+    # Rescues, because Messenger asks this at boot and a database without the
+    # column yet (mid-migration, fresh install) must read as "not enabled".
+    def self.enabled?
+      Channel.snipes.present?
+    rescue StandardError
+      false
+    end
+
     def initialize(bot)
       @bot = bot
     end

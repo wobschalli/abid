@@ -18,15 +18,8 @@ class Messenger < Bot
     # reaction_remove to fire at all — without it the handlers register and
     # silently never run. It is unprivileged, so no developer-portal change.
     #
-    # MESSAGE_CONTENT (1 << 15) is required for the snipes channel: without it
-    # Discord delivers other people's messages with empty `attachments` and
-    # `content`, so an image is invisible and the rule never fires. It is
-    # PRIVILEGED — it must also be switched on in the developer portal (Bot →
-    # Privileged Gateway Intents) or the gateway rejects the connection. This
-    # discordrb fork has no symbol for it, so the raw bit is passed; the
-    # intents calculator accepts integers.
     @bot = Discordrb::Commands::CommandBot.new token: @token, prefix: "!",
-                                               intents: [:server_messages, :server_members, :server_message_reactions, 1 << 15],
+                                               intents: gateway_intents,
                                                ignore_bots: true
     @bot.init_cache
     register_commands
@@ -91,6 +84,26 @@ class Messenger < Bot
   end
 
   private
+
+  # server_messages, server_members and server_message_reactions are all
+  # unprivileged. MESSAGE_CONTENT is not — and it is only requested when a
+  # snipes channel is configured, because a bot that asks for a privileged
+  # intent the developer portal has not granted is refused at connect: the
+  # whole bot, rides included, would be down. Enabling snipes is therefore a
+  # deliberate two-step (portal toggle, then `rake snipes:channel` + restart),
+  # and merged code with the feature dormant behaves exactly as before.
+  #
+  # Snipes::Enforcer rescues its own DB access, so a fresh database with no
+  # channels table yet simply means "not enabled".
+  def gateway_intents
+    intents = [:server_messages, :server_members, :server_message_reactions]
+    if Snipes::Enforcer.enabled?
+      warn 'snipes channel configured — requesting the Message Content intent (must be enabled in the developer portal)'
+      intents << Snipes::Enforcer::MESSAGE_CONTENT_INTENT
+    end
+    intents
+  end
+
   def register_commands
     bot.register_application_command(:event, 'event commands') do |event_cmd|
       event_cmd.subcommand(:create, 'create a new event')
