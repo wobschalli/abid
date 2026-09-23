@@ -12,8 +12,9 @@ User=abid
 Group=abid
 WorkingDirectory=/opt/abid
 EnvironmentFile=/etc/abid/env
-Environment=PATH=/opt/ruby/3.3.8/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/opt/ruby/3.3.8/bin/bundle exec ruby bot/run.rb
+Environment=RBENV_ROOT=/usr/local/rbenv
+Environment=PATH=/usr/local/rbenv/shims:/usr/local/rbenv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/local/rbenv/shims/bundle exec ruby bot/run.rb
 # bot/run.rb traps INT/TERM and closes the gateway cleanly.
 KillSignal=SIGTERM
 TimeoutStopSec=20

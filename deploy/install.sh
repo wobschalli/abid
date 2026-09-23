@@ -1,20 +1,16 @@
 #!/usr/bin/env bash
-# Server setup and reconciliation for Ubuntu 24.04. Run as root from the repo:
+# Reconcile the server with the deployed layout. Run as root from the repo:
 #
 #   sudo bash deploy/install.sh abidepurdue.com
 #
-# Idempotent — re-running is how anything gets fixed. Layout it produces:
+# Adopts what is already on the box rather than installing alongside it:
+#   /usr/local/rbenv     Ruby 3.3.8, system-wide (must already exist)
 #   /opt/abid            the checkout, owned by the `abid` service account
-#   /opt/ruby/3.3.8      Ruby, system-wide (the version the app is tested on;
-#                        Ubuntu's 3.2 makes bundler pick an older or-tools)
 #   /etc/abid/env        secrets and settings, root:abid 640
-#   abid-web, abid-bot   systemd units running as `abid`
+#   abid-web, abid-bot   systemd units running as `abid`; puma on a unix socket
 #   nginx                TLS via certbot; the app served under /abidebot/
 # The human operator (OPERATOR, default alan) gets passwordless systemctl and
-# journalctl for the two units, and nothing else.
-#
-# On a 1-core, 2GB box the first run takes 30-45 minutes: Ruby compiles, and
-# or-tools' C++ extension needs the swapfile below. Later runs take seconds.
+# journalctl for the two units, and nothing else. Idempotent; takes seconds.
 set -euo pipefail
 
 APP_USER=${APP_USER:-abid}
@@ -23,58 +19,31 @@ APP_DIR=${APP_DIR:-/opt/abid}
 PREFIX=${PREFIX:-/abidebot}
 HOSTNAME_ARG=${1:-}
 ENV_FILE=/etc/abid/env
+RBENV_ROOT=/usr/local/rbenv
 RUBY_VERSION=3.3.8
-RUBY_DIR=/opt/ruby/$RUBY_VERSION
-BUNDLER_VERSION=2.6.9
-BUNDLE=$RUBY_DIR/bin/bundle
 SITE=/etc/nginx/sites-available/abid
 
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo"; exit 1; }
 [ -f "$APP_DIR/Gemfile" ] || { echo "no app at $APP_DIR"; exit 1; }
+[ -x "$RBENV_ROOT/versions/$RUBY_VERSION/bin/ruby" ] || { echo "expected Ruby $RUBY_VERSION at $RBENV_ROOT/versions — install it there first (rbenv install $RUBY_VERSION)"; exit 1; }
+id "$APP_USER" >/dev/null 2>&1 || { echo "no user $APP_USER — create the service account first"; exit 1; }
 
-echo "== service account $APP_USER"
-id "$APP_USER" >/dev/null 2>&1 || useradd --system --home-dir "/home/$APP_USER" --create-home --shell /usr/sbin/nologin "$APP_USER"
+echo "== leftovers from an earlier installer: a second Ruby under /opt (the one under $RBENV_ROOT is the real one)"
+rm -rf /opt/ruby /opt/ruby-build
+[ -L /usr/local/bin/bundle ] && [ ! -e /usr/local/bin/bundle ] && rm -f /usr/local/bin/bundle
+ln -sfn "$RBENV_ROOT/shims/bundle" /usr/local/bin/bundle
+
+echo "== checkout: owned by $APP_USER, modes ignored by git, config.yml private"
 mkdir -p "/home/$APP_USER"; chown "$APP_USER":"$APP_USER" "/home/$APP_USER"
-# The services run as $APP_USER and git pull / bundle / tmp writes happen as
-# them, so the checkout has to be theirs — every file, not just the top
-# directory. A checkout `mv`ed from another user's home keeps that user's
-# ownership on its contents while the directory itself gets chowned, and the
-# first symptom is bundler failing to write Gemfile.lock.
 if find "$APP_DIR" ! -user "$APP_USER" -print -quit | grep -q .; then
-  chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
-  echo "   chowned $APP_DIR to $APP_USER"
+  chown -R "$APP_USER":"$APP_USER" "$APP_DIR"; echo "   chowned to $APP_USER"
 fi
-# The token lives in here; nobody but the app user may read it.
+# A recursive chmod made every tracked file look modified; mode bits carry no
+# meaning here, so tell git to ignore them rather than fight about it.
+sudo -u "$APP_USER" git -C "$APP_DIR" config core.fileMode false
 [ -f "$APP_DIR/config.yml" ] && chmod 600 "$APP_DIR/config.yml"
-as_app() { sudo -u "$APP_USER" -H env PATH="$RUBY_DIR/bin:/usr/local/bin:/usr/bin:/bin" HOME="/home/$APP_USER" bash -c "$*"; }
-
-echo "== packages"
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -q
-apt-get install -y -q --no-install-recommends \
-  build-essential git curl pkg-config autoconf bison patch \
-  libssl-dev libreadline-dev zlib1g-dev libyaml-dev libffi-dev libgmp-dev libgdbm-dev libdb-dev uuid-dev \
-  libpq-dev postgresql postgresql-contrib nginx certbot python3-certbot-nginx ufw unattended-upgrades
-
-echo "== swap (or-tools' C++ extension needs several GB to compile)"
-SWAP_GB=4
-current_kb=$(awk '/^\/swapfile/ {print $3}' /proc/swaps 2>/dev/null || true)
-if [ -z "$current_kb" ] || [ "$current_kb" -lt $((SWAP_GB * 1000 * 1000)) ]; then
-  swapoff /swapfile 2>/dev/null || true; rm -f /swapfile
-  fallocate -l ${SWAP_GB}G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile
-  grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
-  echo "   ${SWAP_GB}G swapfile active"
-fi
-
-echo "== Ruby $RUBY_VERSION at $RUBY_DIR (system-wide; ~15-25 minutes on one core if not already built)"
-if [ ! -x "$RUBY_DIR/bin/ruby" ]; then
-  [ -d /opt/ruby-build ] || git clone -q https://github.com/rbenv/ruby-build.git /opt/ruby-build
-  git -C /opt/ruby-build pull -q
-  RUBY_CONFIGURE_OPTS=--disable-install-doc /opt/ruby-build/bin/ruby-build "$RUBY_VERSION" "$RUBY_DIR"
-fi
-"$RUBY_DIR/bin/ruby" -v
-"$RUBY_DIR/bin/gem" list -i bundler -v "$BUNDLER_VERSION" >/dev/null || "$RUBY_DIR/bin/gem" install bundler -v "$BUNDLER_VERSION" --no-document
-ln -sf "$BUNDLE" /usr/local/bin/bundle   # so the runbook's plain `bundle exec …` works
+mkdir -p "$APP_DIR/tmp/sockets"; chown -R "$APP_USER":"$APP_USER" "$APP_DIR/tmp"
+as_app() { sudo -u "$APP_USER" -H env RBENV_ROOT="$RBENV_ROOT" PATH="$RBENV_ROOT/shims:$RBENV_ROOT/bin:/usr/local/bin:/usr/bin:/bin" HOME="/home/$APP_USER" bash -c "$*"; }
 
 echo "== $ENV_FILE"
 mkdir -p /etc/abid
@@ -94,7 +63,7 @@ chown root:"$APP_USER" "$ENV_FILE"; chmod 640 "$ENV_FILE"
 set -a; . "$ENV_FILE"; set +a
 
 echo "== postgres role + database"
-systemctl enable --now postgresql
+systemctl enable --now postgresql >/dev/null 2>&1 || true
 sudo -u postgres psql -v ON_ERROR_STOP=1 -q <<SQL
 DO \$\$ BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$DB_USER') THEN
@@ -107,13 +76,12 @@ SQL
 sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" | grep -q 1 \
   || sudo -u postgres createdb -O "$DB_USER" "$DB_NAME"
 
-echo "== gems (as $APP_USER, into vendor/bundle)"
-rm -rf "$APP_DIR/vendor/bundle/ruby/3.2.0"
-as_app "cd $APP_DIR && bundle config set --local path vendor/bundle && bundle config set --local without 'development test' && MAKEFLAGS=-j1 bundle install --quiet"
+echo "== gems + migrations (as $APP_USER)"
+as_app "cd $APP_DIR && bundle config set --local path vendor/bundle >/dev/null && bundle config set --local without 'development test' >/dev/null && MAKEFLAGS=-j1 bundle install --quiet"
 as_app "cd $APP_DIR && bundle exec ruby -e 'require \"or-tools\"; puts \"   or-tools \" + Gem.loaded_specs[\"or-tools\"].version.to_s + \" loads\"'"
-as_app "cd $APP_DIR && RACK_ENV=production DB_USER=$DB_USER DB_PASSWORD=$DB_PASSWORD DB_NAME=$DB_NAME DB_HOST=$DB_HOST bundle exec rake db:migrate 2>&1 | grep -vE '^D, |warning:' | tail -2"
+as_app "cd $APP_DIR && RACK_ENV=production DB_USER='$DB_USER' DB_PASSWORD='$DB_PASSWORD' DB_NAME='$DB_NAME' DB_HOST='${DB_HOST:-localhost}' bundle exec rake db:migrate 2>&1 | grep -vE '^D, |warning:' | tail -2"
 
-echo "== systemd units (enabled)"
+echo "== systemd units"
 install -m 644 "$APP_DIR/deploy/abid-web.service" "$APP_DIR/deploy/abid-bot.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable abid-web abid-bot >/dev/null
@@ -127,18 +95,7 @@ $OPERATOR ALL=(root) NOPASSWD: /usr/bin/systemctl start abid-web, /usr/bin/syste
 EOF2
 chmod 440 /etc/sudoers.d/abid; visudo -cf /etc/sudoers.d/abid >/dev/null
 
-echo "== hardening: firewall, automatic security updates, key-only SSH"
-ufw allow OpenSSH >/dev/null; ufw allow 'Nginx Full' >/dev/null; ufw --force enable >/dev/null
-dpkg-reconfigure -f noninteractive unattended-upgrades
-if [ -s "/home/$OPERATOR/.ssh/authorized_keys" ]; then
-  mkdir -p /etc/ssh/sshd_config.d
-  printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\n' > /etc/ssh/sshd_config.d/90-abid.conf
-  sshd -t && systemctl reload ssh
-else
-  echo "   WARNING: no authorized_keys for $OPERATOR — leaving SSH password login ON"
-fi
-
-echo "== nginx: $PREFIX/ -> puma (TLS lines from certbot are never touched)"
+echo "== nginx: $PREFIX/ -> puma socket (certbot's TLS lines are never touched)"
 if [ ! -f "$SITE" ]; then
   install -m 644 "$APP_DIR/deploy/nginx-abid.conf" "$SITE"
   [ -n "$HOSTNAME_ARG" ] && sed -i "s/RIDES_HOSTNAME/$HOSTNAME_ARG www.$HOSTNAME_ARG/" "$SITE"
@@ -147,24 +104,27 @@ python3 - "$SITE" "$PREFIX" <<'PY'
 import re, sys
 site, prefix = sys.argv[1], sys.argv[2]
 s = open(site).read()
-# Any old prefix block (or the root block) becomes the app block for this prefix.
-s = re.sub(r"location = / \{ return 302 [^}]*\}\n", "", s)
-s = re.sub(r"location = /\w+ \{ return 301 [^}]*\}\n\n?", "", s)
-s = re.sub(r"location (/\w+/|/) \{\n(\s+proxy_pass http://127\.0\.0\.1:5544;)", f"location {prefix}/ {{\n\\2", s, count=1)
-s = re.sub(r"location ~\* [^\n]*\.\(css\|js\|webp\|png\|ico\)\$ \{", f"location ~* ^{prefix}/.*\\.(css|js|webp|png|ico)$ {{", s)
+if "upstream puma_abid" not in s:
+    s = "upstream puma_abid {\n    server unix:/opt/abid/tmp/sockets/abid-web.sock fail_timeout=0;\n}\n\n" + s
+s = re.sub(r"[ \t]*location = / \{ return 302 [^}]*\}\n", "", s)
+s = re.sub(r"[ \t]*location = /\w+ \{ return 301 [^}]*\}\n\n?", "", s)
+# whichever app block exists (root, or an older prefix) becomes this prefix's, pointed at the socket
+s = re.sub(r"location (?:/\w+/|/) \{\n(\s+)proxy_pass http://[^;]+;", f"location {prefix}/ {{\n\\1proxy_pass http://puma_abid;", s, count=1)
+s = re.sub(r"location ~\* [^\n]*\\\.\(css\|js\|webp\|png\|ico\)\$ \{\n(\s+)proxy_pass http://[^;]+;",
+           f"location ~* ^{prefix}/.*\\\\.(css|js|webp|png|ico)$ {{\n\\1proxy_pass http://puma_abid;", s)
 if f"return 302 {prefix}/" not in s:
     s = s.replace(f"    location {prefix}/ {{",
                   f"    location = / {{ return 302 {prefix}/; }}\n    location = {prefix} {{ return 301 {prefix}/; }}\n\n    location {prefix}/ {{", 1)
 open(site, "w").write(s)
 PY
-rm -f /etc/nginx/sites-enabled/default; ln -sf "$SITE" /etc/nginx/sites-enabled/abid; mkdir -p /var/www/html
-nginx -t -q && systemctl enable --now nginx >/dev/null && systemctl reload nginx
+rm -f /etc/nginx/sites-enabled/default; ln -sfn "$SITE" /etc/nginx/sites-enabled/abid; mkdir -p /var/www/html
+nginx -t -q && systemctl enable --now nginx >/dev/null 2>&1; systemctl reload nginx
 
 if [ -n "$HOSTNAME_ARG" ] && [ ! -d "/etc/letsencrypt/live/$HOSTNAME_ARG" ]; then
   echo "== HTTPS for $HOSTNAME_ARG (Let's Encrypt)"
   certbot --nginx -d "$HOSTNAME_ARG" -d "www.$HOSTNAME_ARG" --non-interactive --agree-tos --redirect \
     ${CERTBOT_EMAIL:+-m "$CERTBOT_EMAIL"} ${CERTBOT_EMAIL:---register-unsafely-without-email} \
-    || echo "   WARNING: certbot failed — is DNS pointing here yet? Re-run: sudo certbot --nginx -d $HOSTNAME_ARG -d www.$HOSTNAME_ARG"
+    || echo "   WARNING: certbot failed — re-run: sudo certbot --nginx -d $HOSTNAME_ARG -d www.$HOSTNAME_ARG"
 fi
 
 echo "== start"
@@ -172,6 +132,7 @@ systemctl restart abid-web
 systemctl restart abid-bot
 sleep 8
 for u in abid-web abid-bot; do printf "   %-9s %s\n" "$u" "$(systemctl is-active $u)"; done
-echo "   local:  HTTP $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5544$PREFIX/login)"
-[ -n "$HOSTNAME_ARG" ] && echo "   public: https://$HOSTNAME_ARG$PREFIX/  ->  HTTP $(curl -s -o /dev/null -w '%{http_code}' https://$HOSTNAME_ARG$PREFIX/login)"
+echo "   socket: $([ -S $APP_DIR/tmp/sockets/abid-web.sock ] && echo present || echo MISSING)"
+[ -n "$HOSTNAME_ARG" ] && echo "   public: https://$HOSTNAME_ARG$PREFIX/login  ->  HTTP $(curl -s -o /dev/null -w '%{http_code}' https://$HOSTNAME_ARG$PREFIX/login)"
+echo "   bot: $(journalctl -u abid-bot --since '-30 sec' --no-pager -o cat | grep -ciE 'gateway protocol') gateway connection(s)"
 echo "done."

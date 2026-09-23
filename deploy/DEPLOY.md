@@ -1,8 +1,9 @@
 # Deploying Abid
 
 Plain systemd + nginx + Let's Encrypt on Ubuntu 24.04. The checkout lives at
-`/opt/abid`, owned by the `abid` service account; Ruby 3.3.8 is installed
-system-wide at `/opt/ruby/3.3.8`; the dashboard is served under `/abidebot/`. The Dockerfile in the
+`/opt/abid`, owned by the `abid` service account; Ruby 3.3.8 comes from the
+system-wide rbenv at `/usr/local/rbenv`; puma listens on a unix socket; the
+dashboard is served under `/abidebot/`. The Dockerfile in the
 repo root predates the bot and the optimizer and does not run this app; use
 this instead.
 
