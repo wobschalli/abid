@@ -81,6 +81,24 @@ $APP_USER ALL=(root) NOPASSWD: /usr/bin/systemctl start abid-web, /usr/bin/syste
 EOF
 chmod 440 /etc/sudoers.d/abid; visudo -cf /etc/sudoers.d/abid >/dev/null
 
+echo "== hardening: firewall, automatic security updates, key-only SSH"
+# The realistic threats to a box holding 80 people's phone numbers are a
+# guessed password, an exposed port, and an unpatched package — not a DDoS.
+apt-get install -y -q --no-install-recommends ufw unattended-upgrades
+ufw allow OpenSSH >/dev/null          # before enabling, or this session is the last
+ufw allow 'Nginx Full' >/dev/null     # 80 for the ACME challenge, 443 for the app
+ufw --force enable >/dev/null
+dpkg-reconfigure -f noninteractive unattended-upgrades
+if [ -n "$(sudo -u "$APP_USER" -H bash -c 'ls ~/.ssh/authorized_keys 2>/dev/null')" ]; then
+  # Keys are in place, so password logins are only a liability.
+  mkdir -p /etc/ssh/sshd_config.d
+  printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\n' > /etc/ssh/sshd_config.d/90-abid.conf
+  sshd -t && systemctl reload ssh
+  echo "   SSH password logins disabled (keys present for $APP_USER)"
+else
+  echo "   WARNING: no authorized_keys for $APP_USER — leaving SSH password login ON. Add a key, then disable it."
+fi
+
 echo "== nginx site (HTTP only until certbot runs; puma is localhost-only regardless)"
 install -m 644 "$APP_DIR/deploy/nginx-abid.conf" /etc/nginx/sites-available/abid
 rm -f /etc/nginx/sites-enabled/default
