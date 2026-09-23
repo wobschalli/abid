@@ -16,6 +16,8 @@ module Snipes
       📸 **Snipes**
       Spot someone on campus, snap them, post it here — and **@mention them**. Every snipe needs a tag; untagged ones are removed.
 
+      Be kind with the camera: these are our friends, not targets. Nothing unflattering, nothing they'd be embarrassed by, nothing from a private moment — if you'd hesitate to show them the photo first, don't post it.
+
       Rather not be in the game? Press **Don't snipe me** and any snipe that tags you is taken down automatically. Changed your mind later? The other button puts you back in.
     TEXT
 

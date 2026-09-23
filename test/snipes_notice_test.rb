@@ -62,6 +62,7 @@ class SnipesNoticeTest < AbidTest
     assert_equal 1, @bot.sent.size
     body, view = @bot.sent.first
     assert_includes body, "Don't snipe me"
+    assert_includes body, 'Be kind with the camera', 'the respect line is part of the message'
     refute_nil view, 'no buttons attached'
     ids = view.to_a.flat_map { |row| row[:components].map { |c| c[:custom_id] } }
     assert_equal %w[snipes_optout snipes_optin], ids
