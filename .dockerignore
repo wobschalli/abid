@@ -1,24 +1,15 @@
 #ignore docker files
 /.dockerignore
 /Dockerfile*
-/docker-compose*.yml
+/docker-compose.yml
 
-#ignore assets (rebuilt inside the image)
+#ignore assets
 /node_modules/
 
 #ignore git stuff
 /.gitignore
 /.git
-/.github
 
-#ignore editor/tooling state
-/.idea/
-/tmp/
-/.rake_tasks~
-
-#ignore secrets (supplied at runtime via env / bind mounts)
+#ignore secrets
 /.env*
 /master.key
-/.session_secret
-/config.yml
-/config2.yml

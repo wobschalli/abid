@@ -2,7 +2,6 @@ require 'discordrb'
 require 'literal'
 require 'tanuki_emoji'
 require 'yaml'
-require 'erb'
 require 'active_record'
 require 'active_model'
 require 'active_support'
@@ -12,38 +11,22 @@ require 'tzinfo'
 require 'passgen'
 require 'http'
 
-base_dir = File.dirname(__dir__.to_s)
-db_config_path = File.join(base_dir, 'config', 'database.yml')
-db_config = YAML.safe_load(ERB.new(File.read(db_config_path)).result, aliases: true)
-current_env = ENV.fetch('BOT_ENV', 'development')
+# Shared boot: env, timezone, database config. This used to be inline here with
+# Dir.pwd-relative paths, which only resolved because bin/bot cd's into bot/
+# first — running `ruby bot/run.rb` from the repo root blew up.
+require_relative '../config/environment'
 
-ActiveRecord::Base.establish_connection(db_config[current_env])
+Abid.establish_connection
+Abid.load_models
 
-#include activemodel models for interacting with the database
-models_paths = Dir.glob(File.join(base_dir, 'models', '*.rb'))
-models_paths.each do |model|
-  require_relative model
-end
+#get the map class — services/ depends on it, so it has to come first
+require_relative '../map/map'
+
+# The web process loads these through config.ru's Unreloader globs; the bot had
+# no equivalent, so anything under services/ was a NameError in production only.
+Abid.load_services
 
 #include all patches to relevant classes because discordrb is lowk dumb
-patches_paths = Dir.glob(File.join(base_dir, 'patches', '*.rb'))
-patches_paths.each do |patch|
-  require_relative patch
-end
+Abid.load_patches
 
-#get the map class
-map_path = File.join(base_dir, 'map', 'map.rb')
-require_relative map_path
-
-# Set the application timezone so all parsed/created times are consistent.
-Time.zone = TZInfo::Timezone.get('America/Indiana/Indianapolis')
 Chronic.time_class = Time.zone
-ActiveRecord.default_timezone = :utc
-ActiveRecord::Base.time_zone_aware_attributes = true
-ActiveRecord::Base.time_zone_aware_types = [:datetime]
-
-#load bot helper classes after models, patches, and timezone are ready
-bot_classes_paths = Dir.glob(File.join(base_dir, 'bot', '*.rb'))
-bot_classes_paths.each do |bot_file|
-  require_relative bot_file unless bot_file.end_with?('run.rb')
-end

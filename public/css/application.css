@@ -2,101 +2,240 @@
 @import "flowbite/src/themes/default";
 @plugin "flowbite/plugin";
 @source "../../node_modules/flowbite";
+
+/* Phlex templates are Ruby, so point the scanner at them explicitly rather than
+   relying on auto-detection finding .rb files. */
+@source "../../views";
+@source "../../app.rb";
+
 @custom-variant dark (&:where(.dark, .dark *));
 
-@layer components {
-  .btn-primary {
-    border-radius: calc(infinity * 1px);
-    background-color: #c00050;
-    padding-inline: --spacing(4);
-    padding-block: --spacing(2);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-white);
-    box-shadow: var(--shadow-md);
-    &:hover {
-      @media (hover: hover) {
-        background-color: #d6065f;
-      }
-    }
+/* Ride board palette, from the Ride Board design. Named semantically so the
+   dark-mode block below can flip the values and every `bg-surface` /
+   `text-ink` utility follows without a single dark: variant in the markup. */
+@theme {
+  --color-surface: #ffffff;
+  --color-surface-sunk: #faf8f4;
+  --color-surface-board: #f6f4ef;
+  --color-ink: #17201c;
+  --color-ink-invert: #ffffff;
+  --color-line: rgba(23, 32, 28, 0.13);
+  --color-line-soft: rgba(23, 32, 28, 0.055);
+  --color-accent: #1e6b52;
+  --color-accent-deep: #14513e;
+  --color-accent-tint: #dff0e7;
+  --color-accent-tint-strong: #c9e7d6;
+  --color-warn: #e8a33d;
+  --color-warn-ink: #8a5a12;
+  --color-warn-tint: #fbf0dc;
+  --color-count: #b5701b;
+  --color-danger: #8c3030;
+  --color-danger-tint: #f6dfdf;
+
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-display: "Bricolage Grotesque", "IBM Plex Sans", sans-serif;
+}
+
+/* Route-map series colours.
+   Deliberately NOT in @theme: Tailwind v4 drops theme variables that no utility
+   class references, and these are read only by `var()` inside inline SVG
+   attributes — so declared there they compiled away and every route drew black.
+
+   Categorical identity, assigned in fixed order and never cycled: a route must
+   not change colour because another driver was added. Validated against this
+   surface for lightness band, chroma floor, CVD separation and normal-vision
+   floor. */
+:root {
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+  --color-series-4: #eda100;
+  --color-series-5: #e87ba4;
+  --color-series-6: #008300;
+}
+
+.dark {
+  --color-surface: #1b211e;
+  --color-surface-sunk: #151a18;
+  --color-surface-board: #101413;
+  --color-ink: #e7ebe8;
+  --color-ink-invert: #10130f;
+  --color-line: rgba(231, 235, 232, 0.16);
+  --color-line-soft: rgba(231, 235, 232, 0.07);
+  --color-accent: #5fb894;
+
+  /* The same six hues re-stepped for the dark surface, not an automatic flip.
+     Validated separately; unlike the light set, all six clear 3:1 here. */
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+  --color-series-4: #c98500;
+  --color-series-5: #d55181;
+  --color-series-6: #008300;
+  --color-accent-deep: #8ed2b3;
+  --color-accent-tint: rgba(95, 184, 148, 0.16);
+  --color-accent-tint-strong: rgba(95, 184, 148, 0.28);
+  --color-warn: #e8a33d;
+  --color-warn-ink: #e0b06a;
+  --color-warn-tint: rgba(232, 163, 61, 0.16);
+  --color-count: #e0a35e;
+  --color-danger: #e08585;
+  --color-danger-tint: rgba(224, 133, 133, 0.16);
+}
+
+@layer base {
+  /* One type and colour baseline for the whole app. The shell used to sit on
+     Flowbite's gray scale while everything inside used the palette above,
+     which read as two applications bolted together. */
+  html {
+    background: var(--color-surface-board);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
   }
 
-  .btn-secondary {
-    border-radius: calc(infinity * 1px);
-    background-color: var(--color-zinc-500);
-    padding-inline: --spacing(4);
-    padding-block: --spacing(2);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-white);
-    box-shadow: var(--shadow-md);
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-zinc-700);
-      }
-    }
+  /* Native controls default to the OS light theme and glow blue on focus,
+     which is the other half of the mismatch. */
+  :root {
+    color-scheme: light;
+    accent-color: var(--color-accent);
+  }
+  .dark {
+    color-scheme: dark;
   }
 
-  .btn-info {
-    border-radius: calc(infinity * 1px);
-    background-color: var(--color-sky-500);
-    padding-inline: --spacing(4);
-    padding-block: --spacing(2);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-white);
-    box-shadow: var(--shadow-md);
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-sky-700);
-      }
-    }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
 
-  .btn-success {
-    border-radius: calc(infinity * 1px);
-    background-color: var(--color-emerald-500);
-    padding-inline: --spacing(4);
-    padding-block: --spacing(2);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-white);
-    box-shadow: var(--shadow-md);
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-emerald-700);
-      }
-    }
+  ::selection {
+    background: var(--color-accent-tint-strong);
   }
 
-  .btn-warning {
-    border-radius: calc(infinity * 1px);
-    background-color: var(--color-amber-500);
-    padding-inline: --spacing(4);
-    padding-block: --spacing(2);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-white);
-    box-shadow: var(--shadow-md);
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-amber-700);
-      }
-    }
-  }
-
-  .btn-danger {
-    border-radius: calc(infinity * 1px);
-    background-color: var(--color-rose-500);
-    padding-inline: --spacing(4);
-    padding-block: --spacing(2);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-white);
-    box-shadow: var(--shadow-md);
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-rose-700);
-      }
-    }
-  }
-
-  .disabled {
-    opacity: 0.5;
-    pointer-events: none;
+  /* Chrome paints autofilled inputs with its own pale blue and ignores
+     background-color outright. The inset shadow is the only way to override
+     it; the absurd transition delay stops it flashing back on focus. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--color-ink);
+    -webkit-box-shadow: 0 0 0 1000px var(--color-surface) inset;
+    caret-color: var(--color-ink);
+    transition: background-color 9999s ease-in-out 0s;
   }
 }
+
+@layer components {
+  /* Board primitives — the design repeats these three inline style blocks on
+     nearly every element. */
+  .board-label {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+  }
+
+  .board-meta {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+  }
+
+  .board-input {
+    width: 100%;
+    border: 1px solid var(--color-line);
+    background: var(--color-surface);
+    color: var(--color-ink);
+    border-radius: 7px;
+    padding: 9px 10px;
+    font-size: 13px;
+    outline: none;
+  }
+  .board-input:focus {
+    border-color: var(--color-accent);
+  }
+
+  .board-btn {
+    border: 1px solid var(--color-line);
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font-weight: 600;
+    font-size: 12px;
+    padding: 9px 13px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .board-btn:hover {
+    background: color-mix(in srgb, var(--color-ink) 5%, transparent);
+  }
+
+  .board-btn-solid {
+    border: 0;
+    background: var(--color-ink);
+    color: var(--color-ink-invert);
+    font-weight: 600;
+    font-size: 12px;
+    padding: 9px 15px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .board-btn-solid:hover {
+    background: var(--color-accent);
+    color: #fff;
+  }
+
+  /* Drag feedback — the design has no equivalent because the prototype only
+     styled the drop target through React state. */
+  .board-drop-active {
+    border-color: var(--color-accent) !important;
+    background: var(--color-accent-tint);
+  }
+  .board-dragging {
+    opacity: 0.45;
+  }
+
+}
+/* Route-map pins. Leaflet divIcons, so they are ordinary elements and pick up
+   the same surface/ink variables as the rest of the page — which is what makes
+   dark mode work here without a second palette. */
+.route-pin span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2px solid var(--color-surface);
+  color: #fff;
+  font: 700 11px/1 var(--font-mono, monospace);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+}
+
+.route-venue span {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--color-ink);
+  border: 2px solid var(--color-surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+}
+
+/* Someone with no seat yet. Hollow and dashed rather than a different colour,
+   so it is distinguishable from a numbered stop by shape alone. */
+.route-waiting span {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 2px dashed color-mix(in srgb, var(--color-ink) 55%, transparent);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+}
+
+/* The tiles are a light basemap either way; keep the container from flashing
+   the dark surface behind them while they load. */
+.leaflet-container { background: #e8e6e1; font: inherit; }

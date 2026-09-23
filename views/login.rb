@@ -3,23 +3,59 @@ require_relative 'components/master'
 class Login < Phlex::HTML
   include Components
 
+  def initialize(error: nil)
+    @error = error
+  end
+
   def view_template
-    SkinnyLayout do
-      div class: 'justify-self-center' do
-        h1(class: 'text-3xl dark:text-gray-400') { 'Login' }
-        Form action: '/login' do |f|
-          div class: 'mb-5 col-span-6' do
-            f.labeled_input name: 'username' do
-              f.text_input name: 'username', icon_d: 'M10 0a10 10 0 1 0 10 10A10.011 10.011 0 0 0 10 0Zm0 5a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm0 13a8.949 8.949 0 0 1-4.951-1.488A3.987 3.987 0 0 1 9 13h2a3.987 3.987 0 0 1 3.951 3.512A8.949 8.949 0 0 1 10 18Z'
-            end
-          end
-          div class: 'mb-5 col-span-6' do
-            f.labeled_input name: 'password' do
-              f.password_input name: 'password', icon_d: 'M12 14v3m-3-6V7a3 3 0 1 1 6 0v4m-8 0h10a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z'
-            end
-          end
-        end
+    SkinnyLayout(title: 'Sign in — Abid') do
+      div(class: 'flex flex-col gap-5 p-6 rounded-xl border border-line bg-surface') do
+        header
+        p(role: 'alert', class: 'text-[12.5px] text-danger') { @error } if @error
+        form_body
+        hint
       end
+    end
+  end
+
+  private
+
+  def header
+    div(class: 'flex flex-col gap-1') do
+      div(class: 'flex items-center gap-2') do
+        img src: url('logo.webp'), alt: '', class: 'w-6 h-6 object-contain'
+        span(class: 'font-display font-bold text-lg -tracking-[.015em]') { 'Abid' }
+      end
+      span(class: 'text-[12.5px] text-ink/65') { 'Rides for Abide CF' }
+    end
+  end
+
+  def form_body
+    form(method: 'post', action: path('/login'), class: 'flex flex-col gap-3.5') do
+      field('Username') do
+        input(type: 'text', name: 'username', autocomplete: 'username',
+              autocapitalize: 'none', autofocus: true, required: true, class: 'board-input')
+      end
+      field('Login code') do
+        input(type: 'password', name: 'password', autocomplete: 'current-password',
+              required: true, class: 'board-input')
+      end
+      button(type: 'submit', class: 'board-btn-solid w-full') { 'Sign in' }
+    end
+  end
+
+  def field(label, &block)
+    div(class: 'flex flex-col gap-[5px]') do
+      span(class: 'board-label') { label }
+      yield
+    end
+  end
+
+  def hint
+    p(class: 'text-[12px] leading-[1.6] text-ink/60 pt-1 border-t border-line') do
+      plain 'Leaders can get a login code by running '
+      code(class: 'font-mono text-[11.5px] text-ink/80') { '/login' }
+      plain ' in Discord — the bot DMs it to you.'
     end
   end
 end

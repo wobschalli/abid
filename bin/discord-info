@@ -1,0 +1,65 @@
+#!/usr/bin/env ruby
+# Read-only: connects, prints every id you need for config.yml, disconnects.
+# Touches no database and changes nothing on Discord.
+#
+#   DISCORD_TOKEN=... bin/discord-info
+#
+# Run it after inviting the bot to copy the server, channel, role and emoji ids
+# straight into config.yml, rather than right-clicking through the Discord UI.
+require 'discordrb'
+
+token = ENV['DISCORD_TOKEN']
+if token.nil? || token.empty?
+  warn 'set DISCORD_TOKEN first'
+  exit 1
+end
+
+# Only unprivileged intents, so this works before SERVER MEMBERS is enabled
+# and can tell you whether that is the thing still missing.
+bot = Discordrb::Bot.new(token: token, intents: [:servers], log_mode: :quiet)
+
+bot.ready do
+  puts "Connected as #{bot.profile.username} (application id #{bot.profile.id})"
+
+  if bot.servers.empty?
+    puts
+    puts 'This bot is not in any server yet. Invite it with:'
+    puts "  https://discord.com/api/oauth2/authorize?client_id=#{bot.profile.id}" \
+         '&permissions=68672&scope=bot%20applications.commands'
+    puts '  (68672 = View Channels, Send Messages, Add Reactions, Read Message History)'
+  end
+
+  bot.servers.each_value do |server|
+    puts
+    puts "#{server.name}  —  server id #{server.id}"
+
+    puts '  text channels:'
+    server.channels.select { |c| c.type.zero? }.sort_by(&:position).each do |channel|
+      puts "    ##{channel.name.ljust(26)} #{channel.id}"
+    end
+
+    puts '  roles:'
+    server.roles.reject { |r| r.name == '@everyone' }.sort_by(&:position).reverse_each do |role|
+      marker = ['Leaders', 'Coordinator'].include?(role.name) ? '  <- grants dashboard access' : ''
+      puts "    #{role.name.ljust(27)} #{role.id}#{marker}"
+    end
+
+    if server.emojis.empty?
+      puts '  custom emoji: none'
+    else
+      puts '  custom emoji:'
+      server.emojis.each_value { |emoji| puts "    :#{emoji.name}:".ljust(31) + " #{emoji.id}" }
+    end
+  end
+
+  bot.stop
+end
+
+# discordrb reconnects forever if READY never arrives; do not hang a terminal.
+Thread.new do
+  sleep 45
+  warn 'timed out waiting for READY — check the token and the intents'
+  exit 1
+end
+
+bot.run

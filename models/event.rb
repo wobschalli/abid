@@ -1,52 +1,114 @@
 class Event < ApplicationRecord
-  belongs_to :channel
-  belongs_to :location
-  belongs_to :organizer, class_name: 'User'
+  belongs_to :channel, optional: true
+  belongs_to :location, optional: true
+  belongs_to :series, class_name: 'EventSeries', optional: true
 
-  has_many :event_signups, dependent: :destroy
-  has_many :rider_signups, -> { where(response_type: :rider) }, class_name: 'EventSignup'
-  has_many :riders, through: :rider_signups, source: :user
-  has_many :emojis, dependent: :destroy
-  has_many :ride_assignments, dependent: :destroy
+  # `has_many :emojis` lived here over a single emojis.event_id column, so
+  # binding an emoji to one event stole it from another. Sign-up emoji are
+  # SignupOption rows now, and one emoji can mean a different ride every week.
+  has_many :signup_options
+  has_many :signup_posts, through: :signup_options
 
-  has_many :driver_assignments,
-           -> { where(role: :driver) },
-           class_name: 'RideAssignment'
-  has_many :drivers,
-           through: :ride_assignments,
-           source: :driver
+  has_many :rides, dependent: :destroy
+  # restrict_with_error, not destroy: once drivers have been told who they are
+  # collecting, that record outlives the board.
+  has_many :dispatches, dependent: :restrict_with_error
+  has_many :participants, through: :rides, source: :user
 
-  # unpublished (0) replaces the old "draft" state. Database rows in this state
-  # are intentionally saved but not scheduled. cancelled (4) keeps historical
-  # records of events that were called off.
-  enum :status, { unpublished: 0, scheduled: 1, active: 2, completed: 3, cancelled: 4 }
+  # `belongs_to :driver` pointed at an events.driver_id column that does not
+  # exist, and `has_many :riders, foreign_key: 'driver_id'` resolved against
+  # users.driver_id — a user→user link that meant something else entirely.
+  # Driving is per-occurrence, so it lives on Ride now.
+  has_many :driver_rides, -> { drivers }, class_name: 'Ride'
+  has_many :drivers, through: :driver_rides, source: :user
 
-  scope :active, -> { where(status: [:scheduled, :active]) }
-  scope :current, -> { where("start_time <= :now AND end_time >= :now", now: Time.current) }
-  scope :inactive, -> { where(status: [:unpublished, :cancelled, :completed]) }
-  scope :past, -> { where("end_time <= ?", Time.current) }
-  scope :not_scheduled, -> { where(scheduled: false) }
-  scope :scheduled_scope, -> { where(scheduled: true) }
-  scope :upcoming, -> { where("start_time >= ?", Time.current) }
-  scope :unscheduled, -> { where(scheduled: false) }
-  scope :not_unpublished, -> { where.not(status: :unpublished) }
-  scope :published, -> { where(status: [:scheduled, :active]) }
+  SECTIONS = %w[early late].freeze
 
-  validates :name, presence: true
-  validates :start_time, :end_time, :message_rides_at, :collect_rides_at, presence: true, unless: :unpublished?
-  validate :times_are_in_order, unless: :unpublished?
+  # Which of a person's two addresses to collect them from. Sunday morning
+  # everyone is at home; Friday evening most people come straight from a lab.
+  PICKUP_SOURCES = { 'home' => 'Home address', 'class' => 'Friday class location' }.freeze
 
-  def schedulable?
-    name.present? && start_time && end_time && message_rides_at && collect_rides_at &&
-      channel && location && message.present? && emojis.any?
+  validates :pickup_source, inclusion: { in: PICKUP_SOURCES.keys }
+
+  # Legacy Rufus-cron bookkeeping. The poller replaced it; the columns are
+  # dropped a release later so a surviving old bot process does not crash in its
+  # at_exit block. See db/migrate/2200.
+  self.ignored_columns += %w[repeats_every scheduled send_schedule_id collect_schedule_id]
+
+  scope :active, -> { where(disabled: false) }
+  scope :inactive, -> { where(disabled: true) }
+
+  # A ride is finished when its DAY is, not two hours after it starts.
+  #
+  # The old rule guessed an end two hours in whenever none was recorded, and
+  # that guess decided whether the board still offered to dispatch. A 7am–5pm
+  # retreat was therefore "over" at 9am — PAST pill up and Send to drivers gone,
+  # on the morning of the retreat, while people were still being collected.
+  #
+  # Ending at midnight needs no end time at all, and is wrong in the harmless
+  # direction: a board that stays open a few hours too long costs nothing, where
+  # one that closes early costs a dispatch you cannot send.
+  #
+  # `end_time` is still honoured when it is there, so something genuinely
+  # spanning two days stays live until the second one is over.
+  scope :past, -> { where('coalesce(end_time, start_time) < ?', Time.zone.now.beginning_of_day) }
+  # The complement, at the same day granularity — so an event earlier today is
+  # in exactly one of these, not in neither.
+  scope :upcoming, -> { where('coalesce(end_time, start_time) >= ?', Time.zone.now.beginning_of_day) }
+
+  scope :recurring, -> { where.not(series_id: nil) }
+  scope :one_off, -> { where(series_id: nil) }
+  scope :section, ->(section) { where(section: section) }
+  scope :chronological, -> { order(:start_time) }
+
+  def disable
+    self.disabled = true
+    self.save
   end
 
-  def unpublished?
-    status == 'unpublished'
+  def disabled?
+    self.disabled
   end
 
-  def cancelled?
-    status == 'cancelled'
+  def enable
+    self.disabled = false
+    self.save
+  end
+
+  def enabled?
+    !self.disabled
+  end
+
+  def recurring?
+    series_id.present?
+  end
+
+  def one_off?
+    series_id.nil?
+  end
+
+  # Has a sign-up post been sent for this occurrence?
+  def posted?
+    signup_posts.any?(&:posted?)
+  end
+
+  # Which driver tag this occurrence draws from.
+  #
+  # Inherited from the series rather than copied down at generation, so renaming
+  # the tag on "Abide" applies to the occurrences that already exist — the
+  # alternative silently left three weeks of already-generated Fridays pointing
+  # at the old name. The column on events is an override for a one-off, where
+  # nil means "whatever the series says".
+  def driver_tag_for_board
+    driver_tag.presence || series&.driver_tag.presence
+  end
+
+  # Mirrors `scope :past`, so Ruby and SQL agree on when a ride is over.
+  def past?
+    finish = end_time || start_time
+    return false if finish.nil?
+
+    finish.to_date < Time.zone.today
   end
 
   def to_h #this allows for the object to be passed directly into Discordrb methods
@@ -57,20 +119,35 @@ class Event < ApplicationRecord
     "#{name} at [#{location}] from #{start_time&.strftime('%Y-%m-%d %H:%M')} until #{end_time&.strftime('%Y-%m-%d %H:%M')}"
   end
 
-  def unschedule
-    self.scheduled = false
-    self.send_schedule_id = nil
-    self.collect_schedule_id = nil
-    self.save(validate: false)
+  # "Friday Bible Study — early" etc.
+  # "Abide — 6:30 PM".
+  #
+  # The qualifier used to be a `section` — early / late — which someone had to
+  # choose and which told you less than the clock does. Two services on a
+  # Sunday are told apart by the time you turn up, so that is what the name
+  # says.
+  #
+  # Callers that already print a time use `name` instead, or it appears twice.
+  def display_name
+    return name.to_s if start_time.blank?
+
+    "#{name} — #{start_time.strftime('%-l:%M %p')}"
   end
 
-  private
-
-  def times_are_in_order
-    return unless [start_time, end_time, message_rides_at, collect_rides_at].all?
-
-    errors.add(:message_rides_at, 'must be before the event starts') if message_rides_at >= start_time
-    errors.add(:collect_rides_at, 'must be between the message time and the event end') if collect_rides_at < message_rides_at || collect_rides_at > end_time
-    errors.add(:end_time, 'must be after the start time') if end_time <= start_time
+  def riders
+    rides.riders
   end
+
+  def seats_offered
+    driver_rides.sum(&:seats_available)
+  end
+
+  def seats_needed
+    rides.riders.count
+  end
+
+  def unassigned_riders
+    rides.riders.unassigned
+  end
+
 end

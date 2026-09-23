@@ -1,6 +1,5 @@
 require 'yaml'
 require 'active_record'
-require 'securerandom'
 
 #have to require models manually
 require_relative '../models/application_record'
@@ -13,14 +12,16 @@ require_relative '../models/role'
 require_relative '../models/server'
 require_relative '../models/user'
 
-# CONFIG_FILE lets you seed a beta/dev database from an alternate config
-# (e.g. CONFIG_FILE=config2.yml rake db:seed).
-config_file = ENV.fetch('CONFIG_FILE', 'config.yml')
+# Real geography first: everything below this point needs config.yml and bails
+# without it, but the locations do not and are needed on every machine.
+require_relative 'locations'
+Abid::Locations.seed!
+puts "seeded #{Abid::Locations.count} locations"
 
 begin
-  config = YAML.load_file(config_file)
+  config = YAML.load_file('config.yml')
 rescue Errno::ENOENT
-  puts "#{config_file} was not found"
+  puts "config.yml was not found"
   exit
 end
 
@@ -34,26 +35,22 @@ config['emojis'].each do |name, id|
   Emoji.find_or_create_by name: name, discord_id: id, server: ABIDE_SERVER
 end
 
-TEST_SERVER = Server.find_or_create_by name: 'Test', discord_id: config.dig('servers', 'test')
-Channel.find_or_create_by name: 'general', discord_id: config.dig('test', 'general'), server: TEST_SERVER
-
-WL_STUDY_SERVER = Server.find_or_create_by name: 'WL Study for Finals Group', discord_id: config.dig('servers', 'wl_study_for_finals_group')
+# Optional. servers.discord_id is unique, so pointing `test` at the same server
+# as `abide` — which is what you do when you only have one — used to abort the
+# whole seed with a PG::UniqueViolation partway through, after the channels were
+# already created.
+test_server_id = config.dig('servers', 'test')
+if test_server_id.present? && test_server_id.to_s != config.dig('servers', 'abide').to_s
+  test_server = Server.find_or_create_by name: 'Test', discord_id: test_server_id
+  general_id = config.dig('test', 'general')
+  Channel.find_or_create_by(name: 'general', discord_id: general_id, server: test_server) if general_id.present?
+end
 
 DiscordInfo.find_or_create_by token: config.dig('discord', 'token'), app_id: config.dig('discord', 'app_id'), public_key: config.dig('discord', 'public_key')
 
-Location.find_or_create_by name: 'lark', lon: -86.9467261, lat: 40.4729654, aliases: ['lark apartments', 'lark apts', 'lark west lafayette']
-Location.find_or_create_by name: 'greater lafayette chinese alliance church', lon: -86.9720287, lat: 40.4521281, aliases: ['glcac', 'chinese alliance church', 'church']
+# Locations moved to db/locations.rb, seeded above.
 
 #data privacy or something
-config['users'].each do |_, data|
-  User.find_or_create_by(discord_id: data['discord_id']) do |u|
-    u.name = data['name']
-    u.username = data['username']
-    u.grad_year = data['grad_year']
-    u.capacity = data['capacity']
-    u.leader = data['leader'] || false
-    bootstrap_password = SecureRandom.urlsafe_base64(32)
-    u.password = bootstrap_password
-    u.password_confirmation = bootstrap_password
-  end
+config['users'].each do |user, data|
+  User.find_or_create_by data
 end

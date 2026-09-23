@@ -3,11 +3,14 @@
 
 #ignore environment variables
 config.yml
-config2.yml
 .session_secret
-.env
-.env.local
-.env.production
 
 #ignore temporary files
 /tmp
+#ignore locally installed gems
+/vendor/bundle
+/.bundle
+
+#ignore test/demo artifacts
+/tmp
+/package-lock.json

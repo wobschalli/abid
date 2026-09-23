@@ -1,10 +1,8 @@
 const path = require('path')
 const TerserPlugin = require('terser-webpack-plugin')
 
-const isDev = (process.env.NODE_ENV || 'development') === 'development'
-
 module.exports = {
-  watch: isDev,
+  watch: true,
   watchOptions: {
     aggregateTimeout: 500,
     ignored: /node_modules/

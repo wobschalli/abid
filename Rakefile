@@ -1,7 +1,88 @@
 require 'sinatra/activerecord/rake'
+require 'rake/testtask'
 
 namespace :db do
   task :load_config do
     require './app'
   end
+
+  desc 'Load demo riders, drivers and events so the ride board has data'
+  task :demo do
+    ruby 'db/demo_seeds.rb'
+  end
+
+  desc 'Verify every location against Google (Nominatim fallback), recording how precisely it resolved'
+  task :verify_locations do
+    ruby 'db/geocode.rb'
+  end
+
+  # The old name, kept so existing habits and docs still work.
+  task geocode: :verify_locations
+
+  desc "Make the database match Abide's real weekly schedule (add [apply] to write)"
+  task :schedule, [:mode] do |_task, args|
+    require_relative 'config/environment'
+    Abid.establish_connection
+    Abid.load_models
+    Abid.load_services
+    require_relative 'db/schedule'
+
+    Abid::Schedule.call(apply: args[:mode] == 'apply')
+  end
+
+  desc 'Remove everything db:demo invented, keeping the real server data (add [apply] to write)'
+  task :drop_demo, [:mode] do |_task, args|
+    require_relative 'config/environment'
+    Abid.establish_connection
+    Abid.load_models
+    Abid.load_services
+    require_relative 'db/drop_demo'
+
+    Abid::DropDemo.call(apply: args[:mode] == 'apply')
+  end
 end
+
+namespace :import do
+  desc 'Import rider phone/residence/capacity from a form CSV (add ,apply to write)'
+  task :riders, %i[path mode] do |_task, args|
+    # Plain Ruby: ActiveSupport is not loaded until the require below.
+    abort 'usage: rake import:riders[path/to/export.csv[,apply]]' if args[:path].to_s.empty?
+
+    require_relative 'config/environment'
+    Abid.establish_connection
+    Abid.load_models
+    Abid.load_services
+    require_relative 'db/import_riders'
+
+    Abid::ImportRiders.call(args[:path], apply: args[:mode] == 'apply')
+  end
+
+  desc 'Import the census CSV: same details, and marks everyone who answered as Active'
+  task :census, %i[path mode] do |_task, args|
+    abort 'usage: rake import:census[path/to/census.csv[,apply]]' if args[:path].to_s.empty?
+
+    require_relative 'config/environment'
+    Abid.establish_connection
+    Abid.load_models
+    Abid.load_services
+    require_relative 'db/import_riders'
+
+    # Filling in the census is the statement "I am part of this fellowship this
+    # year", which is exactly what Active means. The rides sheet is not — a
+    # one-off passenger can appear on it — so only this task sets the flag.
+    Abid::ImportRiders.call(args[:path], apply: args[:mode] == 'apply', mark_active: true)
+  end
+end
+
+Rake::TestTask.new(:test) do |t|
+  t.libs << 'test'
+  t.pattern = 'test/**/*_test.rb'
+  t.warning = false
+end
+
+desc 'Create and migrate the test database, then run the tests'
+task :test_setup do
+  sh({ 'ABID_ENV' => 'test', 'RACK_ENV' => 'test' }, 'bundle exec rake db:create db:migrate')
+end
+
+task default: :test

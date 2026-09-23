@@ -1,0 +1,291 @@
+require_relative 'components/master'
+
+# One member: the details a coordinator needs to plan around them, and what
+# they have actually been doing.
+#
+# Home area, car capacity and phone are edited here. Until this page existed
+# none of the three was settable anywhere in the app — phone only through the
+# ride board's details rail, and only for someone who already had a ride.
+class UserShow < Phlex::HTML
+  include Components
+
+  # Must match App::NEW_LOCATION — the sentinel the "Other…" option submits.
+  OTHER = '__new__'.freeze
+
+  def initialize(user:, locations:, load:, history:, known_tags: [], leader: false, error: nil)
+    @user = user
+    @locations = locations
+    @known_tags = known_tags
+    @load = load
+    @history = history
+    @leader = leader
+    @error = error
+  end
+
+  def view_template
+    Layout(title: @user.display_name, leader: @leader) do
+      div(class: 'max-w-3xl flex flex-col gap-5 font-sans text-ink') do
+        breadcrumb
+        header
+        p(role: 'alert', class: 'text-sm text-danger') { @error } if @error
+
+        div(class: 'grid gap-5 md:grid-cols-[1fr_260px] items-start') do
+          details_form
+          sidebar
+        end
+
+        recent_rides
+      end
+    end
+  end
+
+  private
+
+  def breadcrumb
+    div(class: 'text-[12px] text-ink/60') do
+      a(href: path('/users'), class: 'text-accent no-underline hover:underline') { 'Members' }
+      plain ' / '
+      plain @user.display_name
+    end
+  end
+
+  def header
+    div(class: 'flex items-center gap-3 flex-wrap') do
+      h1(class: 'font-display font-bold text-xl -tracking-[.015em] capitalize') { @user.display_name }
+      if @user.leader
+        span(class: 'font-mono text-[9.5px] font-semibold tracking-[.06em] px-[7px] py-[3px] rounded-[5px] uppercase bg-accent-tint text-accent') do
+          'leader'
+        end
+      end
+      div(class: 'flex-1')
+      span(class: 'board-meta') { "@#{@user.username}" } if @user.username.present?
+    end
+  end
+
+  # --- form ----------------------------------------------------------------
+
+  def details_form
+    form(method: 'post', action: path("/users/#{@user.id}"), class: 'flex flex-col gap-4') do
+      input(type: 'hidden', name: '_method', value: 'patch')
+
+      field('Name') { text_field('name', @user.name) }
+      field('Phone') { text_field('phone', @user.phone, mono: true, placeholder: '(765) 555-0100') }
+
+      field('Home area') do
+        location_select('location_id', @user.location_id)
+        new_location_fields('new_location')
+        span(class: 'text-[11.5px] text-ink/60') do
+          'Where they live. Used by any event that collects from home, and sets their zone on the board.'
+        end
+      end
+
+      field('Friday class location') do
+        location_select('class_location_id', @user.class_location_id)
+        new_location_fields('new_class_location')
+        span(class: 'text-[11.5px] text-ink/60') do
+          'Where they are before a Friday event — usually their last class, rarely where they live. ' \
+          'Used only by events set to collect from class; falls back to home when blank.'
+        end
+      end
+
+      # Tags say which board offers this person as a driver, so they are
+      # meaningless on somebody with no seats — and an empty box inviting you to
+      # tag a rider is a question with no right answer.
+      field('Driver tags') { tags_field } if @user.can_drive?
+
+      div(class: 'grid grid-cols-2 gap-3') do
+        field('Car seats') do
+          number_field('capacity', @user.capacity, min: 0, max: 20)
+          span(class: 'text-[11.5px] text-ink/60') { 'Passengers, not counting them. Blank if they do not drive.' }
+        end
+        field('Graduating') { number_field('grad_year', @user.grad_year, min: 1951, max: 2099) }
+      end
+
+      if @leader
+        label(class: 'flex items-center gap-2 text-[13px]') do
+          input(type: 'hidden', name: 'active', value: '0')
+          input(type: 'checkbox', name: 'active', value: '1', checked: @user.active?, class: 'accent-accent')
+          plain 'Active this year — part of the fellowship, not just in the server'
+        end
+
+        label(class: 'flex items-center gap-2 text-[13px]') do
+          input(type: 'hidden', name: 'leader', value: '0')
+          input(type: 'checkbox', name: 'leader', value: '1', checked: @user.leader, class: 'accent-accent')
+          plain 'Leader — can edit the board and dispatch drivers'
+        end
+
+        div(class: 'flex gap-2 pt-1') do
+          button(type: 'submit', class: 'board-btn-solid') { 'Save' }
+          a(href: path('/users'), class: 'board-btn no-underline') { 'Back' }
+        end
+      end
+    end
+  end
+
+  # Free text, comma separated, with the tags already in use offered as chips.
+  #
+  # Deliberately not a fixed list: the point is that inventing "Van-Driver" or
+  # "Retreat-2026" costs one keystroke rather than a migration. The chips exist
+  # so the common case is a click and so nobody has to remember whether it was
+  # "Friday-Usual" or "friday usual" — though the model folds those together
+  # anyway, because they will not remember.
+  def tags_field
+    input(type: 'text', name: 'tags', value: @user.tags.join(', '),
+          placeholder: 'Friday-Usual, Sunday-Usual', disabled: !@leader,
+          class: 'board-input', data_tag_input: @leader ? true : nil)
+
+    if @leader && @known_tags.any?
+      div(class: 'flex flex-wrap gap-1.5 pt-1') do
+        @known_tags.each { |tag| tag_chip(tag) }
+      end
+    end
+
+    span(class: 'text-[11.5px] text-ink/60') do
+      'Which boards offer them as a regular driver. A Friday board adds the ' \
+      'Friday-Usual drivers; Sunday adds Sunday-Usual. Type anything to make a new one.'
+    end
+  end
+
+  def tag_chip(tag)
+    on = @user.tagged?(tag)
+    button(
+      type: 'button',
+      data_tag_chip: tag,
+      class: 'border cursor-pointer text-[11px] font-medium px-2 py-[3px] rounded-full ' \
+             "#{on ? 'bg-accent-tint text-accent border-accent/30' : 'bg-transparent text-ink/60 border-line hover:border-accent/40'}"
+    ) { tag }
+  end
+
+  # Hidden until "Other…" is chosen. Kept in the same form as everything else so
+  # it saves in one press; the server creates the place and points the member at
+  # it in the same request.
+  def new_location_fields(prefix)
+    return unless @leader
+
+    div(data_new_location: prefix, hidden: true,
+        class: 'flex flex-col gap-2 p-2.5 rounded-lg border border-dashed border-line bg-surface-sunk') do
+      input(type: 'text', name: "#{prefix}_name", placeholder: 'Name of the place',
+            class: 'board-input text-[12.5px] py-1.5')
+      div(class: 'flex gap-2') do
+        select(name: "#{prefix}_zone", class: 'board-input text-[12.5px] py-1.5 w-auto') do
+          Location::ZONES.each { |z| option(value: z) { z } }
+        end
+        input(type: 'text', name: "#{prefix}_address", placeholder: 'Street address (looked up on save)',
+              class: 'board-input text-[12.5px] py-1.5 flex-1')
+      end
+    end
+  end
+
+  def field(label, &block)
+    div(class: 'flex flex-col gap-[5px]') do
+      span(class: 'board-label') { label }
+      yield
+    end
+  end
+
+  def text_field(name, value, mono: false, placeholder: nil)
+    input(type: 'text', name: name, value: value.to_s, placeholder: placeholder,
+          disabled: !@leader, class: "board-input #{mono ? 'font-mono' : ''}")
+  end
+
+  def number_field(name, value, min:, max:)
+    input(type: 'number', name: name, value: value.to_s, min: min, max: max,
+          disabled: !@leader, class: 'board-input font-mono')
+  end
+
+  # Grouped by zone so an 80-entry list stays navigable. Shared by both address
+  # fields — they draw from the same set of places; only the question differs.
+  #
+  # "Other…" reveals an inline add rather than sending you to the Locations tab
+  # and back: the moment you discover a place is missing is while you are typing
+  # someone's details, and losing the half-filled form to go and create it is
+  # how a member ends up saved with no address at all.
+  def location_select(name, selected_id)
+    select(name: name, disabled: !@leader, class: 'board-input',
+           data_location_select: @leader ? name : nil) do
+      option(value: '', selected: selected_id.nil?) { 'Not set' }
+      @locations.group_by(&:zone).sort_by { |zone, _| Location::ZONES.index(zone) || 99 }.each do |zone, places|
+        optgroup(label: zone || 'Unzoned') do
+          places.each do |place|
+            option(value: place.id, selected: selected_id == place.id) { place.name.to_s }
+          end
+        end
+      end
+      option(value: OTHER, selected: false) { 'Other — add a new place…' } if @leader
+    end
+  end
+
+  # --- sidebar -------------------------------------------------------------
+
+  def sidebar
+    div(class: 'flex flex-col gap-3') do
+      load_card
+      missing_card if @user.missing_details?
+    end
+  end
+
+  def load_card
+    div(class: 'flex flex-col gap-1.5 p-3 rounded-lg border border-line bg-surface-sunk') do
+      span(class: 'board-label') { 'Recent load' }
+      if @load.window_size.zero?
+        span(class: 'text-[12.5px] text-ink/65') { 'No finished events yet.' }
+      else
+        span(class: 'text-[13px]') { "Drove #{@load.drove(@user)} of the last #{@load.window_size}" }
+        span(class: 'text-[12.5px] text-ink/65') { "Rode in #{@load.rode(@user)}" }
+        if @load.heavy_load?(@user)
+          span(class: 'text-[12px] text-warn-ink') { 'Carrying more than their share — worth spreading around.' }
+        end
+      end
+    end
+  end
+
+  def missing_card
+    div(class: 'flex flex-col gap-1.5 p-3 rounded-lg border border-warn/40 bg-warn-tint') do
+      span(class: 'board-label !text-warn-ink') { 'Missing' }
+      span(class: 'text-[12.5px] text-warn-ink') do
+        "No #{@user.missing_details.join(', no ')}. Dispatch needs both to be useful."
+      end
+    end
+  end
+
+  # --- history -------------------------------------------------------------
+
+  def recent_rides
+    div(class: 'flex flex-col gap-2') do
+      span(class: 'board-label') { 'Recent rides' }
+      if @history.empty?
+        div(class: 'px-1 py-4 text-[13px] text-ink/65') { 'No rides on record yet.' }
+      else
+        div(class: 'flex flex-col gap-1.5') { @history.each { |ride| ride_row(ride) } }
+      end
+    end
+  end
+
+  def ride_row(ride)
+    event = ride.event
+    a(
+      href: path("/events/#{event.id}"),
+      class: 'flex items-center gap-3 px-3 py-2 rounded-lg border border-line bg-surface no-underline text-ink hover:border-accent'
+    ) do
+      span(class: 'w-28 flex-none font-mono text-[11px] text-ink/70') do
+        event.start_time&.strftime('%a %-d %b').to_s
+      end
+      span(class: 'flex-1 min-w-0 text-[12.5px]') { event.name.to_s }
+      span(class: "font-mono text-[9.5px] font-semibold tracking-[.06em] px-[7px] py-[3px] rounded-[5px] uppercase #{role_style(ride)}") do
+        role_label(ride)
+      end
+    end
+  end
+
+  def role_style(ride)
+    return 'bg-ink/[.07] text-ink/70' if ride.out?
+
+    ride.driver? ? 'bg-accent-tint text-accent' : 'bg-ink/[.07] text-ink/70'
+  end
+
+  def role_label(ride)
+    return ride.status.tr('_', ' ') if ride.out?
+
+    ride.role
+  end
+end

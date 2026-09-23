@@ -1,15 +1,5 @@
 #!/usr/bin/env sh
-set -e
 
-root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-
-# Local overrides (DISCORD_TOKEN for the beta bot, DB settings, ...) live in
-# .env.local, which is gitignored. See .env.local.example.
-if [ -f "$root/.env.local" ]; then
-  set -a
-  . "$root/.env.local"
-  set +a
-fi
-
-cd "$root/bot"
-exec bundle exec ruby run.rb
+# No longer needs to cd into bot/ — paths are resolved relative to the source
+# files now rather than the working directory.
+exec bundle exec ruby "$(dirname "$0")/../bot/run.rb"
