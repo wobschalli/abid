@@ -11,7 +11,9 @@ User=alan
 Group=alan
 WorkingDirectory=/home/alan/abid
 EnvironmentFile=/etc/abid/env
-ExecStart=/usr/local/bin/bundle exec puma -e production -b tcp://127.0.0.1:5544 -t 2:5
+# Ruby 3.3.8 via rbenv; the shims directory must lead PATH.
+Environment=PATH=/home/alan/.rbenv/shims:/home/alan/.rbenv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/alan/.rbenv/shims/bundle exec puma -e production -b tcp://127.0.0.1:5544 -t 2:5
 Restart=always
 RestartSec=3
 NoNewPrivileges=true

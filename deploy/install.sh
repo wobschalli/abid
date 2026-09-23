@@ -8,39 +8,62 @@
 # in the environment to receive expiry notices; without it the certificate is
 # registered without an address — renewal is automatic either way.
 #
-# Idempotent: safe to re-run after a git pull. It installs system packages,
-# Postgres, nginx and certbot, writes /etc/abid/env with generated secrets
-# (never overwriting an existing one), creates the database role, installs
-# the gems, and installs the two systemd units — ENABLED BUT NOT STARTED.
-# Starting is a separate, deliberate step (see deploy/DEPLOY.md): the bot in
-# particular must never run in two places at once.
+# Idempotent: safe to re-run after a git pull, and re-running is how a failed
+# step is finished. It installs system packages, Ruby 3.3.8 via rbenv (the
+# version the app is tested on — Ubuntu's 3.2 makes bundler silently pick an
+# older or-tools), Postgres, nginx and certbot; writes /etc/abid/env with
+# generated secrets (never overwriting an existing one); creates the database
+# role; installs the gems; and installs the two systemd units — ENABLED BUT
+# NOT STARTED. Starting is a separate, deliberate step (deploy/DEPLOY.md):
+# the bot in particular must never run in two places at once.
+#
+# On a 1-core, 2GB box expect 30-45 minutes: Ruby compiles, and or-tools'
+# Rice extension is memory-hungry enough that it needs the swapfile below.
 set -euo pipefail
 
 APP_USER=alan
 HOSTNAME_ARG=${1:-}
 APP_DIR=/home/$APP_USER/abid
 ENV_FILE=/etc/abid/env
+RUBY_VERSION=3.3.8
 BUNDLER_VERSION=2.6.9
+RBENV_ROOT=/home/$APP_USER/.rbenv
+BUNDLE=$RBENV_ROOT/shims/bundle
 
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo"; exit 1; }
 [ -f "$APP_DIR/Gemfile" ] || { echo "no app at $APP_DIR"; exit 1; }
+
+as_app() { sudo -u "$APP_USER" -H env PATH="$RBENV_ROOT/shims:$RBENV_ROOT/bin:/usr/local/bin:/usr/bin:/bin" bash -c "$*"; }
 
 echo "== packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get install -y -q --no-install-recommends \
-  ruby ruby-dev build-essential libpq-dev libyaml-dev libffi-dev zlib1g-dev pkg-config git curl \
-  postgresql postgresql-contrib nginx certbot python3-certbot-nginx
+  build-essential git curl pkg-config autoconf bison patch \
+  libssl-dev libreadline-dev zlib1g-dev libyaml-dev libffi-dev libgmp-dev libgdbm-dev libdb-dev uuid-dev \
+  libpq-dev postgresql postgresql-contrib nginx certbot python3-certbot-nginx
 
-echo "== swap (a 1.9GB box needs headroom for bundle install)"
-if ! swapon --show | grep -q .; then
-  fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile
+echo "== swap (or-tools' Rice extension needs several GB to compile; the OOM killer took cc1plus with 1GB)"
+SWAP_GB=4
+current_kb=$(awk '/^\/swapfile/ {print $3}' /proc/swaps 2>/dev/null || true)
+if [ -z "$current_kb" ] || [ "$current_kb" -lt $((SWAP_GB * 1000 * 1000)) ]; then
+  swapoff /swapfile 2>/dev/null || true
+  rm -f /swapfile
+  fallocate -l ${SWAP_GB}G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile
   grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  echo "   ${SWAP_GB}G swapfile active"
 fi
 
-echo "== bundler $BUNDLER_VERSION (matches Gemfile.lock)"
-gem list -i bundler -v "$BUNDLER_VERSION" >/dev/null || gem install bundler -v "$BUNDLER_VERSION" --no-document
-ln -sf "$(gem contents bundler -v "$BUNDLER_VERSION" | grep -m1 'exe/bundle$')" /usr/local/bin/bundle
+echo "== Ruby $RUBY_VERSION via rbenv (as $APP_USER; ~15-25 minutes on one core if not already built)"
+[ -d "$RBENV_ROOT" ] || as_app "git clone -q https://github.com/rbenv/rbenv.git $RBENV_ROOT"
+[ -d "$RBENV_ROOT/plugins/ruby-build" ] || as_app "git clone -q https://github.com/rbenv/ruby-build.git $RBENV_ROOT/plugins/ruby-build"
+as_app "cd $RBENV_ROOT/plugins/ruby-build && git pull -q"
+as_app "RUBY_CONFIGURE_OPTS=--disable-install-doc rbenv install -s $RUBY_VERSION"
+as_app "rbenv global $RUBY_VERSION && rbenv rehash"
+as_app "ruby -v"
+as_app "gem list -i bundler -v $BUNDLER_VERSION >/dev/null || gem install bundler -v $BUNDLER_VERSION --no-document; rbenv rehash"
+# So the runbook's plain `bundle exec …` works in any shell.
+ln -sf "$BUNDLE" /usr/local/bin/bundle
 
 echo "== $ENV_FILE"
 mkdir -p /etc/abid
@@ -70,8 +93,11 @@ SQL
 sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" | grep -q 1 \
   || sudo -u postgres createdb -O "$DB_USER" "$DB_NAME"
 
-echo "== gems (as $APP_USER, into vendor/bundle)"
-sudo -u "$APP_USER" -H bash -c "cd $APP_DIR && bundle config set --local path vendor/bundle && bundle config set --local without 'development test' && bundle install --quiet"
+echo "== gems (as $APP_USER, into vendor/bundle; or-tools compiles a C++ extension — slow, single job)"
+# Leftovers from an attempt under Ubuntu's Ruby 3.2 (which resolved the wrong or-tools).
+rm -rf "$APP_DIR/vendor/bundle/ruby/3.2.0"
+as_app "cd $APP_DIR && bundle config set --local path vendor/bundle && bundle config set --local without 'development test' && MAKEFLAGS=-j1 bundle install --quiet"
+as_app "cd $APP_DIR && bundle exec ruby -e 'require \"or-tools\"; puts \"   or-tools \" + Gem.loaded_specs[\"or-tools\"].version.to_s + \" loads\"'"
 
 echo "== systemd units (enabled, NOT started)"
 install -m 644 "$APP_DIR/deploy/abid-web.service" "$APP_DIR/deploy/abid-bot.service" /etc/systemd/system/
@@ -95,7 +121,7 @@ ufw allow OpenSSH >/dev/null          # before enabling, or this session is the 
 ufw allow 'Nginx Full' >/dev/null     # 80 for the ACME challenge, 443 for the app
 ufw --force enable >/dev/null
 dpkg-reconfigure -f noninteractive unattended-upgrades
-if [ -n "$(sudo -u "$APP_USER" -H bash -c 'ls ~/.ssh/authorized_keys 2>/dev/null')" ]; then
+if [ -s "/home/$APP_USER/.ssh/authorized_keys" ]; then
   # Keys are in place, so password logins are only a liability.
   mkdir -p /etc/ssh/sshd_config.d
   printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\n' > /etc/ssh/sshd_config.d/90-abid.conf
@@ -126,19 +152,19 @@ mkdir -p /var/www/html
 nginx -t -q && systemctl enable --now nginx && systemctl reload nginx
 
 if [ -n "$HOSTNAME_ARG" ]; then
-  echo "== HTTPS for $HOSTNAME_ARG (Let's Encrypt)"
+  echo "== HTTPS for ${NAMES[*]} (Let's Encrypt)"
   if [ -n "${CERTBOT_EMAIL:-}" ]; then
     EMAIL_OPTS=(-m "$CERTBOT_EMAIL")
   else
     EMAIL_OPTS=(--register-unsafely-without-email)
   fi
+  DOMAIN_OPTS=(); for n in "${NAMES[@]}"; do DOMAIN_OPTS+=(-d "$n"); done
   # The dashboard holds members' phone numbers: --redirect makes plain HTTP
   # a redirect to HTTPS, never a page.
-  DOMAIN_OPTS=(); for n in "${NAMES[@]}"; do DOMAIN_OPTS+=(-d "$n"); done
   if certbot --nginx "${DOMAIN_OPTS[@]}" --non-interactive --agree-tos --redirect "${EMAIL_OPTS[@]}"; then
     echo "   certificate installed; renewal timer: $(systemctl is-enabled certbot.timer 2>/dev/null || echo 'check systemctl list-timers')"
   else
-    echo "   WARNING: certbot failed — is DNS for $HOSTNAME_ARG pointing at this server yet? Re-run: sudo certbot --nginx -d $HOSTNAME_ARG"
+    echo "   WARNING: certbot failed — is DNS for $HOSTNAME_ARG pointing at this server yet? Re-run: sudo certbot --nginx ${DOMAIN_OPTS[*]}"
   fi
 else
   echo "== no hostname given: nginx serves HTTP only on the IP; use an SSH tunnel until certbot runs"

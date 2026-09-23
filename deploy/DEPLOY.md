@@ -17,8 +17,11 @@ Two rules that matter more than anything below:
 
     cd ~/abid && git pull && sudo bash deploy/install.sh rides.example.org
 
-Installs Ruby, Postgres, nginx, certbot; writes `/etc/abid/env` with generated
-secrets; creates the `abid` database role; `bundle install`s; installs and
+Installs Ruby 3.3.8 via rbenv (Ubuntu's packaged 3.2 makes bundler silently
+resolve an older or-tools than the one the optimizer is tested on), Postgres,
+nginx, certbot; writes `/etc/abid/env` with generated secrets; creates the
+`abid` database role; `bundle install`s (or-tools compiles a C++ extension:
+slow, and it needs the 4 GB swapfile the script creates); installs and
 enables (but does not start) `abid-web` and `abid-bot`; grants your user
 passwordless `systemctl start/stop/restart/status` for those two units only;
 firewalls the box to 22/80/443 and turns on unattended security updates.
