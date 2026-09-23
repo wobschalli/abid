@@ -36,8 +36,14 @@ echo "== service account $APP_USER"
 id "$APP_USER" >/dev/null 2>&1 || useradd --system --home-dir "/home/$APP_USER" --create-home --shell /usr/sbin/nologin "$APP_USER"
 mkdir -p "/home/$APP_USER"; chown "$APP_USER":"$APP_USER" "/home/$APP_USER"
 # The services run as $APP_USER and git pull / bundle / tmp writes happen as
-# them, so the checkout has to be theirs.
-[ "$(stat -c %U "$APP_DIR")" = "$APP_USER" ] || chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
+# them, so the checkout has to be theirs — every file, not just the top
+# directory. A checkout `mv`ed from another user's home keeps that user's
+# ownership on its contents while the directory itself gets chowned, and the
+# first symptom is bundler failing to write Gemfile.lock.
+if find "$APP_DIR" ! -user "$APP_USER" -print -quit | grep -q .; then
+  chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
+  echo "   chowned $APP_DIR to $APP_USER"
+fi
 # The token lives in here; nobody but the app user may read it.
 [ -f "$APP_DIR/config.yml" ] && chmod 600 "$APP_DIR/config.yml"
 as_app() { sudo -u "$APP_USER" -H env PATH="$RUBY_DIR/bin:/usr/local/bin:/usr/bin:/bin" HOME="/home/$APP_USER" bash -c "$*"; }
