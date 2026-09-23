@@ -997,6 +997,16 @@ class RoutesTest < AbidTest
     assert_kind_of Hash, Abid.discord_config
   end
 
+  def test_members_who_opted_out_of_snipes_wear_a_pill
+    User.create!(name: 'Shy Person', username: "shy#{next_discord_id}", discord_id: next_discord_id,
+                 password: 'x' * 10, active: true, snipes_opt_out: true)
+
+    as_leader
+    body = get_ok('/users').body
+
+    assert_includes body, 'no snipes'
+  end
+
   # --- the emoji catalogue --------------------------------------------------
 
   def test_the_catalogue_covers_the_whole_unicode_set

@@ -18,10 +18,15 @@ class Messenger < Bot
     # reaction_remove to fire at all — without it the handlers register and
     # silently never run. It is unprivileged, so no developer-portal change.
     #
-    # No message-content intent is needed: the bot composes and sends the
-    # sign-up posts itself, so it never has to read anyone else's message.
+    # MESSAGE_CONTENT (1 << 15) is required for the snipes channel: without it
+    # Discord delivers other people's messages with empty `attachments` and
+    # `content`, so an image is invisible and the rule never fires. It is
+    # PRIVILEGED — it must also be switched on in the developer portal (Bot →
+    # Privileged Gateway Intents) or the gateway rejects the connection. This
+    # discordrb fork has no symbol for it, so the raw bit is passed; the
+    # intents calculator accepts integers.
     @bot = Discordrb::Commands::CommandBot.new token: @token, prefix: "!",
-                                               intents: [:server_messages, :server_members, :server_message_reactions],
+                                               intents: [:server_messages, :server_members, :server_message_reactions, 1 << 15],
                                                ignore_bots: true
     @bot.init_cache
     register_commands
@@ -179,6 +184,12 @@ class Messenger < Bot
       acknowledge_dispatch event, event.custom_id.match(/dispatch_ack_(\d+)/)[1].to_i
     end
 
+    # "Don't snipe me" / "Changed my mind". Anyone may press; the reply is
+    # ephemeral so the shared message never changes for other people.
+    bot.button custom_id: /\A(snipes_optout|snipes_optin)\z/ do |event|
+      set_snipes_preference event, opt_out: event.custom_id == Snipes::Notice::OPT_OUT_ID
+    end
+
     bot.button custom_id: /event_delete_(\d+)/ do |event|
       return event.respond('You don\'t have permission to do this!') unless User.find_by(discord_id: event.user.id).leader
       event.defer_update
@@ -210,6 +221,29 @@ class Messenger < Bot
     @bot.reaction_remove_all do |event|
       handle_reaction_remove_all event
     end
+
+    # Every message, everywhere the bot can see; the enforcer's first check is
+    # "is this the snipes channel", so this is one indexed lookup per message.
+    @bot.message do |event|
+      handle_message event
+    end
+  end
+
+  def handle_message(event)
+    Snipes::Enforcer.new(@bot).call(event.message)
+  rescue StandardError => e
+    warn "snipes enforcer failed: #{e.class}: #{e.message}"
+  end
+
+  def set_snipes_preference(event, opt_out:)
+    result = Snipes::Preference.set(
+      discord_id: event.user.id, opt_out: opt_out,
+      username: event.user.username, display_name: safe_display_name(event)
+    )
+    event.respond(content: Snipes::Preference.reply_for(result.opt_out), ephemeral: true)
+  rescue StandardError => e
+    warn "snipes preference failed for #{event.user&.id}: #{e.class}: #{e.message}"
+    event.respond(content: 'Something went wrong saving that — try again in a moment.', ephemeral: true)
   end
 
   # Every handler swallows its exceptions. discordrb logs and carries on, but a

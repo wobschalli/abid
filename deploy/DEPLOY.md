@@ -88,6 +88,24 @@ path (`config.ru`), so every link, form, redirect and asset it emits carries
 it; nothing is rewritten by nginx. Leave `ABID_ROOT_PATH` empty to serve at
 the root again.
 
+## Snipes opt-out (branch `dont-snipe-me-plz`)
+
+Two Discord-side settings the code cannot make for itself:
+
+1. **Developer Portal → the app → Bot → Privileged Gateway Intents → enable
+   "Message Content Intent".** Without it Discord delivers every message
+   with empty attachments, and the bot sees no snipes at all.
+2. **Give the bot "Manage Messages" in the snipes channel.** Without it every
+   deletion fails with 403; the bot log says so in those words.
+
+Then, once:
+
+    bundle exec rake "snipes:channel[<channel id>]"   # which channel is the snipes channel
+    bundle exec rake snipes:post                       # the bot posts the opt-out message within 30s
+
+`snipes:post` is safe to re-run: it refreshes the existing message rather
+than posting a second one.
+
 ## Day to day
 
     sudo -u abid env HOME=/tmp git -C /opt/abid pull && sudo systemctl restart abid-web abid-bot
