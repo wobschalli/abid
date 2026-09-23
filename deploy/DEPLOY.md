@@ -1,6 +1,9 @@
 # Deploying Abid
 
-Plain systemd + nginx + Let's Encrypt on Ubuntu 24.04. The Dockerfile in the
+Plain systemd + nginx + Let's Encrypt on Ubuntu 24.04. The checkout lives at
+`/opt/abid`, owned by the `abid` service account; Ruby 3.3.8 comes from the
+system-wide rbenv at `/usr/local/rbenv`; puma listens on a unix socket; the
+dashboard is served under `/abidebot/`. The Dockerfile in the
 repo root predates the bot and the optimizer and does not run this app; use
 this instead.
 
@@ -71,23 +74,23 @@ http://localhost:5544.
 Certbot adds the 443 block and the 80 → 443 redirect, and installs its own
 renewal timer.
 
-## The /ridebot/ prefix
+## The /abidebot/ prefix
 
-The dashboard is served at `https://abidepurdue.com/ridebot/` so the domain
+The dashboard is served at `https://abidepurdue.com/abidebot/` so the domain
 root stays free. Two settings make that work, both applied by
 
-    sudo bash deploy/apply-ridebot-prefix.sh
+    sudo bash deploy/install.sh abidepurdue.com   # idempotent; also applies the prefix
 
-which patches the certbot-managed nginx site (`location /ridebot/` proxied
+which patches the certbot-managed nginx site (`location /abidebot/` proxied
 with the prefix intact, `/` redirecting there for now) and sets
-`ABID_ROOT_PATH=/ridebot` in `/etc/abid/env`. The app mounts itself at that
+`ABID_ROOT_PATH=/abidebot` in `/etc/abid/env`. The app mounts itself at that
 path (`config.ru`), so every link, form, redirect and asset it emits carries
 it; nothing is rewritten by nginx. Leave `ABID_ROOT_PATH` empty to serve at
 the root again.
 
 ## Day to day
 
-    sudo systemctl restart abid-web abid-bot        # after a git pull
+    sudo -u abid env HOME=/tmp git -C /opt/abid pull && sudo systemctl restart abid-web abid-bot
     sudo journalctl -u abid-bot -f                  # watch the bot
     cd /opt/abid && bundle exec rake db:migrate        # when a pull adds a migration
 

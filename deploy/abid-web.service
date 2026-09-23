@@ -1,5 +1,5 @@
-# The dashboard. Binds to localhost only; nginx terminates TLS in front of it
-# (deploy/nginx-abid.conf). Installed by deploy/install.sh.
+# The dashboard. Puma on a unix socket; nginx (deploy/nginx-abid.conf)
+# terminates TLS and routes /abidebot/ to it. Installed by deploy/install.sh.
 [Unit]
 Description=Abid rides dashboard (puma)
 After=network-online.target postgresql.service
@@ -7,13 +7,17 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=alan
-Group=alan
+User=abid
+Group=abid
 WorkingDirectory=/opt/abid
+# RACK_ENV, database credentials, session secret, ABID_ROOT_PATH. Without this
+# the app boots in development mode against database.yml's defaults and dies.
 EnvironmentFile=/etc/abid/env
-# Ruby 3.3.8 via rbenv; the shims directory must lead PATH.
-Environment=PATH=/home/alan/.rbenv/shims:/home/alan/.rbenv/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/home/alan/.rbenv/shims/bundle exec puma -e production -b tcp://127.0.0.1:5544 -t 2:5
+# Ruby 3.3.8 from the system-wide rbenv the server was set up with.
+Environment=RBENV_ROOT=/usr/local/rbenv
+Environment=PATH=/usr/local/rbenv/shims:/usr/local/rbenv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStartPre=/usr/bin/mkdir -p /opt/abid/tmp/sockets
+ExecStart=/usr/local/rbenv/shims/bundle exec puma -e production -b unix:///opt/abid/tmp/sockets/abid-web.sock -t 2:5
 Restart=always
 RestartSec=3
 NoNewPrivileges=true

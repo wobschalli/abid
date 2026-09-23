@@ -923,14 +923,14 @@ class RoutesTest < AbidTest
     refute_includes body, 'will not send by itself', 'failed post still wearing the draft caption'
   end
 
-  # --- mounted under a prefix (abidepurdue.com/ridebot) ---------------------
+  # --- mounted under a prefix (abidepurdue.com/abidebot) ---------------------
   #
   # Rack sets SCRIPT_NAME from the mount point; everything the app emits has
   # to carry it, or the first click leaves the app. A bare "/board" anywhere
   # is a regression here.
 
   def under_prefix
-    env 'SCRIPT_NAME', '/ridebot'
+    env 'SCRIPT_NAME', '/abidebot'
   end
 
   def test_every_link_form_and_endpoint_carries_the_mount_prefix
@@ -938,10 +938,10 @@ class RoutesTest < AbidTest
     as_leader; under_prefix
     body = get_ok("/board?event_id=#{@event.id}&tab=roster").body
 
-    assert_includes body, 'data-root="/ridebot"'
-    assert_includes body, "/ridebot/board/#{@event.id}/optimize"
-    assert_includes body, 'href="/ridebot/board?'
-    refute_includes body, '/ridebot/ridebot', 'a link was prefixed twice'
+    assert_includes body, 'data-root="/abidebot"'
+    assert_includes body, "/abidebot/board/#{@event.id}/optimize"
+    assert_includes body, 'href="/abidebot/board?'
+    refute_includes body, '/abidebot/abidebot', 'a link was prefixed twice'
     refute_match %r{(href|action|data-endpoint)="/(board|users|schedule|locations|events|series|signups|tags|login|logout)}, body,
                  'a root-relative link escaped the prefix'
     refute_includes body, 'href="http://example.org/board"', 'nav links must carry the prefix too'
@@ -951,7 +951,7 @@ class RoutesTest < AbidTest
     as_leader; under_prefix
     %w[/schedule /users /locations /].each do |page|
       body = get_ok(page).body
-      refute_includes body, '/ridebot/ridebot', "#{page} prefixed a link twice"
+      refute_includes body, '/abidebot/abidebot', "#{page} prefixed a link twice"
       refute_match %r{(href|action)="/(board|users|schedule|locations|events|series|signups|tags)}, body,
                    "#{page} emitted an unprefixed link"
     end
@@ -961,9 +961,9 @@ class RoutesTest < AbidTest
     under_prefix
     body = get_ok('/login').body
 
-    assert_includes body, 'data-root="/ridebot"'
-    assert_includes body, 'action="/ridebot/login"'
-    refute_includes body, '/ridebot/ridebot'
+    assert_includes body, 'data-root="/abidebot"'
+    assert_includes body, 'action="/abidebot/login"'
+    refute_includes body, '/abidebot/abidebot'
   end
 
   def test_redirects_land_inside_the_prefix
@@ -971,7 +971,7 @@ class RoutesTest < AbidTest
     post '/locations', name: 'Prefixed Place', zone: ZONE_1
 
     assert_equal 302, last_response.status
-    assert_match %r{/ridebot/locations\z}, last_response['Location']
+    assert_match %r{/abidebot/locations\z}, last_response['Location']
   end
 
   def test_no_prefix_means_plain_root_paths
@@ -981,7 +981,7 @@ class RoutesTest < AbidTest
 
     assert_includes body, 'data-root=""'
     assert_includes body, "/board/#{@event.id}/optimize"
-    refute_includes body, '/ridebot'
+    refute_includes body, '/abidebot'
   end
 
   # The token the bot boots with comes from config.yml, not from a row copied
