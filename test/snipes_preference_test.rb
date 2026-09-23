@@ -58,4 +58,28 @@ class SnipesPreferenceTest < AbidTest
     assert_includes Snipes::Preference.reply_for(true), 'opted out'
     assert_includes Snipes::Preference.reply_for(false), 'back in'
   end
+
+  # --- /toggle-sniping ----------------------------------------------------------
+
+  def test_toggle_opts_a_snipable_person_out_then_back_in
+    discord_id = next_discord_id
+
+    first = Snipes::Preference.toggle(discord_id: discord_id, username: 'flip')
+    assert first.opt_out, 'default is snipable, so the first toggle must opt out'
+    assert User.find_by!(discord_id: discord_id).snipes_opt_out
+
+    second = Snipes::Preference.toggle(discord_id: discord_id)
+    refute second.opt_out
+    refute User.find_by!(discord_id: discord_id).snipes_opt_out
+  end
+
+  def test_toggle_and_buttons_share_one_flag
+    discord_id = next_discord_id
+    Snipes::Preference.set(discord_id: discord_id, opt_out: true)
+
+    result = Snipes::Preference.toggle(discord_id: discord_id)
+
+    refute result.opt_out, 'a toggle after the opt-out button should opt back in'
+  end
+
 end
