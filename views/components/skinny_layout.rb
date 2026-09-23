@@ -18,7 +18,7 @@ class Components::SkinnyLayout < Phlex::HTML
       script src: url('js/application.min.js')
     end
 
-    body(class: 'bg-surface-board text-ink font-sans antialiased min-h-screen') do
+    body(class: 'bg-surface-board text-ink font-sans antialiased min-h-screen', data_root: url('/', false).chomp('/')) do
       div(class: 'relative min-h-screen flex items-center justify-center p-5') do
         theme_toggle
         div(class: 'w-full max-w-sm') { yield }

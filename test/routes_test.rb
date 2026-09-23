@@ -957,6 +957,15 @@ class RoutesTest < AbidTest
     end
   end
 
+  def test_the_login_page_carries_the_prefix_too
+    under_prefix
+    body = get_ok('/login').body
+
+    assert_includes body, 'data-root="/ridebot"'
+    assert_includes body, 'action="/ridebot/login"'
+    refute_includes body, '/ridebot/ridebot'
+  end
+
   def test_redirects_land_inside_the_prefix
     as_leader; under_prefix
     post '/locations', name: 'Prefixed Place', zone: ZONE_1
