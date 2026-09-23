@@ -246,4 +246,108 @@ class SignupPublisherTest < AbidTest
     assert_equal 'posted', post.reload.status
   end
 
+
+  # --- transient network errors are retried, not fatal --------------------------
+  #
+  # A laptop that was asleep at post time wakes, the tick fires, and DNS is
+  # not back yet. That single getaddrinfo failure used to mark the post failed
+  # forever; it is how a Friday sign-up was lost. Now it is left in `posting`
+  # for recover_stale, which is the one retry path that cannot double-post.
+
+  # Fails N sends, then works.
+  class FlakyBot < FakeBot
+    def initialize(failures:, error:, **opts)
+      super(**opts)
+      @failures = failures
+      @error = error
+    end
+
+    def send(channel_id, body, **opts)
+      if @failures.positive?
+        @failures -= 1
+        raise @error
+      end
+      super
+    end
+  end
+
+  def dns_down = Socket::ResolutionError.new('getaddrinfo: Temporary failure in name resolution')
+
+  def test_a_transient_error_leaves_the_post_retryable_with_the_error_recorded
+    post = make_post
+    bot = FlakyBot.new(failures: 1, error: dns_down)
+
+    capture_io { Signup::Publisher.new(bot).run_once }
+
+    post.reload
+    assert_equal 'posting', post.status, 'a DNS blip was treated as final'
+    refute post.failed?
+    assert_includes post.last_error, 'name resolution'
+    assert_equal 1, post.publish_attempts
+    assert_empty bot.sent
+  end
+
+  def test_the_retry_sends_once_the_network_is_back
+    post = make_post
+    bot = FlakyBot.new(failures: 1, error: dns_down)
+    publisher = Signup::Publisher.new(bot)
+
+    capture_io { publisher.run_once }
+    # Time passes: the row goes stale and recover_stale returns it to scheduled.
+    post.update_columns(updated_at: (SignupPost::STALE_POSTING_AFTER + 1.minute).ago)
+    capture_io { publisher.run_once }
+
+    post.reload
+    assert_equal 'posted', post.status, 'never recovered from a transient error'
+    assert_equal 1, bot.sent.size, 'sent more than once'
+    assert_equal 2, post.publish_attempts
+    assert_nil post.last_error, 'a successful send should clear the old error'
+  end
+
+  # The recovery must not re-send a message that DID go out but whose
+  # response was lost: recover_stale finds our own message and adopts it.
+  def test_a_lost_response_adopts_the_sent_message_instead_of_resending
+    post = make_post
+    body = Signup::MessageRenderer.new(post).to_s
+    already_there = FakeMessage.new(777, body)
+    bot = FlakyBot.new(failures: 1, error: dns_down, history: [already_there])
+    publisher = Signup::Publisher.new(bot)
+
+    capture_io { publisher.run_once }
+    post.update_columns(updated_at: (SignupPost::STALE_POSTING_AFTER + 1.minute).ago)
+    capture_io { publisher.run_once }
+
+    post.reload
+    assert_equal 'posted', post.status
+    assert_equal 777, post.discord_message_id, 'did not adopt the message already in the channel'
+    assert_empty bot.sent, 'posted a second copy into the channel'
+  end
+
+  def test_a_transient_error_gives_up_after_the_attempt_cap
+    post = make_post(publish_attempts: Signup::Publisher::MAX_PUBLISH_ATTEMPTS - 1)
+    bot = FlakyBot.new(failures: 99, error: dns_down)
+
+    capture_io { Signup::Publisher.new(bot).run_once }
+
+    post.reload
+    assert_equal 'failed', post.status, 'retried forever'
+    assert post.editable?
+  end
+
+  def test_a_permanent_error_is_still_final_at_once
+    post = make_post
+    bot = FlakyBot.new(failures: 99, error: RuntimeError.new('Missing Permissions'))
+
+    capture_io { Signup::Publisher.new(bot).run_once }
+
+    assert_equal 'failed', post.reload.status
+  end
+
+  def test_transient_classification
+    assert Signup::Publisher.transient?(Socket::ResolutionError.new('x'))
+    assert Signup::Publisher.transient?(Errno::ECONNRESET.new)
+    refute Signup::Publisher.transient?(RuntimeError.new('x'))
+    refute Signup::Publisher.transient?(ArgumentError.new('x'))
+  end
+
 end

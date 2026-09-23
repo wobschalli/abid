@@ -904,6 +904,25 @@ class RoutesTest < AbidTest
     assert_includes body, 'Either BHEE or 3rd and West'
   end
 
+  # A failed sign-up says WHY on its page, in the error's own words. It used to
+  # show the draft copy about scheduling, which hid a DNS failure completely.
+  def test_a_failed_signup_page_shows_the_error_and_the_way_out
+    server = Server.create!(name: "S#{next_discord_id}", discord_id: next_discord_id)
+    channel = Channel.create!(name: 'rides', discord_id: next_discord_id, server: server)
+    post = SignupPost.create!(channel: channel, service_date: Time.zone.today + 3,
+                              status: 'failed', post_at: 1.hour.ago,
+                              last_error: 'Socket::ResolutionError: Temporary failure in name resolution')
+    post.options.create!(Signup::EmojiKey.parse('1️⃣').merge(event: @event, position: 0))
+
+    as_leader
+    body = get_ok("/signups/#{post.id}").body
+
+    assert_includes body, 'Failed to send'
+    assert_includes body, 'name resolution'
+    assert_includes body, 'Post now'
+    refute_includes body, 'will not send by itself', 'failed post still wearing the draft caption'
+  end
+
   # --- the emoji catalogue --------------------------------------------------
 
   def test_the_catalogue_covers_the_whole_unicode_set

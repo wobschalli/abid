@@ -333,10 +333,27 @@ class SignupShow < Phlex::HTML
       span(class: 'text-[11.5px] text-ink/60') { "Posted #{at}" } if at
     when 'scheduled'
       span(class: 'text-[11.5px] text-ink/60') { "Sends #{at}" }
-    when 'draft', 'failed'
+    when 'draft'
       span(class: 'text-[11.5px] text-warn-ink') do
         plain 'Draft — will not send by itself. Press Post now, or Schedule for later'
         plain at ? " (the saved time is #{at})." : '.'
+      end
+    when 'posting'
+      # Mid-send, or between retries of a transient network error. The bot
+      # re-checks within a few minutes; the error is shown so a wedged send
+      # is diagnosable from the page rather than from a log.
+      span(class: 'text-[11.5px] text-ink/60') do
+        plain @post.last_error.present? ? "Retrying — last attempt: #{@post.last_error}" : 'Sending…'
+      end
+    when 'failed'
+      # The one state that needs a human: say what went wrong, in the error's
+      # own words, and what to press. "Draft" here hid a DNS failure behind
+      # copy about scheduling.
+      span(class: 'text-[11.5px] text-danger') do
+        plain 'Failed to send'
+        plain at ? " at #{at}" : ''
+        plain @post.last_error.present? ? " — #{@post.last_error}. " : '. '
+        plain 'Press Post now to try again.'
       end
     end
   end

@@ -17,6 +17,33 @@ module Signup
     REACTION_DELAY = 0.3 # stay under Discord's per-message reaction rate limit
     RECOVERY_SCAN = 50   # recent messages to search when recovering
 
+    # How many sends to attempt before a post is declared failed and handed to
+    # a human. Each retry waits out SignupPost::STALE_POSTING_AFTER (two
+    # minutes), so this is a little over ten minutes of "the network is not
+    # there yet" before giving up — long enough for a laptop that was asleep at
+    # post time to wake and reconnect (seconds, usually), short enough that a
+    # genuinely broken post is noticed the same evening.
+    MAX_PUBLISH_ATTEMPTS = 6
+
+    # Errors that mean "not right now", not "never". This is the shape of a
+    # machine waking from sleep — the tick fires before DNS is back — and it is
+    # how this Friday's sign-up was lost: one getaddrinfo failure at 08:24 and
+    # the post was marked failed for good. Matched by ancestry name so nothing
+    # here needs rest-client or openssl loaded to compare against.
+    TRANSIENT_ERRORS = %w[
+      Socket::ResolutionError SocketError IOError EOFError
+      Errno::ECONNREFUSED Errno::ECONNRESET Errno::ETIMEDOUT Errno::EHOSTUNREACH
+      Errno::ENETUNREACH Errno::EPIPE Errno::EAGAIN
+      Net::OpenTimeout Net::ReadTimeout OpenSSL::SSL::SSLError
+      RestClient::Exceptions::Timeout RestClient::ServerBrokeConnection
+      RestClient::InternalServerError RestClient::BadGateway
+      RestClient::ServiceUnavailable RestClient::GatewayTimeout RestClient::TooManyRequests
+    ].freeze
+
+    def self.transient?(error)
+      error.class.ancestors.any? { |klass| TRANSIENT_ERRORS.include?(klass.name) }
+    end
+
     def initialize(bot)
       @bot = bot
     end
@@ -107,8 +134,19 @@ module Signup
       post.mark_posted!(message.id, body: body)
       seed_reactions(post, message)
     rescue StandardError => e
-      warn "publishing signup post #{post.id} failed: #{e.class}: #{e.message}"
-      post.mark_failed!("#{e.class}: #{e.message}")
+      described = "#{e.class}: #{e.message}"
+      if self.class.transient?(e) && post.publish_attempts < MAX_PUBLISH_ATTEMPTS
+        # Leave it in `posting`. recover_stale owns that state: once the row
+        # is stale it looks for a message we may already have sent — the send
+        # could have succeeded and only the response been lost — and adopts
+        # it, or puts the row back to `scheduled` for the next claim. That is
+        # the retry, and it is the only retry path that cannot double-post.
+        warn "publishing signup post #{post.id} hit a transient error (attempt #{post.publish_attempts}, will retry): #{described}"
+        post.update!(last_error: described.first(255))
+      else
+        warn "publishing signup post #{post.id} failed: #{described}"
+        post.mark_failed!(described)
+      end
     end
 
     # Giving people something to click. A failure here is not fatal — the
