@@ -1,0 +1,21 @@
+# The dashboard. Binds to localhost only; nginx terminates TLS in front of it
+# (deploy/nginx-abid.conf). Installed by deploy/install.sh.
+[Unit]
+Description=Abid rides dashboard (puma)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alan
+Group=alan
+WorkingDirectory=/home/alan/abid
+EnvironmentFile=/etc/abid/env
+ExecStart=/usr/local/bin/bundle exec puma -e production -b tcp://127.0.0.1:5544 -t 2:5
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

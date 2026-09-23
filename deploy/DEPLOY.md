@@ -1,0 +1,74 @@
+# Deploying Abid
+
+Plain systemd + nginx + Let's Encrypt on Ubuntu 24.04. The Dockerfile in the
+repo root predates the bot and the optimizer and does not run this app; use
+this instead.
+
+Two rules that matter more than anything below:
+
+1. **The bot runs in exactly one place.** A second instance posts every
+   sign-up twice into a channel of eighty people. Stop the old one, confirm it
+   is dead, then start the new one.
+2. **The dashboard is never on plain HTTP.** It holds members' phone numbers
+   and home addresses. Puma binds to `127.0.0.1:5544` only; until the TLS
+   certificate exists, reach it over an SSH tunnel.
+
+## 1. One-time server setup (needs sudo, once)
+
+    cd ~/abid && git pull && sudo bash deploy/install.sh
+
+Installs Ruby, Postgres, nginx, certbot; writes `/etc/abid/env` with generated
+secrets; creates the `abid` database role; `bundle install`s; installs and
+enables (but does not start) `abid-web` and `abid-bot`; grants your user
+passwordless `systemctl start/stop/restart/status` for those two units only.
+
+## 2. Move the data and the secrets (no sudo)
+
+From the laptop:
+
+    pg_dump -Fc -h localhost -U postgres abid_development > /tmp/abid.dump
+    scp /tmp/abid.dump config.yml alan@SERVER:~/abid/tmp/
+
+On the server:
+
+    cd ~/abid && set -a && . /etc/abid/env && set +a
+    pg_restore -h localhost -U "$DB_USER" -d "$DB_NAME" --no-owner --no-privileges --clean --if-exists tmp/abid.dump
+    mv tmp/config.yml ./config.yml && chmod 600 config.yml && rm tmp/abid.dump
+    bundle exec rake db:migrate      # no-op if the dump is current
+
+`config.yml` carries the Discord token and the Google key; it is gitignored
+and must be `chmod 600`. **Reset the Discord bot token first** if it has ever
+been pasted anywhere (Developer Portal → Bot → Reset Token) and put the new one
+in this file before the bot starts.
+
+## 3. Cut over
+
+    # laptop: stop its bot and confirm nothing is left
+    pkill -f 'ruby bot/run.rb'; pgrep -f 'ruby bot/run.rb' || echo "laptop bot stopped"
+
+    # server
+    sudo systemctl start abid-web && sudo systemctl status abid-web --no-pager
+    sudo systemctl start abid-bot && sudo journalctl -u abid-bot -n 20 --no-pager
+
+The bot log should show one `gateway protocol` line. The web is reachable
+straight away over a tunnel: `ssh -L 5544:localhost:5544 alan@SERVER`, then
+http://localhost:5544.
+
+## 4. HTTPS (once DNS points at the server)
+
+    sudo sed -i 's/RIDES_HOSTNAME/rides.example.org/' /etc/nginx/sites-available/abid
+    sudo nginx -t && sudo systemctl reload nginx
+    sudo certbot --nginx -d rides.example.org
+
+Certbot adds the 443 block and the 80 → 443 redirect, and installs its own
+renewal timer.
+
+## Day to day
+
+    sudo systemctl restart abid-web abid-bot        # after a git pull
+    sudo journalctl -u abid-bot -f                  # watch the bot
+    cd ~/abid && bundle exec rake db:migrate        # when a pull adds a migration
+
+Both units `Restart=always`, so a crash or a reboot brings them back. The
+publisher retries transient network errors for ~10 minutes and then marks a
+post failed for a human; the dashboard's sign-up page says why.
