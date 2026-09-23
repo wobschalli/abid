@@ -89,7 +89,7 @@ the root again.
 
 ## Day to day
 
-    sudo systemctl restart abid-web abid-bot        # after a git pull
+    sudo -u abid env HOME=/tmp git -C /opt/abid pull && sudo systemctl restart abid-web abid-bot
     sudo journalctl -u abid-bot -f                  # watch the bot
     cd /opt/abid && bundle exec rake db:migrate        # when a pull adds a migration
 
