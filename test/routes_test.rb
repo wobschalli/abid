@@ -1007,6 +1007,43 @@ class RoutesTest < AbidTest
     assert_includes body, 'no snipes'
   end
 
+  # The snipes channel lives in the same table as #rides. Offering it in the
+  # sign-up composer means one wrong pick sends a @Riders ping into snipes.
+  def test_the_snipes_channel_is_never_offered_for_rides
+    # A name no other part of these pages could contain, so the refutes below
+    # cannot pass or fail by accident. Option values are ids and would collide
+    # with the location select's.
+    Channel.create!(name: 'photo-snipes-zz', discord_id: next_discord_id, server: channel.server,
+                    purpose: 'snipes')
+    post = SignupPost.create!(channel: channel, service_date: Time.zone.today, status: 'draft')
+
+    signup_page = get_ok("/signups/#{post.id}").body
+
+    assert_includes signup_page, "##{channel.name}"
+    refute_includes signup_page, 'photo-snipes-zz'
+    refute_includes get_ok('/events/new').body, 'photo-snipes-zz'
+    refute_includes get_ok('/series/new').body, 'photo-snipes-zz'
+  end
+
+  def test_a_sign_up_cannot_be_pointed_at_the_snipes_channel
+    snipes = Channel.create!(name: 'snipes', discord_id: next_discord_id, server: channel.server,
+                             purpose: 'snipes')
+
+    as_leader
+    post '/signups', channel_id: snipes.id, service_date: Time.zone.today.to_s
+
+    assert_equal 422, last_response.status
+    assert_equal 0, SignupPost.where(channel: snipes).count
+  end
+
+  # A post made before its channel gained a purpose must still be closable.
+  def test_an_existing_post_survives_its_channel_becoming_the_snipes_channel
+    post = SignupPost.create!(channel: channel, service_date: Time.zone.today, status: 'draft')
+    channel.update!(purpose: 'snipes')
+
+    assert post.reload.update(intro: 'still editable')
+  end
+
   # --- the emoji catalogue --------------------------------------------------
 
   def test_the_catalogue_covers_the_whole_unicode_set

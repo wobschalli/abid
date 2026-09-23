@@ -12,6 +12,10 @@ class Channel < ApplicationRecord
   validates :purpose, inclusion: { in: PURPOSES }, allow_nil: true
 
   scope :notice_requested, -> { where.not(notice_requested_at: nil) }
+  # Where rides may go: every channel without a job of its own. The snipes
+  # channel sits in this table too, and a sign-up — @Riders ping and all —
+  # posted there by one wrong pick in a dropdown is not undone by deleting it.
+  scope :for_rides, -> { where(purpose: nil) }
 
   def self.snipes = find_by(purpose: 'snipes')
 

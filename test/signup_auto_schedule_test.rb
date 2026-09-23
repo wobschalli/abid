@@ -40,6 +40,18 @@ class SignupAutoScheduleTest < AbidTest
     assert_equal ['Sunday School', 'Sunday Service'], post.options.map { |o| o.event.name }
   end
 
+  # A series with no channel falls back to "the only channel". The snipes
+  # channel is a second row in the same table, and must neither be that
+  # fallback nor stop the real one from being found.
+  def test_the_snipes_channel_is_not_counted_as_a_place_for_rides
+    Channel.create!(name: 'snipes', discord_id: next_discord_id, server: @server, purpose: 'snipes')
+    occurrence(series(channel: nil))
+
+    post = run_it.first.post
+
+    assert_equal @channel, post.channel
+  end
+
   def test_the_send_time_comes_from_the_series
     s = series(lead: 3)
     occurrence(s)
