@@ -627,9 +627,15 @@ class App < Sinatra::Base
   post '/board/:event_id/optimize' do
     with_board do |event, history|
       history.record(event.rides.unassigned.to_a)
-      # Time-optimal via OR-Tools; falls back to the greedy zone matcher inside
-      # itself, so the button works even if the solver never loads.
-      Rides::Optimizer.call(RideBoard.new(event))
+      if Abid.jobs_enabled?
+        # Off the request: the board shows "Optimizing…" and refreshes itself
+        # when the job finishes (jobs/optimize_job.rb).
+        OptimizeJob.enqueue(event.id)
+      else
+        # Time-optimal via OR-Tools; falls back to the greedy zone matcher
+        # inside itself, so the button works even if the solver never loads.
+        Rides::Optimizer.call(RideBoard.new(event))
+      end
     end
   end
 

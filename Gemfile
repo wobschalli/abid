@@ -26,3 +26,7 @@ group :test do
   gem "rack-test", "~> 2.2"
 end
 gem "or-tools"
+# Postgres-backed job queue: jobs live in the same database, so enqueueing is
+# part of the same transaction as the data a job acts on. Only used when
+# ABID_JOBS=1 (see services/jobs.rb).
+gem "que", "~> 2.4"

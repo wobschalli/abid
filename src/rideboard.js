@@ -215,3 +215,18 @@ document.addEventListener('click', event => {
   chip.classList.toggle('border-accent/30', at === -1)
   chip.classList.toggle('text-ink/60', at !== -1)
 })
+
+// --- background optimize -----------------------------------------------------
+//
+// With jobs on, Optimize returns at once and the board shows "Optimizing…"
+// (data-board-poll). Re-fetch the board fragment until that marker is gone,
+// i.e. until the job has finished and the result is on the board.
+setInterval(async () => {
+  const board = root()
+  if (!board || !board.querySelector('[data-board-poll]')) return
+
+  const url = new URL(window.location.href)
+  url.searchParams.set('fragment', '1')
+  const response = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+  if (response.ok) swap(await response.text())
+}, 2000)

@@ -59,6 +59,24 @@ module Abid
       ActiveRecord::Base.establish_connection(database_config)
     end
 
+    # Background jobs (que, Postgres-backed) are opt-in: ABID_JOBS=1. Off, the
+    # Optimize button solves inside the request exactly as before and nothing
+    # below is started, so deploying this code changes nothing until the flag
+    # is set — and unsetting it is the rollback.
+    def jobs_enabled?
+      ENV['ABID_JOBS'] == '1'
+    end
+
+    # que shares ActiveRecord's pool, so enqueueing a job is part of whatever
+    # transaction is open: the job and the data it acts on commit together or
+    # not at all. Cheap and harmless to call when jobs are off.
+    def setup_jobs
+      require 'que'
+      require 'que/active_record/model' # the que_jobs table as a model, for "is one pending?"
+      Que.connection = ::ActiveRecord
+      Que.logger = nil unless env == 'development'
+    end
+
     # The URL prefix the dashboard is mounted under: '' at the domain root,
     # '/abidebot' when it lives at abidepurdue.com/abidebot so the root can hold
     # something else. config.ru mounts the app here (Rack::URLMap sets
@@ -170,6 +188,12 @@ module Abid
     # own file loads before the classes inside it.
     def load_services
       Dir.glob(root('services', '**', '*.rb')).sort.each { |service| require service }
+      load_jobs
+    end
+
+    def load_jobs
+      setup_jobs
+      Dir.glob(root('jobs', '*.rb')).sort.each { |job| require job }
     end
 
     def load_patches

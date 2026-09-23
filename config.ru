@@ -34,6 +34,11 @@ Unreloader.require File.join(wd, 'models', 'application_record.rb')
   Dir.glob(pattern).sort.each { |file| Unreloader.require file }
 end
 
+# Background jobs (que). Plain requires, not the reloader: que registers job
+# classes by name, and a reloaded constant would orphan the registration.
+Abid.setup_jobs
+Dir.glob(File.join(wd, 'jobs', '*.rb')).sort.each { |file| require file }
+
 # `Unreloader.require 'bot.rb'` used to be here. There is no bot.rb at the repo
 # root, and pulling in bot/bot.rb would boot a second Discord gateway connection
 # inside every web worker.

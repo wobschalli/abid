@@ -154,6 +154,13 @@ class Components::BoardShell < Phlex::HTML
   # calling that auto-fill undersold it — and mislabelled the thing people
   # press when a board already looks full but badly routed.
   def optimize_form
+    if @board.optimizing?
+      # data-board-poll: rideboard.js re-fetches the board every couple of
+      # seconds while this is on the page, so the result appears by itself.
+      return span(class: 'board-btn-solid whitespace-nowrap opacity-70 cursor-default',
+                  data_board_poll: 'true', title: 'Working out the routes — the board updates by itself') { 'Optimizing…' }
+    end
+
     action_form('optimize', class: 'contents') do
       button(type: 'submit', class: 'board-btn-solid whitespace-nowrap',
              title: 'Seat everyone waiting for the least total driving time') do

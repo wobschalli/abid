@@ -109,6 +109,14 @@ class RideBoard
 
   # A sweep has been asked for and the bot has not done it yet. Scoped to the
   # service DATE because a Sunday's two services share one sign-up post.
+  # An Optimize job is queued or running for this event (jobs mode only).
+  def optimizing?
+    return false unless Abid.jobs_enabled?
+
+    @optimizing = OptimizeJob.pending_for?(event) if @optimizing.nil?
+    @optimizing
+  end
+
   def sync_pending?
     return false if service_date.nil?
 

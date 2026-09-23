@@ -23,6 +23,26 @@ class Bot
     # Messenger handlers need the scheduler but cannot construct it — Bot builds
     # both, and Messenger is built first.
     @messenger.scheduler = @scheduler
+    start_job_worker
+  end
+
+  # que's worker threads, in this process rather than a separate one — the box
+  # has ~900 MB to spare and the bot is already the long-lived process. Only
+  # with ABID_JOBS=1, and a failure to start is logged, never fatal: the bot's
+  # real job is the sign-up posts, and those do not go through que.
+  def start_job_worker
+    return unless Abid.jobs_enabled?
+
+    @job_locker = Que::Locker.new(worker_priorities: [nil])
+    puts 'job worker started (que)'
+  rescue StandardError => e
+    warn "job worker failed to start — jobs will wait: #{e.class}: #{e.message}"
+  end
+
+  def stop_job_worker
+    @job_locker&.stop!
+  rescue StandardError => e
+    warn "job worker stop: #{e.class}: #{e.message}"
   end
 
   # @return running bot [Discordrb::Commands::CommandBot]

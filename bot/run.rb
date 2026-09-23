@@ -38,6 +38,9 @@ ensure
   # `r.bot.join` unconditionally used to raise NoMethodError on nil whenever boot
   # itself failed, masking the actual exception.
   bot = runner&.bot
+  # Let an in-flight job finish (its transaction commits or rolls back whole)
+  # before the process goes away.
+  runner&.stop_job_worker
   bot&.stop
 
   # Bounded join. discordrb's gateway thread can sit in a reconnect backoff that

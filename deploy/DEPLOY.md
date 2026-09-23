@@ -97,3 +97,21 @@ the root again.
 Both units `Restart=always`, so a crash or a reboot brings them back. The
 publisher retries transient network errors for ~10 minutes and then marks a
 post failed for a human; the dashboard's sign-up page says why.
+
+## Background jobs (que) — off by default
+
+Optimize can run as a background job instead of inside the web request
+(`jobs/optimize_job.rb`). It is **off unless `ABID_JOBS=1`** is in
+`/etc/abid/env`, so deploying this code changes nothing by itself.
+
+To turn it on (after a `git pull`):
+
+    cd /opt/abid && sudo -u abid env HOME=/tmp bundle install      # adds the que gem
+    sudo -u abid env HOME=/tmp RACK_ENV=production bundle exec rake db:migrate   # que's table
+    echo 'ABID_JOBS=1' | sudo tee -a /etc/abid/env
+    sudo systemctl restart abid-web abid-bot
+
+The worker runs as threads inside `abid-bot` (no Redis, no extra process).
+If it fails to start, the bot logs it and carries on; queued jobs wait.
+To turn it off: remove the `ABID_JOBS=1` line and restart both services.
+Sign-up posting does not go through que.
