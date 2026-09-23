@@ -10,6 +10,8 @@ APP_DIR=$(cd "$(dirname "$0")/.." && pwd)
 
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo"; exit 1; }
 [ "$(stat -c %U "$APP_DIR")" = "$APP_USER" ] || chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
+# The token lives in here; nobody but the app user may read it.
+[ -f "$APP_DIR/config.yml" ] && chmod 600 "$APP_DIR/config.yml"
 
 for unit in abid-web abid-bot; do
   # The unit files name the canonical path; substitute if this checkout lives elsewhere.

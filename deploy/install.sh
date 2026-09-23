@@ -36,6 +36,8 @@ BUNDLE=$RBENV_ROOT/shims/bundle
 # them, so the checkout has to be theirs — a root-owned clone under /opt is
 # the common way for the first `git pull` to fail.
 [ "$(stat -c %U "$APP_DIR")" = "$APP_USER" ] || chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
+# The token lives in here; nobody but the app user may read it.
+[ -f "$APP_DIR/config.yml" ] && chmod 600 "$APP_DIR/config.yml"
 
 as_app() { sudo -u "$APP_USER" -H env PATH="$RBENV_ROOT/shims:$RBENV_ROOT/bin:/usr/local/bin:/usr/bin:/bin" bash -c "$*"; }
 
