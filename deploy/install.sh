@@ -107,8 +107,18 @@ fi
 
 echo "== nginx site (puma is localhost-only regardless)"
 install -m 644 "$APP_DIR/deploy/nginx-abid.conf" /etc/nginx/sites-available/abid
+# Cover www. too when it already points at this machine — one certificate,
+# both names. Skipped silently otherwise, so a missing CNAME never fails the
+# apex certificate.
+NAMES=("$HOSTNAME_ARG")
 if [ -n "$HOSTNAME_ARG" ]; then
-  sed -i "s/RIDES_HOSTNAME/$HOSTNAME_ARG/g" /etc/nginx/sites-available/abid
+  MY_IP=$(curl -s -m 5 https://ifconfig.me || true)
+  WWW_IP=$(getent ahostsv4 "www.$HOSTNAME_ARG" 2>/dev/null | awk 'NR==1{print $1}')
+  if [ -n "$MY_IP" ] && [ "$WWW_IP" = "$MY_IP" ]; then
+    NAMES+=("www.$HOSTNAME_ARG")
+    echo "   www.$HOSTNAME_ARG points here too — including it"
+  fi
+  sed -i "s/server_name RIDES_HOSTNAME;/server_name ${NAMES[*]};/" /etc/nginx/sites-available/abid
 fi
 rm -f /etc/nginx/sites-enabled/default
 ln -sf /etc/nginx/sites-available/abid /etc/nginx/sites-enabled/abid
@@ -124,7 +134,8 @@ if [ -n "$HOSTNAME_ARG" ]; then
   fi
   # The dashboard holds members' phone numbers: --redirect makes plain HTTP
   # a redirect to HTTPS, never a page.
-  if certbot --nginx -d "$HOSTNAME_ARG" --non-interactive --agree-tos --redirect "${EMAIL_OPTS[@]}"; then
+  DOMAIN_OPTS=(); for n in "${NAMES[@]}"; do DOMAIN_OPTS+=(-d "$n"); done
+  if certbot --nginx "${DOMAIN_OPTS[@]}" --non-interactive --agree-tos --redirect "${EMAIL_OPTS[@]}"; then
     echo "   certificate installed; renewal timer: $(systemctl is-enabled certbot.timer 2>/dev/null || echo 'check systemctl list-timers')"
   else
     echo "   WARNING: certbot failed — is DNS for $HOSTNAME_ARG pointing at this server yet? Re-run: sudo certbot --nginx -d $HOSTNAME_ARG"
