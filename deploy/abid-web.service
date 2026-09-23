@@ -9,7 +9,7 @@ Wants=network-online.target
 Type=simple
 User=alan
 Group=alan
-WorkingDirectory=/home/alan/abid
+WorkingDirectory=/opt/abid
 EnvironmentFile=/etc/abid/env
 # Ruby 3.3.8 via rbenv; the shims directory must lead PATH.
 Environment=PATH=/home/alan/.rbenv/shims:/home/alan/.rbenv/bin:/usr/local/bin:/usr/bin:/bin

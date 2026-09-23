@@ -15,7 +15,7 @@ Two rules that matter more than anything below:
 
 ## 1. One-time server setup (needs sudo, once)
 
-    cd ~/abid && git pull && sudo bash deploy/install.sh rides.example.org
+    cd /opt/abid && git pull && sudo bash deploy/install.sh rides.example.org
 
 Installs Ruby 3.3.8 via rbenv (Ubuntu's packaged 3.2 makes bundler silently
 resolve an older or-tools than the one the optimizer is tested on), Postgres,
@@ -35,11 +35,11 @@ certificate-expiry notices; renewal itself is automatic regardless.
 From the laptop:
 
     pg_dump -Fc -h localhost -U postgres abid_development > /tmp/abid.dump
-    scp /tmp/abid.dump config.yml alan@SERVER:~/abid/tmp/
+    scp /tmp/abid.dump config.yml alan@SERVER:/opt/abid/tmp/
 
 On the server:
 
-    cd ~/abid && set -a && . /etc/abid/env && set +a
+    cd /opt/abid && set -a && . /etc/abid/env && set +a
     pg_restore -h localhost -U "$DB_USER" -d "$DB_NAME" --no-owner --no-privileges --clean --if-exists tmp/abid.dump
     mv tmp/config.yml ./config.yml && chmod 600 config.yml && rm tmp/abid.dump
     bundle exec rake db:migrate      # no-op if the dump is current
@@ -89,7 +89,7 @@ the root again.
 
     sudo systemctl restart abid-web abid-bot        # after a git pull
     sudo journalctl -u abid-bot -f                  # watch the bot
-    cd ~/abid && bundle exec rake db:migrate        # when a pull adds a migration
+    cd /opt/abid && bundle exec rake db:migrate        # when a pull adds a migration
 
 Both units `Restart=always`, so a crash or a reboot brings them back. The
 publisher retries transient network errors for ~10 minutes and then marks a

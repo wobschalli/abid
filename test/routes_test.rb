@@ -984,6 +984,19 @@ class RoutesTest < AbidTest
     refute_includes body, '/ridebot'
   end
 
+  # The token the bot boots with comes from config.yml, not from a row copied
+  # out of it once. ENV still wins for deploys.
+  def test_discord_token_prefers_env_then_config_file
+    ENV['DISCORD_TOKEN'] = 'from-env'
+    assert_equal 'from-env', Abid.discord_token
+  ensure
+    ENV.delete('DISCORD_TOKEN')
+  end
+
+  def test_discord_config_is_a_plain_hash_even_without_a_file
+    assert_kind_of Hash, Abid.discord_config
+  end
+
   # --- the emoji catalogue --------------------------------------------------
 
   def test_the_catalogue_covers_the_whole_unicode_set

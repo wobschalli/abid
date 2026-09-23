@@ -10,7 +10,7 @@ Wants=network-online.target
 Type=simple
 User=alan
 Group=alan
-WorkingDirectory=/home/alan/abid
+WorkingDirectory=/opt/abid
 EnvironmentFile=/etc/abid/env
 Environment=PATH=/home/alan/.rbenv/shims:/home/alan/.rbenv/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=/home/alan/.rbenv/shims/bundle exec ruby bot/run.rb

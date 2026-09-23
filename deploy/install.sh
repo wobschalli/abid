@@ -23,7 +23,7 @@ set -euo pipefail
 
 APP_USER=alan
 HOSTNAME_ARG=${1:-}
-APP_DIR=/home/$APP_USER/abid
+APP_DIR=${APP_DIR:-/opt/abid}
 ENV_FILE=/etc/abid/env
 RUBY_VERSION=3.3.8
 BUNDLER_VERSION=2.6.9
@@ -32,6 +32,10 @@ BUNDLE=$RBENV_ROOT/shims/bundle
 
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo"; exit 1; }
 [ -f "$APP_DIR/Gemfile" ] || { echo "no app at $APP_DIR"; exit 1; }
+# The services run as $APP_USER and git pull / bundle / tmp writes happen as
+# them, so the checkout has to be theirs — a root-owned clone under /opt is
+# the common way for the first `git pull` to fail.
+[ "$(stat -c %U "$APP_DIR")" = "$APP_USER" ] || chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
 
 as_app() { sudo -u "$APP_USER" -H env PATH="$RBENV_ROOT/shims:$RBENV_ROOT/bin:/usr/local/bin:/usr/bin:/bin" bash -c "$*"; }
 
@@ -132,12 +136,17 @@ else
 fi
 
 echo "== nginx site (puma is localhost-only regardless)"
-install -m 644 "$APP_DIR/deploy/nginx-abid.conf" /etc/nginx/sites-available/abid
+if grep -q "managed by Certbot" /etc/nginx/sites-available/abid 2>/dev/null; then
+  echo "   site already exists and carries certbot's TLS config — left untouched (edit it directly, or deploy/apply-ridebot-prefix.sh)"
+  SITE_MANAGED=1
+else
+  install -m 644 "$APP_DIR/deploy/nginx-abid.conf" /etc/nginx/sites-available/abid
+fi
 # Cover www. too when it already points at this machine — one certificate,
 # both names. Skipped silently otherwise, so a missing CNAME never fails the
 # apex certificate.
 NAMES=("$HOSTNAME_ARG")
-if [ -n "$HOSTNAME_ARG" ]; then
+if [ -n "$HOSTNAME_ARG" ] && [ -z "${SITE_MANAGED:-}" ]; then
   MY_IP=$(curl -s -m 5 https://ifconfig.me || true)
   WWW_IP=$(getent ahostsv4 "www.$HOSTNAME_ARG" 2>/dev/null | awk 'NR==1{print $1}')
   if [ -n "$MY_IP" ] && [ "$WWW_IP" = "$MY_IP" ]; then
@@ -151,7 +160,9 @@ ln -sf /etc/nginx/sites-available/abid /etc/nginx/sites-enabled/abid
 mkdir -p /var/www/html
 nginx -t -q && systemctl enable --now nginx && systemctl reload nginx
 
-if [ -n "$HOSTNAME_ARG" ]; then
+if [ -n "$HOSTNAME_ARG" ] && [ -d "/etc/letsencrypt/live/$HOSTNAME_ARG" ]; then
+  echo "== HTTPS: certificate for $HOSTNAME_ARG already present (renewal is automatic)"
+elif [ -n "$HOSTNAME_ARG" ]; then
   echo "== HTTPS for ${NAMES[*]} (Let's Encrypt)"
   if [ -n "${CERTBOT_EMAIL:-}" ]; then
     EMAIL_OPTS=(-m "$CERTBOT_EMAIL")

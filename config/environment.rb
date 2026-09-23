@@ -117,11 +117,29 @@ module Abid
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }.freeze
 
-    # Discord credentials. ENV wins so deploys don't need a seeded DB row, but we
-    # still fall back to the discord_infos table for existing installs.
+    # The Discord bot token. ENV, then config.yml, then the discord_infos row.
+    #
+    # config.yml is where the coordinator puts the token — it is the file the
+    # example ships, the file the deploy runbook says to copy, and the file
+    # that was updated after a token reset. Until now it was read only by
+    # db/seeds.rb, which copied it into discord_infos once; the bot then read
+    # the ROW, so a new token in the file changed nothing and the old bot kept
+    # connecting from a restored database. The row stays as the last resort
+    # for installs that never had the file.
     def discord_token
-      ENV['DISCORD_TOKEN'] || DiscordInfo.first&.token or
-        raise 'no Discord token: set DISCORD_TOKEN or seed the discord_infos table'
+      ENV['DISCORD_TOKEN'].presence || discord_config['token'].presence || DiscordInfo.first&.token or
+        raise 'no Discord token: set DISCORD_TOKEN, put discord.token in config.yml, or seed discord_infos'
+    end
+
+    # The `discord:` block of config.yml ({} when absent), read fresh each call
+    # so a rewritten file is honoured on the next boot without a code change.
+    def discord_config
+      return {} unless File.exist?(root('config.yml'))
+
+      (YAML.load_file(root('config.yml'))['discord'] || {}).to_h.transform_keys(&:to_s)
+    rescue StandardError => e
+      warn "config.yml unreadable: #{e.class}: #{e.message}"
+      {}
     end
 
     def session_secret
