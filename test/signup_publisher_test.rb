@@ -350,4 +350,47 @@ class SignupPublisherTest < AbidTest
     refute Signup::Publisher.transient?(ArgumentError.new('x'))
   end
 
+
+  # --- the @Riders ping -------------------------------------------------------
+
+  def riders_role = Role.create!(name: 'Riders', discord_id: 1_142_676_724_371_427_419)
+
+  def test_every_signup_opens_by_pinging_riders_with_the_default_wording
+    role = riders_role
+    friday = Date.new(2026, 10, 2)
+    post = make_post(service_date: friday)
+
+    body = Signup::MessageRenderer.new(post).to_s
+
+    assert body.start_with?("<@&#{role.discord_id}> react to this message if you would like a ride to Friday night Abide!"), body
+  end
+
+  def test_a_non_friday_names_its_events
+    riders_role
+    post = make_post(service_date: Date.new(2026, 10, 4)) # a Sunday; the option's event is Sunday School
+
+    assert_includes Signup::MessageRenderer.new(post).to_s, 'a ride to Sunday School!'
+  end
+
+  def test_a_hand_written_intro_still_gets_the_ping_once
+    role = riders_role
+    post = make_post(intro: 'Rides this week!')
+    assert Signup::MessageRenderer.new(post).to_s.start_with?("<@&#{role.discord_id}> Rides this week!")
+
+    post.update!(intro: "<@&#{role.discord_id}> already here")
+    assert_equal 1, Signup::MessageRenderer.new(post.reload).to_s.scan("<@&#{role.discord_id}>").size
+  end
+
+  def test_the_send_may_ping_only_the_riders_role
+    role = riders_role
+    assert_equal({ parse: [], roles: [role.discord_id.to_s] }, Signup::MessageRenderer.allowed_mentions)
+  end
+
+  def test_no_riders_role_means_no_ping_and_nothing_pingable
+    post = make_post(service_date: Date.new(2026, 10, 2))
+
+    assert Signup::MessageRenderer.new(post).to_s.start_with?('react to this message')
+    assert_equal({ parse: [], roles: [] }, Signup::MessageRenderer.allowed_mentions)
+  end
+
 end

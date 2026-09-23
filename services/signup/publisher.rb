@@ -130,7 +130,8 @@ module Signup
       # Written before the send: this is what recover_stale matches on.
       post.update!(rendered_body: body)
 
-      message = @bot.send(post.channel.discord_id, body, allowed_mentions: false)
+      # Pings the Riders role and nothing else (see MessageRenderer.allowed_mentions).
+      message = @bot.send(post.channel.discord_id, body, allowed_mentions: MessageRenderer.allowed_mentions)
       post.mark_posted!(message.id, body: body)
       seed_reactions(post, message)
     rescue StandardError => e

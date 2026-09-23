@@ -5,6 +5,22 @@ module Signup
   # and the publisher — so what a coordinator approves is byte-for-byte what
   # lands in the channel.
   class MessageRenderer
+    # The Discord role every sign-up pings. Looked up by name because roles are
+    # synced from the server by Bot::Setup; if it is ever renamed or deleted
+    # the message simply goes out without a ping rather than failing.
+    PING_ROLE = 'Riders'.freeze
+
+    def self.ping_role
+      Role.where('lower(name) = ?', PING_ROLE.downcase).first
+    end
+
+    # What the publisher must pass as allowed_mentions: this role and nothing
+    # else, so a stray @everyone typed into an intro can never ping anyone.
+    def self.allowed_mentions
+      role = ping_role
+      { parse: [], roles: role ? [role.discord_id.to_s] : [] }
+    end
+
     def initialize(post)
       @post = post
     end
@@ -15,15 +31,30 @@ module Signup
 
     private
 
+    # Every sign-up opens with the Riders ping — the default wording and a
+    # hand-written intro alike. A coordinator who typed the mention in
+    # themselves is not pinged twice.
     def intro
-      @post.intro.presence || default_intro
+      text = @post.intro.presence || default_intro
+      ping = self.class.ping_role&.then { |role| "<@&#{role.discord_id}>" }
+      return text if ping.nil? || text.include?(ping) || text.match?(/\A@#{PING_ROLE}\b/i)
+
+      "#{ping} #{text}"
     end
 
     def default_intro
-      date = @post.service_date || @post.options.filter_map { |o| o.event&.start_time }.min&.to_date
-      return 'Rides — react below if you need one.' if date.nil?
+      "react to this message if you would like a ride to #{destination}!"
+    end
 
-      "Rides for #{date.strftime('%A %-d %B')} — react below if you need one."
+    # "Friday night Abide" is what people call Friday; any other day is named
+    # by its events, so a Sunday post reads "Sunday School or Sunday Service".
+    def destination
+      events = @post.options.filter_map(&:event)
+      date = @post.service_date || events.filter_map(&:start_time).min&.to_date
+      return 'Friday night Abide' if date&.friday?
+
+      names = events.map(&:name).compact_blank.uniq
+      names.empty? ? 'church' : names.to_sentence(two_words_connector: ' or ', last_word_connector: ', or ')
     end
 
     def option_lines
