@@ -21,6 +21,11 @@ servers:
 
 # Channels the bot may post in. The names are yours; `rides` is what the
 # sign-up composer will offer by default.
+#
+# The snipes channel is not configured here: run `rake snipes:channel[ID]`
+# once, which marks the channel by Discord id (and creates the row if it is
+# new). It is a role, not a name, so renaming the channel in Discord cannot
+# switch enforcement off.
 channels:
   rides: 000000000000000000
   general: 000000000000000000

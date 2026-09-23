@@ -74,6 +74,38 @@ namespace :import do
   end
 end
 
+namespace :snipes do
+  desc 'Make a channel THE snipes channel, by Discord channel id (moves the role if another channel had it)'
+  task :channel, [:discord_id] do |_task, args|
+    abort 'usage: rake snipes:channel[DISCORD_CHANNEL_ID]' if args[:discord_id].to_s !~ /\A\d+\z/
+
+    require_relative 'config/environment'
+    Abid.establish_connection
+    Abid.load_models
+
+    channel = Channel.assign_purpose!('snipes', discord_id: args[:discord_id].to_i)
+    puts "snipes channel: ##{channel.name} (#{channel.discord_id})"
+    puts 'next: 1) enable "Message Content Intent" in the developer portal (Bot → Privileged Gateway Intents)'
+    puts '      2) give the bot Manage Messages in that channel'
+    puts '      3) RESTART the bot — it only requests the intent at connect, now that a snipes channel exists'
+    puts '      4) rake snipes:post'
+  end
+
+  desc 'Post the opt-out message with its two buttons (or refresh it if already posted)'
+  task :post do
+    require_relative 'config/environment'
+    Abid.establish_connection
+    Abid.load_models
+
+    channel = Channel.snipes or abort 'no snipes channel yet — run rake snipes:channel[ID] first'
+    # An outbox flag, not a second gateway connection: the running bot posts
+    # it on its next tick. Two bots on one token is the one thing this project
+    # must never do.
+    channel.update!(notice_requested_at: Time.zone.now)
+    puts "requested — the bot posts (or refreshes) the message in ##{channel.name} within 30 seconds"
+  end
+end
+
 Rake::TestTask.new(:test) do |t|
   t.libs << 'test'
   t.pattern = 'test/**/*_test.rb'

@@ -246,6 +246,8 @@ class UsersIndex < Phlex::HTML
 
   def badges(user)
     pill('leader', 'bg-accent-tint text-accent') if user.leader
+    # Asked not to be photographed in the snipes channel; the bot enforces it.
+    pill('no snipes', 'bg-warn-tint text-warn-ink') if user.snipes_opt_out
     pill("#{user.capacity} seats", 'bg-ink/[.07] text-ink/70') if user.can_drive?
     # Not while filtering by one: every row would carry the same pill.
     user.tags.each { |t| pill(t, 'bg-ink/[.07] text-ink/70') } if @tag.nil? && user.can_drive?

@@ -18,10 +18,8 @@ class Messenger < Bot
     # reaction_remove to fire at all — without it the handlers register and
     # silently never run. It is unprivileged, so no developer-portal change.
     #
-    # No message-content intent is needed: the bot composes and sends the
-    # sign-up posts itself, so it never has to read anyone else's message.
     @bot = Discordrb::Commands::CommandBot.new token: @token, prefix: "!",
-                                               intents: [:server_messages, :server_members, :server_message_reactions],
+                                               intents: gateway_intents,
                                                ignore_bots: true
     @bot.init_cache
     register_commands
@@ -86,6 +84,26 @@ class Messenger < Bot
   end
 
   private
+
+  # server_messages, server_members and server_message_reactions are all
+  # unprivileged. MESSAGE_CONTENT is not — and it is only requested when a
+  # snipes channel is configured, because a bot that asks for a privileged
+  # intent the developer portal has not granted is refused at connect: the
+  # whole bot, rides included, would be down. Enabling snipes is therefore a
+  # deliberate two-step (portal toggle, then `rake snipes:channel` + restart),
+  # and merged code with the feature dormant behaves exactly as before.
+  #
+  # Snipes::Enforcer rescues its own DB access, so a fresh database with no
+  # channels table yet simply means "not enabled".
+  def gateway_intents
+    intents = [:server_messages, :server_members, :server_message_reactions]
+    if Snipes::Enforcer.enabled?
+      warn 'snipes channel configured — requesting the Message Content intent (must be enabled in the developer portal)'
+      intents << Snipes::Enforcer::MESSAGE_CONTENT_INTENT
+    end
+    intents
+  end
+
   def register_commands
     bot.register_application_command(:event, 'event commands') do |event_cmd|
       event_cmd.subcommand(:create, 'create a new event')
@@ -179,6 +197,12 @@ class Messenger < Bot
       acknowledge_dispatch event, event.custom_id.match(/dispatch_ack_(\d+)/)[1].to_i
     end
 
+    # "Don't snipe me" / "Changed my mind". Anyone may press; the reply is
+    # ephemeral so the shared message never changes for other people.
+    bot.button custom_id: /\A(snipes_optout|snipes_optin)\z/ do |event|
+      set_snipes_preference event, opt_out: event.custom_id == Snipes::Notice::OPT_OUT_ID
+    end
+
     bot.button custom_id: /event_delete_(\d+)/ do |event|
       return event.respond('You don\'t have permission to do this!') unless User.find_by(discord_id: event.user.id).leader
       event.defer_update
@@ -210,6 +234,29 @@ class Messenger < Bot
     @bot.reaction_remove_all do |event|
       handle_reaction_remove_all event
     end
+
+    # Every message, everywhere the bot can see; the enforcer's first check is
+    # "is this the snipes channel", so this is one indexed lookup per message.
+    @bot.message do |event|
+      handle_message event
+    end
+  end
+
+  def handle_message(event)
+    Snipes::Enforcer.new(@bot).call(event.message)
+  rescue StandardError => e
+    warn "snipes enforcer failed: #{e.class}: #{e.message}"
+  end
+
+  def set_snipes_preference(event, opt_out:)
+    result = Snipes::Preference.set(
+      discord_id: event.user.id, opt_out: opt_out,
+      username: event.user.username, display_name: safe_display_name(event)
+    )
+    event.respond(content: Snipes::Preference.reply_for(result.opt_out), ephemeral: true)
+  rescue StandardError => e
+    warn "snipes preference failed for #{event.user&.id}: #{e.class}: #{e.message}"
+    event.respond(content: 'Something went wrong saving that — try again in a moment.', ephemeral: true)
   end
 
   # Every handler swallows its exceptions. discordrb logs and carries on, but a

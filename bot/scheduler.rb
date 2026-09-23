@@ -68,6 +68,15 @@ class Bot
       publish_signups
       send_dispatches
       seat_late_riders
+      post_snipes_notice
+    end
+
+    # `rake snipes:post` sets an outbox flag; the message is sent from here,
+    # inside the one process that holds the gateway connection.
+    def post_snipes_notice
+      Snipes::Notice.new(@bot).post_requested!
+    rescue StandardError => e
+      warn "snipes notice failed: #{e.class}: #{e.message}"
     end
 
     # Someone reacted after the drivers were dispatched. Seat them into the

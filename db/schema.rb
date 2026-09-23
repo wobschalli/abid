@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 4100) do
+ActiveRecord::Schema[8.0].define(version: 4200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -29,6 +29,10 @@ ActiveRecord::Schema[8.0].define(version: 4100) do
     t.bigint "server_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "purpose"
+    t.bigint "notice_message_id"
+    t.datetime "notice_requested_at"
+    t.index ["purpose"], name: "index_channels_on_purpose", unique: true, where: "(purpose IS NOT NULL)"
     t.index ["server_id"], name: "index_channels_on_server_id"
     t.unique_constraint ["discord_id"]
   end
@@ -318,9 +322,12 @@ ActiveRecord::Schema[8.0].define(version: 4100) do
     t.string "tags", default: [], null: false, array: true
     t.string "residence_answer"
     t.string "friday_answer"
+    t.boolean "snipes_opt_out", default: false, null: false
+    t.datetime "snipes_preference_at"
     t.index ["active"], name: "index_users_on_active"
     t.index ["class_location_id"], name: "index_users_on_class_location_id"
     t.index ["location_id"], name: "index_users_on_location_id"
+    t.index ["snipes_opt_out"], name: "index_users_on_snipes_opt_out", where: "snipes_opt_out"
     t.index ["tags"], name: "index_users_on_tags", using: :gin
     t.unique_constraint ["discord_id"]
   end
