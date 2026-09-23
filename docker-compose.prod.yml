@@ -1,0 +1,68 @@
+# Production stack: Postgres + the Sinatra web interface + the Discord bot.
+# Lives on the server in $DEPLOY_PATH next to a .env file (see .env.production.example).
+#   docker compose -f docker-compose.prod.yml up -d
+
+x-app-env: &app-env
+  RACK_ENV: production
+  BOT_ENV: production
+  DB_HOST: db
+  DB_PORT: "5432"
+  DB_NAME: ${DB_NAME:-abid_production}
+  DB_USER: ${DB_USER:-postgres}
+  DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+  SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET must be set in .env}
+  # Leave DISCORD_TOKEN unset in production so the bot uses the seeded token.
+  DISCORD_TOKEN: ${DISCORD_TOKEN:-}
+
+x-app: &app
+  image: ${APP_IMAGE:-ghcr.io/wobschalli/abid:latest}
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-abid_production}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-abid_production}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # The web service owns migrations; the bot waits for it so they never race.
+  web:
+    <<: *app
+    environment:
+      <<: *app-env
+      RUN_MIGRATIONS: "true"
+    ports:
+      - "${WEB_PORT:-4455}:4455"
+    command: ["bundle", "exec", "puma", "-b", "tcp://0.0.0.0:4455"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  bot:
+    <<: *app
+    environment:
+      <<: *app-env
+      RUN_MIGRATIONS: "false"
+    command: ["bin/bot"]
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started
+
+volumes:
+  db_data:
