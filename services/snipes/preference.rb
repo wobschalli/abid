@@ -17,6 +17,13 @@ module Snipes
       Result.new(user: user, opt_out: opt_out, changed: changed)
     end
 
+    # /toggle-sniping: flip whatever the current answer is. Default is
+    # snipable, so a first press opts out; a second puts them back in.
+    def self.toggle(discord_id:, username: nil, display_name: nil)
+      user = DiscordUserSync.upsert!(discord_id: discord_id, username: username, display_name: display_name)
+      set(discord_id: discord_id, opt_out: !user.snipes_opt_out, username: username, display_name: display_name)
+    end
+
     # What the presser sees, privately. The shared message never changes.
     def self.reply_for(opt_out)
       if opt_out

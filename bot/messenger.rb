@@ -119,8 +119,10 @@ class Messenger < Bot
 
     if abide
       bot.register_application_command(:login, 'send a login code', server_id: abide.discord_id)
+      bot.register_application_command(:'toggle-sniping', 'opt out of being sniped, or back in', server_id: abide.discord_id)
     else
       bot.register_application_command(:login, 'send a login code')
+      bot.register_application_command(:'toggle-sniping', 'opt out of being sniped, or back in')
     end
   end
 
@@ -139,6 +141,19 @@ class Messenger < Bot
       return event.respond('You are not able to do that!', ephemeral: true) unless user.leader
       handle_login_code(user)
       event.respond content: 'Your login code has been sent', ephemeral: true
+    end
+
+    # The same switch as the two buttons, for people who would rather type it
+    # — or who cannot find the pinned message. Anyone may use it; the reply is
+    # ephemeral. Default is snipable, so a first use opts out.
+    bot.application_command(:'toggle-sniping') do |event|
+      result = Snipes::Preference.toggle(
+        discord_id: event.user.id, username: event.user.username, display_name: safe_display_name(event)
+      )
+      event.respond(content: Snipes::Preference.reply_for(result.opt_out), ephemeral: true)
+    rescue StandardError => e
+      warn "toggle-sniping failed for #{event.user&.id}: #{e.class}: #{e.message}"
+      event.respond(content: 'Something went wrong saving that — try again in a moment.', ephemeral: true)
     end
 
     # The /debug command used to open `binding.irb` on the host for anyone with

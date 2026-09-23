@@ -18,7 +18,7 @@ module Snipes
 
       Be kind with the camera: these are our friends, not targets. Nothing unflattering, nothing they'd be embarrassed by, nothing from a private moment — if you'd hesitate to show them the photo first, don't post it.
 
-      Rather not be in the game? Press **Don't snipe me** and any snipe that tags you is taken down automatically. Changed your mind later? The other button puts you back in.
+      Rather not be in the game? Press **Don't snipe me** and any snipe that tags you is taken down automatically. Changed your mind later? The other button puts you back in. Or type `/toggle-sniping` anywhere — same switch.
     TEXT
 
     OPT_OUT_ID = 'snipes_optout'.freeze
