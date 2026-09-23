@@ -43,7 +43,7 @@ class BoardMap < Phlex::HTML
         end
       end
       div(class: 'flex-1')
-      a(href: "/board?event_id=#{@board.event.id}", class: 'board-btn no-underline text-ink') do
+      a(href: path("/board?event_id=#{@board.event.id}"), class: 'board-btn no-underline text-ink') do
         'Back to the board'
       end
     end
@@ -135,7 +135,7 @@ class BoardMap < Phlex::HTML
       plain 'Not on the map — no location on file: '
       plain @map.unplotted.map { |s| s.name.presence || s.label }.compact.join(', ')
       plain '. Add a street address on '
-      a(href: '/locations', class: 'underline') { 'Locations' }
+      a(href: path('/locations'), class: 'underline') { 'Locations' }
       plain ', or a pickup spot in their details.'
     end
   end

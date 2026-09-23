@@ -4,6 +4,7 @@ require_relative 'components'
 # Shared bits between the board components: link building that preserves the
 # current filter/selection/tab, and the "fit" pill styling from the design.
 module BoardHelpers
+  include PathHelper
   # Every board link round-trips the view state so a no-JS click doesn't drop
   # the search box contents or which person is open in the rail.
   def board_url(**overrides)
@@ -15,11 +16,11 @@ module BoardHelpers
       focus: @board.focus_ride_id
     }.merge(overrides).compact
 
-    "/board?#{URI.encode_www_form(query)}"
+    path("/board?#{URI.encode_www_form(query)}")
   end
 
-  def endpoint(path)
-    "/board/#{@board.event.id}/#{path}"
+  def endpoint(action)
+    path("/board/#{@board.event.id}/#{action}")
   end
 
   # "Also booked on the other service today" — shown wherever the person is,
@@ -138,7 +139,7 @@ module BoardHelpers
   def untagged_hint
     div(class: 'flex items-center gap-1.5') do
       a(
-        href: '/users?filter=drivers' + (@board.driver_tag ? "&tag=#{@board.driver_tag}" : ''),
+        href: path('/users?filter=drivers' + (@board.driver_tag ? "&tag=#{@board.driver_tag}" : '')),
         title: @board.driver_tag ? "no available driver is tagged #{@board.driver_tag}" : 'no driver tags yet',
         class: 'board-btn no-underline text-ink/70 whitespace-nowrap'
       ) { @board.driver_tag ? "Tag the #{@board.driver_tag} drivers" : 'Tag some drivers' }

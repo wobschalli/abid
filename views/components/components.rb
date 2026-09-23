@@ -1,5 +1,17 @@
+# A root-relative path with the mount prefix applied. The app may live under
+# a prefix (abidepurdue.com/ridebot, so the domain root is free for something
+# else); Rack sets SCRIPT_NAME from it and Sinatra's url() prepends it. Every
+# href/action/endpoint in the views goes through here — a bare "/board" would
+# jump out of the prefix the moment it was clicked.
+module PathHelper
+  def path(target)
+    url(target, false)
+  end
+end
+
 module Components
   extend Phlex::Kit
+  include PathHelper
 
   class Icon < Phlex::SVG
     def initialize(id:'', d:'', klass:'w-6 h-6', clip_rule:'', fill_rule:'', ahid:false, alabel:nil, vbox:'0 0 20 20')

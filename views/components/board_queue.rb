@@ -37,7 +37,7 @@ class Components::BoardQueue < Phlex::HTML
 
   # GET so the filter is bookmarkable and survives a no-JS submit.
   def search_form
-    form(method: 'get', action: '/board', data_board_search: true) do
+    form(method: 'get', action: path('/board'), data_board_search: true) do
       input(type: 'hidden', name: 'event_id', value: @board.event.id)
       input(type: 'hidden', name: 'tab', value: 'roster') if @tab == :roster
       input(

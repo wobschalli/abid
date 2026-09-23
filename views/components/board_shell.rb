@@ -28,7 +28,7 @@ class Components::BoardShell < Phlex::HTML
       class: 'flex flex-col h-[calc(100vh-3.5rem)] min-h-[760px] bg-surface text-ink font-sans',
       data_board_root: true,
       data_event_id: @event.id,
-      data_endpoint: "/board/#{@event.id}",
+      data_endpoint: path("/board/#{@event.id}"),
       data_readonly: (!@leader).to_s
     ) do
       board_header
@@ -55,7 +55,7 @@ class Components::BoardShell < Phlex::HTML
       undo_button
       sync_button if @leader
       a(
-        href: "/board/#{@event.id}/map",
+        href: path("/board/#{@event.id}/map"),
         class: 'board-btn no-underline text-ink'
       ) { 'Map' }
       optimize_form if @leader
@@ -106,7 +106,7 @@ class Components::BoardShell < Phlex::HTML
     if target.nil?
       span(class: "#{shape} text-ink/20", aria_hidden: 'true') { glyph }
     else
-      a(href: "/board?event_id=#{target.id}",
+      a(href: path("/board?event_id=#{target.id}"),
         class: "#{shape} text-ink/60 hover:text-ink hover:bg-ink/5 hover:border-line",
         title: "#{label}: #{target.start_time&.strftime('%a %-d %b, %-l:%M %p')}",
         aria_label: label) { glyph }
@@ -132,7 +132,7 @@ class Components::BoardShell < Phlex::HTML
       current ? 'bg-surface text-ink shadow-[0_1px_2px_rgba(23,32,28,.12)]' : 'bg-transparent text-ink/70 hover:text-ink'
     ].join(' ')
 
-    a(href: "/board?event_id=#{sibling.id}", class: classes) do
+    a(href: path("/board?event_id=#{sibling.id}"), class: classes) do
       plain sibling.name.to_s
       whitespace
       span(class: 'opacity-70') { sibling.start_time&.strftime('%-l:%M %p').to_s }

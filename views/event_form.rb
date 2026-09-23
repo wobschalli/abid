@@ -31,7 +31,7 @@ class EventForm < Phlex::HTML
   end
 
   def action
-    @event.new_record? ? '/events' : "/events/#{@event.id}"
+    path(@event.new_record? ? '/events' : "/events/#{@event.id}")
   end
 
   def error_note
@@ -81,7 +81,7 @@ class EventForm < Phlex::HTML
   end
 
   def cancel_href
-    @event.new_record? ? '/events' : "/events/#{@event.id}"
+    path(@event.new_record? ? '/events' : "/events/#{@event.id}")
   end
 
   def field(label, &block)

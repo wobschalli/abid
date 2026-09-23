@@ -43,7 +43,7 @@ class UserShow < Phlex::HTML
 
   def breadcrumb
     div(class: 'text-[12px] text-ink/60') do
-      a(href: '/users', class: 'text-accent no-underline hover:underline') { 'Members' }
+      a(href: path('/users'), class: 'text-accent no-underline hover:underline') { 'Members' }
       plain ' / '
       plain @user.display_name
     end
@@ -65,7 +65,7 @@ class UserShow < Phlex::HTML
   # --- form ----------------------------------------------------------------
 
   def details_form
-    form(method: 'post', action: "/users/#{@user.id}", class: 'flex flex-col gap-4') do
+    form(method: 'post', action: path("/users/#{@user.id}"), class: 'flex flex-col gap-4') do
       input(type: 'hidden', name: '_method', value: 'patch')
 
       field('Name') { text_field('name', @user.name) }
@@ -116,7 +116,7 @@ class UserShow < Phlex::HTML
 
         div(class: 'flex gap-2 pt-1') do
           button(type: 'submit', class: 'board-btn-solid') { 'Save' }
-          a(href: '/users', class: 'board-btn no-underline') { 'Back' }
+          a(href: path('/users'), class: 'board-btn no-underline') { 'Back' }
         end
       end
     end
@@ -264,7 +264,7 @@ class UserShow < Phlex::HTML
   def ride_row(ride)
     event = ride.event
     a(
-      href: "/events/#{event.id}",
+      href: path("/events/#{event.id}"),
       class: 'flex items-center gap-3 px-3 py-2 rounded-lg border border-line bg-surface no-underline text-ink hover:border-accent'
     ) do
       span(class: 'w-28 flex-none font-mono text-[11px] text-ink/70') do

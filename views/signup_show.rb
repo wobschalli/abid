@@ -49,7 +49,7 @@ class SignupShow < Phlex::HTML
 
   def breadcrumb
     div(class: 'text-[12px] text-ink/60') do
-      a(href: '/schedule', class: 'text-accent no-underline hover:underline') { 'Schedule' }
+      a(href: path('/schedule'), class: 'text-accent no-underline hover:underline') { 'Schedule' }
       plain ' / '
       plain(@post.service_date&.strftime('%-d %b') || 'new')
     end
@@ -118,7 +118,7 @@ class SignupShow < Phlex::HTML
   # --- settings ------------------------------------------------------------
 
   def settings
-    form(method: 'post', action: "/signups/#{@post.id}", class: 'flex flex-col gap-3') do
+    form(method: 'post', action: path("/signups/#{@post.id}"), class: 'flex flex-col gap-3') do
       input(type: 'hidden', name: '_method', value: 'patch')
 
       div(class: 'grid grid-cols-2 gap-3') do
@@ -198,7 +198,7 @@ class SignupShow < Phlex::HTML
   # rather than offered in a dropdown. What is yours to choose is which emoji
   # stands for it, and the line of text beside it on the message.
   def option_row(option)
-    form(method: 'post', action: "/signups/#{@post.id}/options/#{option.id}",
+    form(method: 'post', action: path("/signups/#{@post.id}/options/#{option.id}"),
          class: 'flex flex-col gap-2 px-3 py-2.5 rounded-lg border border-line bg-surface') do
       input(type: 'hidden', name: '_method', value: 'patch')
 
@@ -423,7 +423,7 @@ class SignupShow < Phlex::HTML
   end
 
   def post_button(path, label, style)
-    form(method: 'post', action: "/signups/#{@post.id}/#{path}", class: 'contents') do
+    form(method: 'post', action: path("/signups/#{@post.id}/#{path}"), class: 'contents') do
       button(type: 'submit', class: style) { label }
     end
   end
@@ -436,7 +436,7 @@ class SignupShow < Phlex::HTML
   # already seated is marked no-show with their seat freed rather than vanishing
   # from a car somebody planned around.
   def revoke_post
-    form(method: 'post', action: "/signups/#{@post.id}/revoke", class: 'contents') do
+    form(method: 'post', action: path("/signups/#{@post.id}/revoke"), class: 'contents') do
       button(type: 'submit', data_confirm: revoke_warning,
              title: 'delete the message from Discord and edit it again',
              class: 'border border-danger/25 bg-surface text-danger font-semibold text-xs px-3 py-[9px] rounded-[7px] cursor-pointer hover:bg-danger-tint') do
@@ -466,7 +466,7 @@ class SignupShow < Phlex::HTML
   end
 
   def delete_post
-    form(method: 'post', action: "/signups/#{@post.id}", class: 'contents') do
+    form(method: 'post', action: path("/signups/#{@post.id}"), class: 'contents') do
       input(type: 'hidden', name: '_method', value: 'delete')
       button(type: 'submit', data_confirm: 'Delete this draft?',
              class: 'border border-danger/25 bg-surface text-danger font-semibold text-xs px-3 py-[9px] rounded-[7px] cursor-pointer hover:bg-danger-tint') { 'Delete draft' }

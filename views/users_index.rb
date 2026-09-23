@@ -87,13 +87,13 @@ class UsersIndex < Phlex::HTML
 
   def filter_href(value)
     query = { filter: (value unless value == 'active'), q: @query.presence }.compact
-    query.empty? ? '/users' : "/users?#{URI.encode_www_form(query)}"
+    path(query.empty? ? '/users' : "/users?#{URI.encode_www_form(query)}")
   end
 
   # GET so it is bookmarkable and survives a no-JS submit, matching the board's
   # queue filter.
   def search_form
-    form(method: 'get', action: '/users', class: 'flex gap-2 items-center') do
+    form(method: 'get', action: path('/users'), class: 'flex gap-2 items-center') do
       input(type: 'hidden', name: 'filter', value: @filter) unless @filter == 'active'
       input(type: 'hidden', name: 'tag', value: @tag.to_s) if @tag
       input(type: 'search', name: 'q', value: @query.to_s, placeholder: 'Search by name',
@@ -135,7 +135,7 @@ class UsersIndex < Phlex::HTML
   # Tags are invented, not configured. This is the whole of "make a new one":
   # type it, and you land in tagging mode for it with every driver listed.
   def new_tag_form
-    form(method: 'post', action: '/tags', class: 'flex items-center gap-1') do
+    form(method: 'post', action: path('/tags'), class: 'flex items-center gap-1') do
       input(type: 'hidden', name: 'filter', value: @filter.to_s)
       input(type: 'text', name: 'name', placeholder: '+ new tag', required: true,
             class: 'w-28 px-2 py-[3px] text-[11px] rounded-full border border-dashed ' \
@@ -147,7 +147,7 @@ class UsersIndex < Phlex::HTML
     current = @tags.find { |t| t.name.casecmp?(@tag.to_s) }
     return if current.nil?
 
-    form(method: 'post', action: "/tags/#{current.id}", class: 'contents') do
+    form(method: 'post', action: path("/tags/#{current.id}"), class: 'contents') do
       input(type: 'hidden', name: '_method', value: 'delete')
       input(type: 'hidden', name: 'filter', value: @filter.to_s)
       button(
@@ -163,7 +163,7 @@ class UsersIndex < Phlex::HTML
     on = @tag.to_s.casecmp?(value.to_s)
     query = { filter: (@filter unless @filter == 'active'), q: @query.presence, tag: value }.compact
     a(
-      href: query.empty? ? '/users' : "/users?#{URI.encode_www_form(query)}",
+      href: path(query.empty? ? '/users' : "/users?#{URI.encode_www_form(query)}"),
       class: 'no-underline text-[11px] font-medium px-2 py-[3px] rounded-full border ' \
              "#{on ? 'bg-accent-tint text-accent border-accent/30' : 'bg-transparent text-ink/60 border-line hover:border-accent/40'}"
     ) { label }
@@ -188,7 +188,7 @@ class UsersIndex < Phlex::HTML
   def row(user)
     div(class: 'flex items-center gap-3 px-3 py-2.5 rounded-lg border border-line bg-surface ' \
                'hover:border-accent transition-colors') do
-      a(href: "/users/#{user.id}",
+      a(href: path("/users/#{user.id}"),
         class: 'flex-1 min-w-0 flex flex-col gap-0.5 no-underline text-ink') do
         div(class: 'flex items-baseline gap-2 flex-wrap') do
           span(class: 'font-semibold text-[13px] capitalize') { user.display_name }
@@ -206,7 +206,7 @@ class UsersIndex < Phlex::HTML
   # question, not a button.
   def tag_toggle(user)
     on = user.tagged?(@tag)
-    form(method: 'post', action: "/users/#{user.id}/tag", class: 'contents') do
+    form(method: 'post', action: path("/users/#{user.id}/tag"), class: 'contents') do
       input(type: 'hidden', name: 'tag', value: @tag)
       input(type: 'hidden', name: 'filter', value: @filter.to_s)
       input(type: 'hidden', name: 'q', value: @query.to_s)
@@ -227,7 +227,7 @@ class UsersIndex < Phlex::HTML
   # dozen people active in a row should not bounce you to the top of an
   # unfiltered list each time.
   def active_toggle(user)
-    form(method: 'post', action: "/users/#{user.id}/active", class: 'contents') do
+    form(method: 'post', action: path("/users/#{user.id}/active"), class: 'contents') do
       input(type: 'hidden', name: 'active', value: user.active? ? '0' : '1')
       input(type: 'hidden', name: 'filter', value: @filter.to_s)
       input(type: 'hidden', name: 'q', value: @query.to_s)

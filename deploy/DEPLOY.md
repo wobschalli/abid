@@ -71,6 +71,20 @@ http://localhost:5544.
 Certbot adds the 443 block and the 80 → 443 redirect, and installs its own
 renewal timer.
 
+## The /ridebot/ prefix
+
+The dashboard is served at `https://abidepurdue.com/ridebot/` so the domain
+root stays free. Two settings make that work, both applied by
+
+    sudo bash deploy/apply-ridebot-prefix.sh
+
+which patches the certbot-managed nginx site (`location /ridebot/` proxied
+with the prefix intact, `/` redirecting there for now) and sets
+`ABID_ROOT_PATH=/ridebot` in `/etc/abid/env`. The app mounts itself at that
+path (`config.ru`), so every link, form, redirect and asset it emits carries
+it; nothing is rewritten by nginx. Leave `ABID_ROOT_PATH` empty to serve at
+the root again.
+
 ## Day to day
 
     sudo systemctl restart abid-web abid-bot        # after a git pull

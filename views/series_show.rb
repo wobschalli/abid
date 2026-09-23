@@ -28,7 +28,7 @@ class SeriesShow < Phlex::HTML
 
   def breadcrumb
     div(class: 'text-[12px] text-ink/60') do
-      a(href: '/schedule', class: 'text-accent no-underline hover:underline') { 'Schedule' }
+      a(href: path('/schedule'), class: 'text-accent no-underline hover:underline') { 'Schedule' }
       plain ' / '
       plain @series.name.to_s
     end
@@ -42,7 +42,7 @@ class SeriesShow < Phlex::HTML
       end
       div(class: 'flex-1')
       if @leader
-        a(href: "/series/#{@series.id}/edit", class: 'board-btn-solid no-underline') { 'Edit' }
+        a(href: path("/series/#{@series.id}/edit"), class: 'board-btn-solid no-underline') { 'Edit' }
       end
     end
   end

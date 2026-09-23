@@ -39,7 +39,7 @@ class Components::Layout < Phlex::HTML
       script src: url('js/application.min.js')
     end
 
-    body(class: 'bg-surface-board text-ink font-sans antialiased') do
+    body(class: 'bg-surface-board text-ink font-sans antialiased', data_root: url('/', false).chomp('/')) do
       topbar
       sidebar
       content(&)

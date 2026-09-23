@@ -18,7 +18,10 @@ let loading = null
 const load = async () => {
   if (catalogue) return catalogue
   // One request even if the details is opened and closed repeatedly.
-  loading ||= fetch('/emoji.json', { credentials: 'same-origin' })
+  // The app may be mounted under a prefix (abidepurdue.com/ridebot); the
+  // layout writes it on <body> so nothing here hardcodes the root.
+  const root = document.body.dataset.root || ''
+  loading ||= fetch(`${root}/emoji.json`, { credentials: 'same-origin' })
     .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
     .then(data => (catalogue = data))
   return loading

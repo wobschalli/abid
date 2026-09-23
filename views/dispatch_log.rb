@@ -25,7 +25,7 @@ class DispatchLog < Phlex::HTML
 
   def breadcrumb
     div(class: 'text-[12px] text-ink/60') do
-      a(href: "/events/#{@event.id}", class: 'text-accent no-underline hover:underline') { @event.name.to_s }
+      a(href: path("/events/#{@event.id}"), class: 'text-accent no-underline hover:underline') { @event.name.to_s }
       plain ' / dispatch log'
     end
   end

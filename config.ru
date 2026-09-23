@@ -45,4 +45,14 @@ Unreloader.record_dependency(File.join(wd, 'services'), 'app.rb')
 #reload views on components changes
 Unreloader.record_dependency(File.join(wd, 'views', 'components'), File.join(wd, 'views'))
 
-run dev ? Unreloader : App
+app = dev ? Unreloader : App
+
+# Mounted under Abid.root_path when one is set. Rack::URLMap moves the prefix
+# into SCRIPT_NAME, so every route stays `get '/board'`, every `redirect
+# to(...)` and `url(...)` comes out prefixed, and a request outside the prefix
+# is a 404 — nginx only forwards the prefix anyway.
+if Abid.root_path.empty?
+  run app
+else
+  map(Abid.root_path) { run app }
+end

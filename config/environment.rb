@@ -59,6 +59,20 @@ module Abid
       ActiveRecord::Base.establish_connection(database_config)
     end
 
+    # The URL prefix the dashboard is mounted under: '' at the domain root,
+    # '/ridebot' when it lives at abidepurdue.com/ridebot so the root can hold
+    # something else. config.ru mounts the app here (Rack::URLMap sets
+    # SCRIPT_NAME), Sinatra's url()/to() prepend it, and the layout hands it to
+    # the browser as data-root for the two scripts that build paths themselves.
+    # Normalised: leading slash, no trailing slash, '/' means none.
+    def root_path
+      raw = ENV['ABID_ROOT_PATH'].to_s.strip
+      path = raw.sub(%r{/+\z}, '')
+      return '' if path.empty? || path == '/'
+
+      path.start_with?('/') ? path : "/#{path}"
+    end
+
     # The Distance Matrix key for the ride optimizer's travel times.
     #
     # ENV wins so a deploy can inject it, but the natural home is config.yml —

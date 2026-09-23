@@ -73,13 +73,13 @@ class Schedule < Phlex::HTML
       current ? 'bg-surface text-ink shadow-[0_1px_2px_rgba(23,32,28,.12)]' : 'bg-transparent text-ink/70 hover:text-ink'
     ].join(' ')
 
-    a(href: value ? "/schedule?only=#{value}" : '/schedule', class: classes) { label }
+    a(href: path(value ? "/schedule?only=#{value}" : '/schedule'), class: classes) { label }
   end
 
   def new_event_actions
     div(class: 'flex gap-2 flex-wrap') do
-      a(href: '/events/new', class: 'board-btn-solid no-underline') { 'New event' }
-      a(href: '/series/new', class: 'board-btn no-underline text-ink') { 'New recurring event' }
+      a(href: path('/events/new'), class: 'board-btn-solid no-underline') { 'New event' }
+      a(href: path('/series/new'), class: 'board-btn no-underline text-ink') { 'New recurring event' }
     end
   end
 
@@ -178,7 +178,7 @@ class Schedule < Phlex::HTML
   end
 
   def post_link(date, day)
-    a(href: "/signups/#{day.post.id}", title: "#{day_title(day)} — open the sign-up",
+    a(href: path("/signups/#{day.post.id}"), title: "#{day_title(day)} — open the sign-up",
       class: cell_classes(date, 'bg-accent-tint text-accent font-semibold hover:bg-accent-tint-strong')) do
       date.day.to_s
     end
@@ -194,7 +194,7 @@ class Schedule < Phlex::HTML
   def create_cell(date, day)
     return blank_cell(date) unless @leader
 
-    form(method: 'post', action: "/schedule/#{date.strftime('%Y-%m-%d')}/signup", class: 'contents') do
+    form(method: 'post', action: path("/schedule/#{date.strftime('%Y-%m-%d')}/signup"), class: 'contents') do
       button(
         type: 'submit',
         title: "#{day_title(day)} — start the sign-up",
@@ -245,7 +245,7 @@ class Schedule < Phlex::HTML
 
   def event_row(event)
     div(class: 'flex items-center gap-1 pr-2 hover:bg-surface-sunk') do
-      a(href: "/board?event_id=#{event.id}",
+      a(href: path("/board?event_id=#{event.id}"),
         class: "flex flex-1 min-w-0 items-center gap-3 px-3.5 py-2 no-underline text-ink #{event.disabled ? 'opacity-55' : ''}") do
         span(class: 'font-mono text-[11.5px] text-ink/70 w-[68px] shrink-0') do
           event.start_time&.strftime('%-l:%M %p').to_s
@@ -276,7 +276,7 @@ class Schedule < Phlex::HTML
                 'It stays on the schedule as cancelled, and nobody is dispatched for it.'
               end
 
-    form(method: 'post', action: "/events/#{event.id}/disable", class: 'contents') do
+    form(method: 'post', action: path("/events/#{event.id}/disable"), class: 'contents') do
       input(type: 'hidden', name: 'return_to', value: '/schedule')
       button(
         type: 'submit',
@@ -305,7 +305,7 @@ class Schedule < Phlex::HTML
       span(class: 'board-label') { 'Sign-up' }
       post ? signup_state(post) : span(class: 'text-[12px] text-warn-ink') { 'none yet' }
       div(class: 'flex-1')
-      post ? a(href: "/signups/#{post.id}", class: 'board-btn no-underline text-ink') { 'Open' }
+      post ? a(href: path("/signups/#{post.id}"), class: 'board-btn no-underline text-ink') { 'Open' }
            : create_signup(day)
     end
   end
@@ -331,7 +331,7 @@ class Schedule < Phlex::HTML
   def create_signup(day)
     return unless @leader
 
-    form(method: 'post', action: '/signups', class: 'contents') do
+    form(method: 'post', action: path('/signups'), class: 'contents') do
       input(type: 'hidden', name: 'service_date', value: day.date.strftime('%Y-%m-%d'))
       input(type: 'hidden', name: 'channel_id', value: day.channel_id)
       button(type: 'submit', class: 'board-btn') { 'Create' }
@@ -369,7 +369,7 @@ class Schedule < Phlex::HTML
   end
 
   def series_row(s)
-    a(href: "/series/#{s.id}",
+    a(href: path("/series/#{s.id}"),
       class: 'flex items-center gap-3 px-3 py-2 rounded-lg border border-line no-underline text-ink hover:border-accent') do
       span(class: 'flex-1 min-w-0 flex flex-col gap-0.5') do
         span(class: 'text-[13px] font-medium') { s.display_name }
@@ -414,7 +414,7 @@ class Schedule < Phlex::HTML
       span(class: 'board-meta whitespace-nowrap') { "#{academic_break.range_label} · #{academic_break.days} days" }
       next unless @leader
 
-      form(method: 'post', action: "/breaks/#{academic_break.id}", class: 'contents') do
+      form(method: 'post', action: path("/breaks/#{academic_break.id}"), class: 'contents') do
         input(type: 'hidden', name: '_method', value: 'delete')
         button(type: 'submit', title: 'Remove',
                class: 'border-0 bg-transparent text-ink/55 hover:text-danger font-mono text-xs font-semibold cursor-pointer px-1') do
@@ -425,7 +425,7 @@ class Schedule < Phlex::HTML
   end
 
   def add_break_form
-    form(method: 'post', action: '/breaks', class: 'flex gap-2 items-end flex-wrap pt-1') do
+    form(method: 'post', action: path('/breaks'), class: 'flex gap-2 items-end flex-wrap pt-1') do
       div(class: 'flex flex-col gap-[5px] flex-1 min-w-[160px]') do
         span(class: 'board-label') { 'Name' }
         input(type: 'text', name: 'name', required: true, placeholder: 'Spring break',

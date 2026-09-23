@@ -93,7 +93,7 @@ class Components::DispatchBar < Phlex::HTML
   # is settled, now get it out of the app. Not gated on @leader — reading the
   # roster is not an edit.
   def export_link
-    a(href: "/board/#{@board.event.id}.csv",
+    a(href: path("/board/#{@board.event.id}.csv"),
       class: 'board-btn no-underline text-ink whitespace-nowrap') { 'Export .csv' }
   end
 
@@ -109,7 +109,7 @@ class Components::DispatchBar < Phlex::HTML
   end
 
   def log_link
-    a(href: "/events/#{@board.event.id}/dispatches",
+    a(href: path("/events/#{@board.event.id}/dispatches"),
       class: 'board-btn no-underline') { 'Log' }
   end
 

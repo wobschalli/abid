@@ -57,7 +57,7 @@ class LocationsIndex < Phlex::HTML
   # The seed file is still the source of truth for the places everyone shares;
   # this is for the ones it does not know about yet.
   def add_form
-    form(method: 'post', action: '/locations',
+    form(method: 'post', action: path('/locations'),
          class: 'flex flex-wrap gap-2 items-end p-3.5 rounded-lg border border-line bg-surface') do
       label(class: 'flex flex-col gap-1 flex-1 min-w-[150px]') do
         span(class: 'board-label') { 'New place' }
@@ -137,7 +137,7 @@ class LocationsIndex < Phlex::HTML
   def verify_button(location)
     return if location.verified?
 
-    form(method: 'post', action: "/locations/#{location.id}/verify", class: 'contents') do
+    form(method: 'post', action: path("/locations/#{location.id}/verify"), class: 'contents') do
       button(type: 'submit', title: 'Look this place up and record how well it matched',
              class: 'board-btn whitespace-nowrap text-[11.5px] py-1') { 'Verify' }
     end
@@ -149,7 +149,7 @@ class LocationsIndex < Phlex::HTML
   def delete_button(location)
     return if in_use?(location)
 
-    form(method: 'post', action: "/locations/#{location.id}", class: 'contents') do
+    form(method: 'post', action: path("/locations/#{location.id}"), class: 'contents') do
       input(type: 'hidden', name: '_method', value: 'delete')
       button(
         type: 'submit',
@@ -172,7 +172,7 @@ class LocationsIndex < Phlex::HTML
       return
     end
 
-    form(method: 'post', action: "/locations/#{location.id}",
+    form(method: 'post', action: path("/locations/#{location.id}"),
          class: 'flex gap-2 items-center pt-1') do
       input(type: 'hidden', name: '_method', value: 'patch')
       input(type: 'text', name: 'address', value: location.address.to_s,

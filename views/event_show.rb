@@ -30,7 +30,7 @@ class EventShow < Phlex::HTML
 
   def breadcrumb
     div(class: 'text-[12px] text-ink/60') do
-      a(href: '/schedule', class: 'text-accent no-underline hover:underline') { 'Schedule' }
+      a(href: path('/schedule'), class: 'text-accent no-underline hover:underline') { 'Schedule' }
       plain ' / '
       plain @event.name.to_s
     end
@@ -48,13 +48,13 @@ class EventShow < Phlex::HTML
 
       div(class: 'flex-1')
 
-      a(href: "/events/#{@event.id}.csv", class: 'board-btn no-underline') { 'Export .csv' }
+      a(href: path("/events/#{@event.id}.csv"), class: 'board-btn no-underline') { 'Export .csv' }
       if past?
-        a(href: "/board?event_id=#{@event.id}", class: 'board-btn no-underline') { 'Open board' }
+        a(href: path("/board?event_id=#{@event.id}"), class: 'board-btn no-underline') { 'Open board' }
       else
-        a(href: "/board?event_id=#{@event.id}", class: 'board-btn-solid no-underline') { 'Open ride board' }
+        a(href: path("/board?event_id=#{@event.id}"), class: 'board-btn-solid no-underline') { 'Open ride board' }
       end
-      a(href: "/events/#{@event.id}/edit", class: 'board-btn no-underline') { 'Edit' } if @leader
+      a(href: path("/events/#{@event.id}/edit"), class: 'board-btn no-underline') { 'Edit' } if @leader
     end
   end
 
@@ -107,7 +107,7 @@ class EventShow < Phlex::HTML
     return '—' if series.nil?
 
     -> {
-      a(href: "/series/#{series.id}", class: 'text-[13px] text-accent no-underline hover:underline') do
+      a(href: path("/series/#{series.id}"), class: 'text-[13px] text-accent no-underline hover:underline') do
         series.display_name
       end
     }

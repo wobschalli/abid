@@ -45,7 +45,7 @@ class Home < Phlex::HTML
       div(class: 'flex items-center gap-3 flex-wrap') do
         span(class: 'font-display font-bold text-xl -tracking-[.015em]') { @next_event.name.to_s }
         div(class: 'flex-1')
-        a(href: "/board?event_id=#{@next_event.id}", class: 'board-btn-solid no-underline') { 'Open ride board' }
+        a(href: path("/board?event_id=#{@next_event.id}"), class: 'board-btn-solid no-underline') { 'Open ride board' }
       end
 
       stats if @board
@@ -82,7 +82,7 @@ class Home < Phlex::HTML
       span(class: 'text-[12.5px] text-ink/60') do
         'Recurring series generate their occurrences automatically — check that one is set up.'
       end
-      a(href: '/schedule', class: 'board-btn no-underline self-start') { 'Schedule' }
+      a(href: path('/schedule'), class: 'board-btn no-underline self-start') { 'Schedule' }
     end
   end
 
@@ -94,7 +94,7 @@ class Home < Phlex::HTML
         "#{@needs_setup.size} #{@needs_setup.size == 1 ? 'person has' : 'people have'} no home area or phone number. " \
         'Drivers cannot collect someone whose address nobody knows.'
       end
-      a(href: '/users?filter=missing', class: 'board-btn no-underline self-start') { 'Fill them in' }
+      a(href: path('/users?filter=missing'), class: 'board-btn no-underline self-start') { 'Fill them in' }
     end
   end
 

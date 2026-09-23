@@ -25,7 +25,7 @@ class Components::EventTable < Phlex::HTML
 
   def row(event)
     a(
-      href: "/events/#{event.id}",
+      href: path("/events/#{event.id}"),
       class: 'flex items-center gap-3 px-3 py-2.5 rounded-lg border border-line bg-surface ' \
              'no-underline text-ink hover:border-accent transition-colors'
     ) do

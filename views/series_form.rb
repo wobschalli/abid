@@ -30,7 +30,7 @@ class SeriesForm < Phlex::HTML
   end
 
   def action
-    @series.new_record? ? '/series' : "/series/#{@series.id}"
+    path(@series.new_record? ? '/series' : "/series/#{@series.id}")
   end
 
   def form_body
@@ -87,7 +87,7 @@ class SeriesForm < Phlex::HTML
 
       div(class: 'flex gap-2 pt-1') do
         button(type: 'submit', class: 'board-btn-solid') { @series.new_record? ? 'Create series' : 'Save changes' }
-        a(href: @series.new_record? ? '/schedule' : "/series/#{@series.id}", class: 'board-btn no-underline') { 'Cancel' }
+        a(href: path(@series.new_record? ? '/schedule' : "/series/#{@series.id}"), class: 'board-btn no-underline') { 'Cancel' }
       end
     end
   end

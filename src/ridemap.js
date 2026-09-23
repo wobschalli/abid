@@ -16,10 +16,11 @@ const SELECTOR = '[data-route-map]'
 // stylesheet rather than bundling it. We draw our own markers, so the default
 // icon is never used — but Leaflet still probes for it without this.
 delete L.Icon.Default.prototype._getIconUrl
+const root = document.body.dataset.root || ''
 L.Icon.Default.mergeOptions({
-  iconUrl: '/css/images/marker-icon.png',
-  iconRetinaUrl: '/css/images/marker-icon-2x.png',
-  shadowUrl: '/css/images/marker-shadow.png'
+  iconUrl: `${root}/css/images/marker-icon.png`,
+  iconRetinaUrl: `${root}/css/images/marker-icon-2x.png`,
+  shadowUrl: `${root}/css/images/marker-shadow.png`
 })
 
 const readJSON = (el, name) => {

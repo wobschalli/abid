@@ -31,7 +31,7 @@ class Login < Phlex::HTML
   end
 
   def form_body
-    form(method: 'post', action: '/login', class: 'flex flex-col gap-3.5') do
+    form(method: 'post', action: path('/login'), class: 'flex flex-col gap-3.5') do
       field('Username') do
         input(type: 'text', name: 'username', autocomplete: 'username',
               autocapitalize: 'none', autofocus: true, required: true, class: 'board-input')
