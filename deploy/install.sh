@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # One-shot server setup for Ubuntu 24.04. Run ONCE as root from the repo:
 #
-#   sudo bash deploy/install.sh
+#   sudo bash deploy/install.sh rides.example.org
+#
+# With a hostname, it also configures nginx for it and obtains the Let's
+# Encrypt certificate (DNS must already point here). Set CERTBOT_EMAIL=you@x
+# in the environment to receive expiry notices; without it the certificate is
+# registered without an address — renewal is automatic either way.
 #
 # Idempotent: safe to re-run after a git pull. It installs system packages,
 # Postgres, nginx and certbot, writes /etc/abid/env with generated secrets
@@ -12,6 +17,7 @@
 set -euo pipefail
 
 APP_USER=alan
+HOSTNAME_ARG=${1:-}
 APP_DIR=/home/$APP_USER/abid
 ENV_FILE=/etc/abid/env
 BUNDLER_VERSION=2.6.9
@@ -99,11 +105,33 @@ else
   echo "   WARNING: no authorized_keys for $APP_USER — leaving SSH password login ON. Add a key, then disable it."
 fi
 
-echo "== nginx site (HTTP only until certbot runs; puma is localhost-only regardless)"
+echo "== nginx site (puma is localhost-only regardless)"
 install -m 644 "$APP_DIR/deploy/nginx-abid.conf" /etc/nginx/sites-available/abid
+if [ -n "$HOSTNAME_ARG" ]; then
+  sed -i "s/RIDES_HOSTNAME/$HOSTNAME_ARG/g" /etc/nginx/sites-available/abid
+fi
 rm -f /etc/nginx/sites-enabled/default
 ln -sf /etc/nginx/sites-available/abid /etc/nginx/sites-enabled/abid
+mkdir -p /var/www/html
 nginx -t -q && systemctl enable --now nginx && systemctl reload nginx
+
+if [ -n "$HOSTNAME_ARG" ]; then
+  echo "== HTTPS for $HOSTNAME_ARG (Let's Encrypt)"
+  if [ -n "${CERTBOT_EMAIL:-}" ]; then
+    EMAIL_OPTS=(-m "$CERTBOT_EMAIL")
+  else
+    EMAIL_OPTS=(--register-unsafely-without-email)
+  fi
+  # The dashboard holds members' phone numbers: --redirect makes plain HTTP
+  # a redirect to HTTPS, never a page.
+  if certbot --nginx -d "$HOSTNAME_ARG" --non-interactive --agree-tos --redirect "${EMAIL_OPTS[@]}"; then
+    echo "   certificate installed; renewal timer: $(systemctl is-enabled certbot.timer 2>/dev/null || echo 'check systemctl list-timers')"
+  else
+    echo "   WARNING: certbot failed — is DNS for $HOSTNAME_ARG pointing at this server yet? Re-run: sudo certbot --nginx -d $HOSTNAME_ARG"
+  fi
+else
+  echo "== no hostname given: nginx serves HTTP only on the IP; use an SSH tunnel until certbot runs"
+fi
 
 echo
 echo "done. Next: restore the database and config.yml, then start the services — deploy/DEPLOY.md"

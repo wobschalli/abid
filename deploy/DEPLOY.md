@@ -15,12 +15,17 @@ Two rules that matter more than anything below:
 
 ## 1. One-time server setup (needs sudo, once)
 
-    cd ~/abid && git pull && sudo bash deploy/install.sh
+    cd ~/abid && git pull && sudo bash deploy/install.sh rides.example.org
 
 Installs Ruby, Postgres, nginx, certbot; writes `/etc/abid/env` with generated
 secrets; creates the `abid` database role; `bundle install`s; installs and
 enables (but does not start) `abid-web` and `abid-bot`; grants your user
-passwordless `systemctl start/stop/restart/status` for those two units only.
+passwordless `systemctl start/stop/restart/status` for those two units only;
+firewalls the box to 22/80/443 and turns on unattended security updates.
+Given a hostname whose DNS already points at the server, it also configures
+nginx and obtains the Let's Encrypt certificate (step 4 is then done).
+`CERTBOT_EMAIL=you@example.org sudo -E bash deploy/install.sh …` to get
+certificate-expiry notices; renewal itself is automatic regardless.
 
 ## 2. Move the data and the secrets (no sudo)
 
@@ -54,7 +59,7 @@ The bot log should show one `gateway protocol` line. The web is reachable
 straight away over a tunnel: `ssh -L 5544:localhost:5544 alan@SERVER`, then
 http://localhost:5544.
 
-## 4. HTTPS (once DNS points at the server)
+## 4. HTTPS (only if the installer ran without a hostname)
 
     sudo sed -i 's/RIDES_HOSTNAME/rides.example.org/' /etc/nginx/sites-available/abid
     sudo nginx -t && sudo systemctl reload nginx
