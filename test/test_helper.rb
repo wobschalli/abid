@@ -58,8 +58,12 @@ class AbidTest < Minitest::Test
     )
   end
 
+  # Tomorrow at 10:00, not "now + 1 day". Several tests make a sibling event an
+  # hour later and assert it is the same day (double-booking, sibling slots,
+  # a sign-up post covering both). Anchored to the clock, those pass all
+  # afternoon and fail after 23:00, when "an hour later" is tomorrow.
   def make_event(name: 'Sunday Service', starts: nil)
-    starts ||= Time.zone.now + 1.day
+    starts ||= (Time.zone.today + 1.day).in_time_zone.change(hour: 10)
     Event.create!(name: name, start_time: starts, end_time: starts + 1.hour)
   end
 
