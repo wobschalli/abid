@@ -21,6 +21,7 @@ class SignupPost < ApplicationRecord
   validates :status, inclusion: { in: STATUSES }
   validates :discord_message_id, uniqueness: true, allow_nil: true
   validate :post_at_required_when_scheduled
+  validate :channel_takes_rides, if: :channel_id_changed?
 
   scope :recent, -> { order(Arel.sql('COALESCE(post_at, created_at) DESC')) }
   scope :tracking, -> { where(status: 'posted', closed_at: nil) }
@@ -154,5 +155,14 @@ class SignupPost < ApplicationRecord
     return unless status == 'scheduled' && post_at.blank?
 
     errors.add(:post_at, 'is needed before a post can be scheduled')
+  end
+
+  # The dropdown no longer offers a channel with a purpose, but the form posts
+  # a bare channel_id. Only checked when the channel is being chosen, so a post
+  # already in a channel that later gains a purpose can still be closed out.
+  def channel_takes_rides
+    return if channel.nil? || channel.purpose.nil?
+
+    errors.add(:channel, "##{channel.name} is the #{channel.purpose} channel, not a place for rides")
   end
 end

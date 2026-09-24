@@ -900,7 +900,7 @@ class App < Sinatra::Base
   def signup_page(post, error: nil)
     SignupShow.new(
       post: post,
-      channels: Channel.order(:name).to_a,
+      channels: Channel.for_rides.order(:name).to_a,
       # The server's own emoji, synced by the bot. Previously reachable only by
       # typing :name: and knowing it existed.
       server_emojis: Emoji.order(:name).to_a,
@@ -1072,7 +1072,7 @@ class App < Sinatra::Base
   end
 
   def form_collections
-    { channels: Channel.order(:name).to_a, locations: Location.order(:name).to_a }
+    { channels: Channel.for_rides.order(:name).to_a, locations: Location.order(:name).to_a }
   end
 
   # No `section`: a pickup time is identified by its time, which display_name

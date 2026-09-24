@@ -137,7 +137,7 @@ module Signup
     # With a single channel configured there is nothing to choose. With none,
     # `create_for` gives up rather than guessing where to post.
     def default_channel
-      @default_channel ||= Channel.count == 1 ? Channel.first : nil
+      @default_channel ||= Channel.for_rides.count == 1 ? Channel.for_rides.first : nil
     end
   end
 end

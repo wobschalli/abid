@@ -380,7 +380,7 @@ class Messenger < Bot
     values = {
       name: event.value('name') || evt.name,
       location: loc,
-      channel: Channel.find_by(name: event.value('channel')) || evt.channel
+      channel: Channel.for_rides.find_by(name: event.value('channel')) || evt.channel
     }.delete_if{ |_, value| value.nil? || (value.is_a?(String) && value.empty?) }
 
     evt.update(values)
