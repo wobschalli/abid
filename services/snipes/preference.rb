@@ -27,9 +27,9 @@ module Snipes
     # What the presser sees, privately. The shared message never changes.
     def self.reply_for(opt_out)
       if opt_out
-        "You're opted out — any snipe that tags you gets removed. Press the other button if you change your mind."
+        "Got it, you're out. Any snipe that tags you will get taken down."
       else
-        "You're back in the game. 📸"
+        "You're back in 📸"
       end
     end
   end

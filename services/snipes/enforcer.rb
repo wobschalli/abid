@@ -98,8 +98,7 @@ module Snipes
 
     def tell_poster(author, channel)
       @bot.user(author.id)&.dm(
-        "Your photo in ##{channel.name} was removed. Snipes have to @mention the person " \
-        'in them — that is how people who have opted out stay protected. Tag them and post it again.'
+        "Your pic in ##{channel.name} got taken down cuz nobody was tagged. @ the person and post it again!"
       )
     rescue StandardError => e
       # DMs closed is a normal outcome, not a failure of the rule.

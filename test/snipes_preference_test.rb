@@ -55,7 +55,7 @@ class SnipesPreferenceTest < AbidTest
   end
 
   def test_the_replies_say_what_state_you_are_in
-    assert_includes Snipes::Preference.reply_for(true), 'opted out'
+    assert_includes Snipes::Preference.reply_for(true), "you're out"
     assert_includes Snipes::Preference.reply_for(false), 'back in'
   end
 

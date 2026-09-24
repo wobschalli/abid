@@ -14,11 +14,11 @@ module Snipes
 
     TEXT = <<~TEXT.strip
       📸 **Snipes**
-      Spot someone on campus, snap them, post it here — and **@mention them**. Every snipe needs a tag; untagged ones are removed.
+      See someone on campus? Snap a pic and post it here. Make sure you @ them, pics without a tag get deleted.
 
-      Be kind with the camera: these are our friends, not targets. Nothing unflattering, nothing they'd be embarrassed by, nothing from a private moment — if you'd hesitate to show them the photo first, don't post it.
+      Keep it nice pls. Nothing unflattering, nothing embarrassing, nothing from a private moment. If you wouldn't show them the pic first, don't post it.
 
-      Rather not be in the game? Press **Don't snipe me** and any snipe that tags you is taken down automatically. Changed your mind later? The other button puts you back in. Or type `/toggle-sniping` anywhere — same switch.
+      Don't want to be sniped? Hit **Don't snipe me** and any snipe that tags you gets taken down. You can switch back anytime with the other button, or just type `/toggle-sniping`.
     TEXT
 
     OPT_OUT_ID = 'snipes_optout'.freeze
@@ -62,7 +62,7 @@ module Snipes
       Discordrb::Webhooks::View.new.tap do |view|
         view.row do |row|
           row.button(label: "Don't snipe me", style: :danger, custom_id: OPT_OUT_ID, emoji: { name: '🙈' })
-          row.button(label: "Changed my mind — I'm game", style: :success, custom_id: OPT_IN_ID, emoji: { name: '📸' })
+          row.button(label: "I'm back in", style: :success, custom_id: OPT_IN_ID, emoji: { name: '📸' })
         end
       end
     end

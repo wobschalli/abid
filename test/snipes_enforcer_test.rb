@@ -154,7 +154,7 @@ class SnipesEnforcerTest < AbidTest
     assert_equal :untagged, result.status
     assert msg.deleted?, 'untagged snipe survived'
     assert_equal 1, @bot.dms_to(7001).size, 'poster was not told'
-    assert_includes @bot.dms_to(7001).first, '@mention'
+    assert_includes @bot.dms_to(7001).first, 'nobody was tagged'
     assert_includes @bot.dms_to(7001).first, '#snipes'
   end
 
